@@ -63,6 +63,7 @@ python tools\run_tests.py    # тесты движка в headless Edge (без 
 PY tools\build_sheets.py ; PY tools\render.py   # листы → out/*.pdf (Pillow, pymupdf)
 PY tools\site_build.py       # PWA для GitHub Pages → out/site; затем скопировать в docs/
 PY tools\desktop_build.py    # Electron: Windows + Mac → out/desktop
+python tools\export_files.py # готовое из out/ → Загрузки\Гримуар (без зависимостей)
 ```
 - Mac-сборки собираются из официальных zip Electron в Python (сохраняет симлинки); без подписи — на Mac нужно
   `xattr -cr` и `codesign --force --deep --sign -`.
@@ -77,4 +78,5 @@ PY tools\desktop_build.py    # Electron: Windows + Mac → out/desktop
   в локальном конфиге репозитория). Почта коммитов: `252884166+AirError@users.noreply.github.com` — личную не использовать.
 - gh в сессиях Claude Desktop видит только свой вход (AppData изолирована): если `gh auth status` говорит «не вошли» —
   запустить `gh auth login --hostname github.com --git-protocol https --web` в фоне и передать пользователю одноразовый код.
-- Готовые файлы пользователя: `%USERPROFILE%\Downloads\Гримуар` (сборки, PDF, сайт, JSON, промпты).
+- Готовые файлы пользователя: `%USERPROFILE%\Downloads\Гримуар` (сборки, PDF, сайт, JSON, промпты) —
+  раскладывает `tools/export_files.py` после сборок (Загрузки не изолированы, в отличие от AppData).
