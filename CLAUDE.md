@@ -66,10 +66,12 @@ python -m venv .venv
   но запускать из короткого пути: из длинных путей MinGit падает с «Filename too long»). GitHub CLI установлен: `C:\Program Files\GitHub CLI\gh.exe`.
   Локальный репозиторий уже создан (ветка main, первый коммит); автор коммитов — заглушка `grimoire@localhost`.
 
-## Что не доделано
-1. **GitHub Pages.** Ждём `gh auth login` от пользователя. Затем:
-   `gh repo create botc-grimoire --public --source . --push` и включить Pages из `main` / `docs`
-   (`gh api -X POST repos/<user>/botc-grimoire/pages -f "source[branch]=main" -f "source[path]=/docs"`).
-   Сайт публичный; внутри официальные тексты/иконки © The Pandemonium Institute — пользователь в курсе.
-   Для коммитов не использовать личную почту пользователя — только `<id>+<login>@users.noreply.github.com`.
-2. Готовые файлы пользователя: `%USERPROFILE%\Downloads\Гримуар` (сборки, PDF, сайт, JSON, промпты).
+## Публикация
+- **GitHub:** https://github.com/AirError/botc-grimoire (публичный; аккаунт пользователя AirError).
+- **Сайт (GitHub Pages, из `main` / `docs`):** https://airerror.github.io/botc-grimoire/ — PWA для Safari на iPhone/iPad.
+- Обновить сайт: `tools/site_build.py` (поднять `VERSION` — это номер кэша service worker, иначе телефоны держат старое),
+  скопировать `out/site/*` в `docs/`, закоммитить и `git push` (git: `tools/git/cmd/git.exe`, вход через gh уже настроен
+  в локальном конфиге репозитория). Почта коммитов: `252884166+AirError@users.noreply.github.com` — личную не использовать.
+- gh в сессиях Claude Desktop видит только свой вход (AppData изолирована): если `gh auth status` говорит «не вошли» —
+  запустить `gh auth login --hostname github.com --git-protocol https --web` в фоне и передать пользователю одноразовый код.
+- Готовые файлы пользователя: `%USERPROFILE%\Downloads\Гримуар` (сборки, PDF, сайт, JSON, промпты).
