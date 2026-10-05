@@ -231,19 +231,45 @@ try {
   runNight(S, { imp: { t: [byRole(S, 'chef').id] }, fortuneteller: { t: ids(S, 'chef', 'imp') }, investigator: { t: ids(S, 'widow', 'chef'), r: 'widow' } });
   E.endDay(S);
   ok('на следующую ночь Сыщик у Каннибала уже не просыпается', !S.night.steps.some(s => s.fresh));
-  // Аэронавт: +0 или +1 Изгой
+  // Аэронавт: +0 или +1 Изгой — выбирает рассказчик, по умолчанию без изменений
   S = game(['investigator', 'chef', 'balloonist', 'dreamer', 'recluse', 'mutant', 'widow', 'imp'], 'catfishing');
-  ok('Аэронавт: +1 Изгой допустим', E.setupProblems(S).length === 0, E.setupProblems(S).join('; '));
-  S = game(['investigator', 'chef', 'savant', 'dreamer', 'recluse', 'mutant', 'widow', 'imp'], 'catfishing');
-  ok('без Аэронавта лишний Изгой — ошибка раскладки', E.setupProblems(S).some(t => /Раскладка/.test(t)));
+  ok('Аэронавт без выбора: лишний Изгой — ошибка раскладки', E.setupProblems(S).some(t => /Раскладка/.test(t)));
+  S.flags.mods = { balloonist: 1 };
+  ok('Аэронавт: выбран +1 Изгой — раскладка верна', E.setupProblems(S).length === 0, E.setupProblems(S).join('; '));
   // Сказочник Привратник: −1, 0 или +1 Изгой
   S = game(['librarian', 'clockmaker', 'grandmother', 'fortuneteller', 'tealady', 'monk', 'witch', 'imp']);
   ok('без Привратника 0 Изгоев при 8 игроках — ошибка раскладки', E.setupProblems(S).some(t => /Раскладка/.test(t)));
   S.fabled = ['sentinel'];
-  ok('Привратник: 0 Изгоев вместо 1 допустимо', E.setupProblems(S).length === 0, E.setupProblems(S).join('; '));
-  ok('Привратник: в таблице «0, 1 или 2»', E.distCheck(E.distribution(8, S.players.map(p => p.role).concat(S.fabled)), E.countTeams(S)).find(x => x.t === 'outsider').want === '0, 1 или 2');
-  S = game(['librarian', 'clockmaker', 'grandmother', 'fortuneteller', 'recluse', 'moonchild', 'witch', 'imp']); S.fabled = ['sentinel'];
-  ok('Привратник: 2 Изгоя вместо 1 допустимо', E.setupProblems(S).length === 0, E.setupProblems(S).join('; '));
+  ok('Привратник без выбора: Изгоев как обычно (1)', E.setupProblems(S).some(t => /Изгой: 0 из 1/.test(t)), E.setupProblems(S).join('; '));
+  S.flags.mods = { sentinel: -1 };
+  const dS = E.distCheck(E.distribution(8, S.players.map(p => p.role).concat(S.fabled), S.flags.mods), E.countTeams(S));
+  ok('Привратник −1: точные числа — Горожан 6, Изгоев 0', E.setupProblems(S).length === 0 && dS[0].want === 6 && dS[1].want === 0, JSON.stringify(dS));
+  S = game(['librarian', 'clockmaker', 'grandmother', 'fortuneteller', 'recluse', 'moonchild', 'witch', 'imp']); S.fabled = ['sentinel']; S.flags.mods = { sentinel: 1 };
+  ok('Привратник +1: 4 Горожанина и 2 Изгоя', E.setupProblems(S).length === 0, E.setupProblems(S).join('; '));
+  // Крёстный Отец: −1 или +1 — выбрать обязательно
+  S = game(['librarian', 'clockmaker', 'grandmother', 'fortuneteller', 'tealady', 'recluse', 'godfather', 'imp']);
+  ok('Крёстный Отец: без выбора — просьба выбрать', E.setupProblems(S).some(t => /Крёстный Отец: выберите/.test(t)));
+  S.flags.mods = { godfather: -1 };
+  ok('Крёстный Отец −1: нужно 6 Горожан и 0 Изгоев', E.setupProblems(S).some(t => /Горожанин: 5 из 6/.test(t)) && E.setupProblems(S).some(t => /Изгой: 1 из 0/.test(t)), E.setupProblems(S).join('; '));
+  S.flags.mods = { godfather: 1 };
+  ok('Крёстный Отец +1: нужно 4 Горожанина и 2 Изгоя', E.setupProblems(S).some(t => /Горожанин: 5 из 4/.test(t)), E.setupProblems(S).join('; '));
+  S = game(['librarian', 'clockmaker', 'grandmother', 'fortuneteller', 'tealady', 'godfather', 'imp']);
+  ok('Крёстный Отец при 0 Изгоях: только +1, выбран сам', E.distribution(7, ['godfather', 'imp']).choices[0].value === 1);
+  // случайная раздача: раскладка всегда сходится с выбором рассказчика
+  const dealErr = [];
+  const dV = E.distribution(7, ['vigormortis', 'widow']);
+  ok('Вигормортис при 0 Изгоях: Изгоев 0, Горожан 5 (как обычно)', dV.outsider === 0 && dV.townsfolk === 5, JSON.stringify(dV));
+  ok('Привратник +1 недоступен, если Изгоев в сценарии не хватает (TB, 9 игроков, Барон)', !E.distribution(9, ['baron', 'imp', 'sentinel'], { sentinel: 1 }, 4).choices[0].opts.includes(1)
+     && E.distribution(9, ['baron', 'imp', 'sentinel'], { sentinel: 1 }, 4).outsider === 4);
+  for (let k = 0; k < 300; k++) {
+    const key = ['ecbe', 'catfishing', 'bmr', 'tb'][k % 4], np = 5 + (k % 11);
+    S = E.newGame(key); for (let i = 0; i < np; i++) S.players.push(E.newPlayer('P' + i));
+    if (k % 3 === 0) { S.fabled = ['sentinel']; S.flags.mods = { sentinel: [-1, 0, 1][k % 3 === 0 ? (k / 3) % 3 : 0] }; }
+    if (k % 5 === 0) S.flags.mods = Object.assign({}, S.flags.mods, { balloonist: 1 });
+    E.randomDeal(S);
+    const pr = E.setupProblems(S); if (pr.length) dealErr.push(key + '/' + np + ': ' + pr.join('; '));
+  }
+  ok('случайная раздача ×300: раскладка без ошибок', !dealErr.length, dealErr.slice(0, 3).join(' || '));
   // Амнезиак
   S = game(['amnesiac', 'chef', 'balloonist', 'dreamer', 'savant', 'recluse', 'widow', 'imp'], 'catfishing');
   E.autoSetup(S, true); E.startGame(S);

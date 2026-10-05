@@ -236,37 +236,53 @@ function checkWin(S) {
 const BASE_DIST = { 5: [3, 0, 1, 1], 6: [3, 1, 1, 1], 7: [5, 0, 1, 1], 8: [5, 1, 1, 1], 9: [5, 2, 1, 1],
   10: [7, 0, 2, 1], 11: [7, 1, 2, 1], 12: [7, 2, 2, 1], 13: [9, 0, 3, 1], 14: [9, 1, 3, 1], 15: [9, 2, 3, 1] };
 
-function distribution(nPlayers, roles) {
+// роли, у которых сдвиг числа Изгоев выбирает рассказчик; Горожан становится на столько же меньше (или больше).
+// def — значение, пока рассказчик не выбрал; null — выбрать обязательно
+const OUT_CHOICES = {
+  godfather: { opts: [-1, 1], def: null },     // [−1 или +1 Изгой]
+  balloonist: { opts: [0, 1], def: 0 },        // [+0 или +1 Изгой]
+  sentinel: { opts: [-1, 0, 1], def: 0 },      // Сказочник: Изгоев может быть на 1 больше или меньше
+};
+
+// roles — роли в игре и Сказочники; mods — выбор рассказчика {godfather: −1|1, balloonist: 0|1, sentinel: −1|0|1};
+// maxOut — сколько Изгоев есть в сценарии (больше добавить нельзя)
+function distribution(nPlayers, roles, mods, maxOut) {
+  mods = mods || {};
+  if (maxOut === undefined) maxOut = Infinity;
   const base = BASE_DIST[Math.min(15, Math.max(5, nPlayers))];
   if (!base) return null;
   let [t, o, m, d] = base;
-  const notes = [];
-  let godfatherSign = null, balloon = false, sentinel = false;
-  for (const r of roles) { // roles — роли в игре и Сказочники
-    if (r === 'sentinel') { sentinel = true; notes.push('Привратник: Изгоев может быть на 1 больше или меньше — решаете вы'); }
+  const notes = [], choices = [];
+  for (const r of roles) {
     if (r === 'baron') { t -= 2; o += 2; notes.push('Барон: +2 Изгоя'); }
     if (r === 'fanggu') { t -= 1; o += 1; notes.push('Фань Гу: +1 Изгой'); }
     if (r === 'vigormortis') { t += 1; o -= 1; notes.push('Вигормортис: −1 Изгой'); }
-    if (r === 'godfather') { godfatherSign = true; notes.push('Крёстный Отец: −1 или +1 Изгой'); }
-    if (r === 'balloonist') { balloon = true; notes.push('Аэронавт: +0 или +1 Изгой'); }
   }
-  // допустимое число Изгоев (Горожане — остаток)
-  let deltas = godfatherSign ? [-1, 0, 1] : [0];
-  if (balloon) deltas = deltas.concat(deltas.map(x => x + 1));
-  if (sentinel) deltas = deltas.concat(deltas.map(x => x - 1), deltas.map(x => x + 1));
-  const outs = [...new Set(deltas.map(x => o + x))].filter(x => x >= 0).sort((a, b) => a - b);
-  return { townsfolk: t, outsider: o, minion: m, demon: d, notes, godfather: godfatherSign, outs };
+  if (o < 0) { t += o; o = 0; } // убирать Изгоя некого — число Горожан не меняется
+  for (const [id, c] of Object.entries(OUT_CHOICES)) {
+    if (!roles.includes(id)) continue;
+    const opts = c.opts.filter(x => o + x >= 0 && t - x >= 0 && (x <= 0 || o + x <= maxOut));
+    let v = mods[id] ?? c.def;
+    if (!opts.includes(v)) v = opts.length === 1 ? opts[0] : opts.includes(c.def) ? c.def : null;
+    choices.push({ id, opts, value: v });
+    if (v !== null) { o += v; t -= v; }
+  }
+  return { townsfolk: t, outsider: o, minion: m, demon: d, notes, choices, pending: choices.filter(c => c.value === null).map(c => c.id) };
 }
 
-// сверка раскладки с таблицей: строки «есть / нужно» по типам ролей
+// сверка раскладки с таблицей: строки «есть / нужно» по типам ролей («?» — пока не выбран сдвиг Изгоев)
 function distCheck(d, c) {
-  const okOut = d.outs.includes(c.outsider);
-  const wantT = d.townsfolk + d.outsider - (okOut ? c.outsider : d.outsider);
   return ['townsfolk', 'outsider', 'minion', 'demon'].map(t => {
-    const want = t === 'outsider' ? d.outs.join(', ').replace(/, (\d+)$/, ' или $1') : t === 'townsfolk' ? wantT : d[t];
-    const bad = t === 'outsider' ? !okOut : t === 'townsfolk' ? c.townsfolk !== wantT : c[t] !== d[t];
-    return { t, have: c[t], want, bad };
+    const unknown = d.pending.length > 0 && (t === 'townsfolk' || t === 'outsider');
+    return { t, have: c[t], want: unknown ? '?' : d[t], bad: unknown || c[t] !== d[t] };
   });
+}
+
+// раскладка для текущей подготовки: роли игроков + Сказочники, выбор рассказчика, запас Изгоев в сценарии
+const scriptOutsiders = S => S.script.roles.filter(r => R(r) && R(r).team === 'outsider').length;
+function setupDistribution(S) {
+  const core = S.players.filter(p => !isTraveller(p));
+  return distribution(core.length, core.map(p => p.role).filter(Boolean).concat(S.fabled || []), S.flags.mods, scriptOutsiders(S));
 }
 
 function countTeams(S) {
@@ -283,15 +299,18 @@ function randomDeal(S) {
   const base = BASE_DIST[n];
   const minions = byTeam('minion').slice(0, base[2]);
   const chosen = [demon, ...minions];
-  let { townsfolk: t, outsider: o } = distribution(n, chosen);
-  if (chosen.includes('godfather')) { const s = Math.random() < 0.5 ? 1 : -1; if (o + s >= 0) { o += s; t -= s; } }
-  // Сказочник Привратник: −1, 0 или +1 Изгой — решаем случайно
-  if ((S.fabled || []).includes('sentinel')) { const s = pick([-1, 0, 1]); if (o + s >= 0 && t - s > 0) { o += s; t -= s; } }
+  // сдвиги Изгоев — как выбрал рассказчик; Крёстному Отцу без выбора — случайно −1 или +1 (выбор запоминается)
+  const mods = S.flags.mods = Object.assign({}, S.flags.mods);
+  if (chosen.includes('godfather') && mods.godfather == null) mods.godfather = pick([-1, 1]);
+  const dist = extra => distribution(n, chosen.concat(extra, S.fabled || []), mods, scriptOutsiders(S));
+  let d = dist([]);
+  const tfAll = byTeam('townsfolk');
+  let tf = tfAll.slice(0, Math.max(0, d.townsfolk));
+  // Аэронавт попал в раздачу — он сам меняет раскладку: пересчитываем так же, как таблица, и оставляем его в игре
+  if (tf.includes('balloonist')) { d = dist(['balloonist']); tf = ['balloonist', ...tfAll.filter(r => r !== 'balloonist')].slice(0, Math.max(0, d.townsfolk)); }
   const outs = byTeam('outsider');
-  if (o > outs.length) { t += o - outs.length; o = outs.length; }
-  const tf = byTeam('townsfolk').slice(0, Math.max(0, t));
-  // Аэронавт: +0 или +1 Изгой — решаем случайно
-  if (tf.includes('balloonist') && tf.length > 1 && o < outs.length && Math.random() < 0.5) { tf.splice(tf.findIndex(r => r !== 'balloonist'), 1); o += 1; }
+  let o = d.outsider;
+  if (o > outs.length) { tf.push(...tfAll.filter(r => !tf.includes(r)).slice(0, o - outs.length)); o = outs.length; }
   chosen.push(...outs.slice(0, Math.max(0, o)));
   chosen.push(...tf);
   const seats = shuffle(core);
@@ -336,7 +355,9 @@ function setupProblems(S) {
   if (core.length < 5) out.push('Нужно хотя бы 5 игроков (не считая Странников)');
   if (S.players.some(p => !p.role)) out.push('Не всем игрокам выданы роли');
   if (core.length >= 5 && S.players.every(p => p.role)) {
-    const diff = distCheck(distribution(core.length, core.map(p => p.role).concat(S.fabled || [])), countTeams(S)).filter(x => x.bad);
+    const d = setupDistribution(S);
+    for (const id of d.pending) out.push(`${rname(id)}: выберите, сколько Изгоев — −1 или +1`);
+    const diff = distCheck(d, countTeams(S)).filter(x => x.bad && x.want !== '?');
     if (diff.length) out.push('Раскладка не совпадает с таблицей: ' + diff.map(x => `${TEAM_RU[x.t]}: ${x.have} из ${x.want}`).join(', '));
     const c = countTeams(S);
     if (c.demon !== 1) out.push('В игре должен быть ровно 1 Демон');
@@ -1254,7 +1275,7 @@ function klutzChoose(S, pid) {
 }
 
 
-const ENGINE = { newGame, newPlayer, P, nm, rname, realTeam, actsAs, aliveCount, aliveAll, coreCount, isTraveller, exile, exileThreshold, addTraveller, meetingBlocker, isDemon, distribution, distCheck, countTeams, randomDeal,
+const ENGINE = { newGame, newPlayer, P, nm, rname, realTeam, actsAs, aliveCount, aliveAll, coreCount, isTraveller, exile, exileThreshold, addTraveller, meetingBlocker, isDemon, distribution, setupDistribution, distCheck, countTeams, randomDeal,
   amnesiacGuess, AMNESIAC_ANSWERS,
   finishRoles, autoSetup, setupProblems, jinxesInPlay, startGame, startNight, currentStep, stepSpec, applyStep, skipStep,
   stepInputs, missingInputs, endNight,

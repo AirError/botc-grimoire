@@ -208,9 +208,13 @@ function viewSetup() {
       <button class="btn sq danger" data-act="delP" data-arg="${p.id}" aria-label="Удалить">×</button></div>`).join('');
   let roles = '';
   if (n >= 5 && n <= 15) {
-    const d = E.distribution(n, core.map(p => p.role).filter(Boolean).concat(S.fabled || []));
+    const d = E.setupDistribution(S);
     const rowsD = E.distCheck(d, E.countTeams(S)).map(x => `<tr><td class="t-${x.t}">${E.TEAM_RU[x.t]}</td><td class="${x.bad ? 'bad' : ''}">${x.have} из ${x.want}</td></tr>`).join('');
-    roles = `<div class="card"><h3>Роли</h3><table class="dist">${rowsD}</table>${d.notes.length ? `<div class="small muted">${d.notes.map(esc).join('<br>')}</div>` : ''}
+    // роли, у которых число Изгоев выбирает рассказчик: Крёстный Отец, Аэронавт, Привратник
+    const MOD_RU = { '-1': '−1 Изгой', 0: 'без изменений', 1: '+1 Изгой' };
+    const choices = d.choices.map(c => `<div class="field ${c.value === null ? 'ask' : ''}"><label>${esc(E.rname(c.id))}: ${c.value === null ? 'выберите, сколько Изгоев' : 'Изгоев'}</label>
+      <div class="seg">${c.opts.map(v => `<button class="${c.value === v ? 'on' : ''}" data-act="outMod" data-arg="${c.id}|${v}">${MOD_RU[v]}</button>`).join('')}</div></div>`).join('');
+    roles = `<div class="card"><h3>Роли</h3><table class="dist">${rowsD}</table>${choices}${d.notes.length ? `<div class="small muted">${d.notes.map(esc).join('<br>')}</div>` : ''}
       <button class="btn" data-act="deal">Раздать роли случайно</button>
       ${S.players.map(p => {
         const side = !p.role ? 'none' : (E.isTraveller(p) ? p.align : (isGoodRole(p.role) ? 'good' : 'evil'));
@@ -460,6 +464,7 @@ const A = {
   move: arg => { const [id, d] = arg.split('|'); act(S => { const i = S.players.findIndex(p => p.id === id), j = i + (+d); if (j >= 0 && j < S.players.length) [S.players[i], S.players[j]] = [S.players[j], S.players[i]]; }, 'порядок мест'); },
   delP: id => act(S => { S.players = S.players.filter(p => p.id !== id); }, 'удалён игрок'),
   deal: () => act(S => E.randomDeal(S), 'случайная раздача ролей'),
+  outMod: arg => { const [id, v] = arg.split('|'); act(S => { S.flags.mods = Object.assign({}, S.flags.mods, { [id]: +v }); }, `${E.rname(id)}: ${{ '-1': '−1 Изгой', 0: 'Изгоев без изменений', 1: '+1 Изгой' }[v]}`); },
   setRole: (id, el) => act(S => { const p = E.P(S, id); p.role = el.value || null; E.finishRoles(S); E.autoSetup(S, false); }, 'роль ' + E.P(S, id).name),
   setBelieves: (id, el) => act(S => { E.P(S, id).believes = el.value || null; }, 'роль-обманка'),
   bluff: (i, el) => act(S => { S.bluffs[+i] = el.value || null; }, 'блеф Демона'),

@@ -129,6 +129,8 @@ details > .tale { margin-top: 10px; }
 .dist { width: 100%; border-collapse: collapse; font-variant-numeric: tabular-nums; font-size: 15px; }
 .dist td { padding: 4px 0; } .dist td:last-child { text-align: right; font-weight: 700; }
 .dist .bad { color: var(--evil); }
+.field.ask { background: var(--warnbg); border-radius: 9px; padding: 9px 11px; }
+.field.ask > label { color: var(--warn); font-weight: 700; }
 
 /* панель вкладок */
 .tabs { position: fixed; left: 0; right: 0; bottom: 0; z-index: 6; background: var(--card); border-top: 1px solid var(--line);
