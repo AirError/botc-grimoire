@@ -82,6 +82,13 @@ textarea { min-height: 96px; resize: vertical; }
 .reveal .lab { font-family: var(--f-sc); font-size: 13px; letter-spacing: .1em; color: var(--gold); }
 .reveal .big { font-size: 24px; font-weight: 700; line-height: 1.2; overflow-wrap: anywhere; }
 .reveal .ln { font-size: 14.5px; }
+/* слова рассказчика на рассвет: читать вслух */
+.tale { border-left: 3px solid var(--gold); padding: 2px 0 2px 14px; display: flex; flex-direction: column; gap: 6px; }
+.tale .lab { font-family: var(--f-sc); font-size: 13px; letter-spacing: .1em; color: var(--gold); }
+.tale p { margin: 0; font-size: 19px; line-height: 1.55; font-style: italic; text-wrap: pretty; }
+.tale p b { font-style: normal; font-weight: 800; }
+.tale .linkish { align-self: flex-start; }
+details > .tale { margin-top: 10px; }
 .inactive { border-style: dashed; }
 .bounds { border: 1px dashed var(--gold); border-radius: 9px; padding: 9px 11px; display: flex; flex-direction: column; gap: 4px; font-size: 14.5px; }
 .bounds .lab { font-family: var(--f-sc); font-size: 13px; letter-spacing: .1em; color: var(--gold); }

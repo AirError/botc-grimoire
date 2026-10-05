@@ -1,6 +1,7 @@
 """Собирает app/src/data.js из официальных данных (botc-release + botc-translations/ru).
 
-Берём только роли базовой коробки: Trouble Brewing, Bad Moon Rising, Sects & Violets.
+Берём роли базовой коробки: Trouble Brewing, Bad Moon Rising, Sects & Violets — и отдельные роли
+не из коробки, которые нужны сценариям или свойствам (EXTRA).
 """
 import json
 import re
@@ -28,7 +29,14 @@ def ru_reminder(label):
 # prevents_evil_meeting — пока роль в игре и её способность работает, Приспешники и Демон не знакомятся;
 #   Демон в 1-ю ночь получает только блефы; после смерти (трезвым) злые знакомятся в ту же ночь.
 PROPS = {"poppygrower": {"prevents_evil_meeting": True}}
-EXTRA = set(PROPS)  # такие роли берём в данные, даже если они не из базовой коробки
+# роли не из базовой коробки, которые нужны сценариям (Catfishing — по просьбе пользователя, роли из Carousel)
+CATFISHING_EXTRA = {"balloonist", "amnesiac", "cannibal", "widow"}
+EXTRA = set(PROPS) | CATFISHING_EXTRA  # такие роли берём в данные, даже если они не из базовой коробки
+# опечатки официального перевода
+TEXT_FIX = {
+    ("widow", "first"): "Показывайте Вдове Гримуар столько, сколько ей нужно. Вдова выбирает игрока. :reminder: "
+                        "Усыпите Вдову. Разбудите игрока с меткой *РАСКРЫТЫЙ* и покажите ему жетон Вдовы. :reminder:",
+}
 
 
 def wanted(r):
@@ -60,6 +68,9 @@ for r in roles_en:
         "setup": bool(r.get("setup")),
         "props": PROPS.get(rid, {}),
     }
+    for (fid, part), text in TEXT_FIX.items():
+        if fid == rid:
+            roles[rid][part] = text
 
 special = {k: ru["roles"][k] for k in ("dusk", "dawn", "minioninfo", "demoninfo")}
 
@@ -93,12 +104,20 @@ scripts = {
         "barber", "recluse", "moonchild", "klutz",
         "eviltwin", "devilsadvocate", "witch", "godfather",
         "imp", "pukka", "nodashii", "fanggu"]},
+    # Catfishing 11.1 by Emily (botcscripts.com/script/3/11.1.0); Странники — рекомендованные сценарием
+    "catfishing": {"name": "Catfishing", "roles": [
+        "investigator", "chef", "grandmother", "balloonist", "dreamer", "fortuneteller", "snakecharmer",
+        "gambler", "savant", "philosopher", "ravenkeeper", "amnesiac", "cannibal",
+        "drunk", "recluse", "sweetheart", "mutant", "lunatic",
+        "godfather", "cerenovus", "pithag", "widow",
+        "imp", "vigormortis", "fanggu"],
+        "travellers": ["beggar", "barista", "apprentice", "harlot", "bonecollector"]},
     "tb": {"name": "Trouble Brewing", "roles": edition_script("tb")},
     "bmr": {"name": "Bad Moon Rising", "roles": edition_script("bmr")},
     "snv": {"name": "Sects & Violets", "roles": edition_script("snv")},
 }
 for s in scripts.values():
-    missing = [x for x in s["roles"] if x not in roles]
+    missing = [x for x in s["roles"] + s.get("travellers", []) if x not in roles]
     assert not missing, missing
 
 data = {"roles": roles, "special": special, "order": order, "jinxes": jinxes, "scripts": scripts,

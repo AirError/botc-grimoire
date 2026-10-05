@@ -4,7 +4,7 @@
 
 const R = id => DATA.roles[id];
 const isGoodTeam = t => t === 'townsfolk' || t === 'outsider';
-const TEAM_RU = { townsfolk: 'Горожанин', outsider: 'Изгой', minion: 'Приспешник', demon: 'Демон' };
+const TEAM_RU = { townsfolk: 'Горожанин', outsider: 'Изгой', minion: 'Приспешник', demon: 'Демон', traveller: 'Странник' };
 
 function uid() { return Math.random().toString(36).slice(2, 10); }
 function shuffle(a) { a = a.slice(); for (let i = a.length - 1; i > 0; i--) { const j = Math.floor(Math.random() * (i + 1)); [a[i], a[j]] = [a[j], a[i]]; } return a; }
@@ -17,7 +17,7 @@ function newGame(scriptKey) {
   const sc = DATA.scripts[scriptKey || 'ecbe'];
   return {
     v: 1, id: uid(), created: Date.now(), updated: Date.now(),
-    script: { key: scriptKey || 'ecbe', name: sc.name, roles: sc.roles.slice() },
+    script: { key: scriptKey || 'ecbe', name: sc.name, roles: sc.roles.slice(), travellers: (sc.travellers || []).slice() },
     players: [], fabled: [], bluffs: [], phase: 'setup', n: 0,
     night: null, day: null, lastDay: null, flags: {}, log: [], result: null,
   };
@@ -56,7 +56,7 @@ function rmTok(p, k, src) { p.tokens = p.tokens.filter(t => !(t.k === k && (!src
 const TOK_RU = {
   poisoned: 'Отравлен', drunk: 'Пьян', protected: 'Защищён', cursed: 'Проклят', safe: 'Не умрёт при казни',
   master: 'Хозяин', mad: 'Помешан', hasability: 'Сохранил способность', twin: 'Близнец', grandchild: 'Внук',
-  herring: 'Ложная цель', chosen: 'Выбран', note: 'Заметка',
+  herring: 'Ложная цель', chosen: 'Выбран', note: 'Заметка', know: 'Раскрытый', lunch: 'Обед',
 };
 
 function expire(S, when) { // when: 'dusk' | 'dawn'
@@ -88,10 +88,14 @@ function townsfolkNeighbours(S, p) {
   return res;
 }
 
+// яд Вдовы действует, пока Вдова жива, трезва и здорова (её собственный яд на неё не в счёт)
+const widowWorks = S => holders(S, 'widow').some(w => w.alive && !w.tokens.some(x => (x.k === 'drunk' || x.k === 'poisoned') && x.src !== 'widow'));
+const tokOff = (S, t) => (t.k === 'drunk' || t.k === 'poisoned') && (t.src !== 'widow' || widowWorks(S));
+
 function abilityOff(S, p) { // способность не работает (пьян/отравлен/роль-обманка)
   if (p.role === 'drunk' && !p.gained) return 'Пьяница';
   if (p.role === 'lunatic') return 'Лунатик';
-  const t = p.tokens.find(t => t.k === 'drunk' || t.k === 'poisoned');
+  const t = p.tokens.find(t => tokOff(S, t));
   if (t) return (t.k === 'drunk' ? 'пьян' : 'отравлен') + (t.src && R(t.src) ? ` (${R(t.src).name})` : '');
   for (const nd of holders(S, 'nodashii')) {
     if (demonAlive(nd) && !abilityOffNoND(S, nd) && townsfolkNeighbours(S, nd).includes(p)) return 'отравлен (Но Даши)';
@@ -100,7 +104,7 @@ function abilityOff(S, p) { // способность не работает (п�
 }
 function abilityOffNoND(S, p) { // то же, но без Но Даши (чтобы не зациклиться)
   if (p.role === 'drunk' && !p.gained) return 'Пьяница';
-  const t = p.tokens.find(t => t.k === 'drunk' || t.k === 'poisoned');
+  const t = p.tokens.find(t => tokOff(S, t));
   return t ? t.k : null;
 }
 
@@ -159,12 +163,14 @@ function afterDeath(S, p, cause, fake, aliveBefore, opts) {
   opts = opts || {};
   const team = realTeam(p);
   if (S.phase === 'day' && S.day && team === 'outsider') S.day.outsiderDied = true;
-  if (S.phase === 'night' && p.role === 'ravenkeeper') S.flags.ravenWake = p.id;
+  // actsAs: и Пьяница, считающий себя Смотрителем, и Философ/Каннибал с его способностью
+  if (S.phase === 'night' && actsAs(p) === 'ravenkeeper') S.flags.ravenWake = p.id;
   if (p.role === 'sage' && cause === 'demon') S.flags.sageWake = p.id;
   if (p.role === 'moonchild' && !abilityOff(S, p)) S.flags.moonchildPending = p.id;
   if (p.role === 'klutz' && !abilityOff(S, p)) S.flags.klutzPending = p.id;
   if (p.role === 'barber' && !abilityOff(S, p)) S.flags.haircuts = true;
-  if (p.role === 'sweetheart') S.flags.sweetheartPending = p.id;
+  if (p.role === 'sweetheart' || (actsAs(p) === 'sweetheart' && !abilityOff(S, p))) S.flags.sweetheartPending = p.id;
+  if (p.role === 'widow') S.players.forEach(q => rmTok(q, 'poisoned', 'widow')); // яд Вдовы — пока она жива
   if (preventsMeeting(p) && !abilityOff(S, p)) evilMeetsTonight(S);
   // Бабушка
   if (cause === 'demon' && S.flags.grandchild === p.id) {
@@ -235,14 +241,30 @@ function distribution(nPlayers, roles) {
   if (!base) return null;
   let [t, o, m, d] = base;
   const notes = [];
-  let godfatherSign = null;
+  let godfatherSign = null, balloon = false;
   for (const r of roles) {
     if (r === 'baron') { t -= 2; o += 2; notes.push('Барон: +2 Изгоя'); }
     if (r === 'fanggu') { t -= 1; o += 1; notes.push('Фань Гу: +1 Изгой'); }
     if (r === 'vigormortis') { t += 1; o -= 1; notes.push('Вигормортис: −1 Изгой'); }
     if (r === 'godfather') { godfatherSign = true; notes.push('Крёстный Отец: −1 или +1 Изгой'); }
+    if (r === 'balloonist') { balloon = true; notes.push('Аэронавт: +0 или +1 Изгой'); }
   }
-  return { townsfolk: t, outsider: o, minion: m, demon: d, notes, godfather: godfatherSign };
+  // допустимое число Изгоев (Горожане — остаток)
+  let deltas = godfatherSign ? [-1, 0, 1] : [0];
+  if (balloon) deltas = deltas.concat(deltas.map(x => x + 1));
+  const outs = [...new Set(deltas.map(x => o + x))].filter(x => x >= 0).sort((a, b) => a - b);
+  return { townsfolk: t, outsider: o, minion: m, demon: d, notes, godfather: godfatherSign, outs };
+}
+
+// сверка раскладки с таблицей: строки «есть / нужно» по типам ролей
+function distCheck(d, c) {
+  const okOut = d.outs.includes(c.outsider);
+  const wantT = d.townsfolk + d.outsider - (okOut ? c.outsider : d.outsider);
+  return ['townsfolk', 'outsider', 'minion', 'demon'].map(t => {
+    const want = t === 'outsider' ? d.outs.join(' или ') : t === 'townsfolk' ? wantT : d[t];
+    const bad = t === 'outsider' ? !okOut : t === 'townsfolk' ? c.townsfolk !== wantT : c[t] !== d[t];
+    return { t, have: c[t], want, bad };
+  });
 }
 
 function countTeams(S) {
@@ -263,9 +285,11 @@ function randomDeal(S) {
   if (chosen.includes('godfather')) { const s = Math.random() < 0.5 ? 1 : -1; if (o + s >= 0) { o += s; t -= s; } }
   const outs = byTeam('outsider');
   if (o > outs.length) { t += o - outs.length; o = outs.length; }
+  const tf = byTeam('townsfolk').slice(0, Math.max(0, t));
+  // Аэронавт: +0 или +1 Изгой — решаем случайно
+  if (tf.includes('balloonist') && tf.length > 1 && o < outs.length && Math.random() < 0.5) { tf.splice(tf.findIndex(r => r !== 'balloonist'), 1); o += 1; }
   chosen.push(...outs.slice(0, Math.max(0, o)));
-  const tf = byTeam('townsfolk');
-  chosen.push(...tf.slice(0, Math.max(0, t)));
+  chosen.push(...tf);
   const seats = shuffle(core);
   seats.forEach((p, i) => { p.role = chosen[i] || null; });
   finishRoles(S);
@@ -308,10 +332,9 @@ function setupProblems(S) {
   if (core.length < 5) out.push('Нужно хотя бы 5 игроков (не считая Странников)');
   if (S.players.some(p => !p.role)) out.push('Не всем игрокам выданы роли');
   if (core.length >= 5 && S.players.every(p => p.role)) {
-    const d = distribution(core.length, core.map(p => p.role)), c = countTeams(S);
-    const diff = ['townsfolk', 'outsider', 'minion', 'demon'].filter(t => c[t] !== d[t]);
-    if (diff.length && !(d.godfather && Math.abs(c.outsider - d.outsider) === 1 && c.minion === d.minion && c.demon === d.demon))
-      out.push('Раскладка не совпадает с таблицей: ' + diff.map(t => `${TEAM_RU[t]}: ${c[t]} из ${d[t]}`).join(', '));
+    const diff = distCheck(distribution(core.length, core.map(p => p.role)), countTeams(S)).filter(x => x.bad);
+    if (diff.length) out.push('Раскладка не совпадает с таблицей: ' + diff.map(x => `${TEAM_RU[x.t]}: ${x.have} из ${x.want}`).join(', '));
+    const c = countTeams(S);
     if (c.demon !== 1) out.push('В игре должен быть ровно 1 Демон');
     const roles = S.players.map(p => p.role);
     if (new Set(roles).size !== roles.length) out.push('Одна роль выдана дважды');
@@ -369,7 +392,23 @@ function buildSteps(S) {
     if (id === 'scarletwoman' && S.flags.swBecame) actors = actors.concat([P(S, S.flags.swBecame)]);
     for (const p of actors) steps.push({ key: id + ':' + p.id, id, pid: p.id });
   }
+  // Каннибал: способность «только в 1-ю ночь» срабатывает в ночь после того, как он её получил;
+  // съев злого, он отравлен — его можно будить, когда проснулась бы съеденная роль, «понарошку»
+  if (!first) for (const c of holders(S, 'cannibal')) {
+    const f = S.flags['cannibal_' + c.id];
+    if (!f) continue;
+    if (f.evil) insertStep(steps, { key: 'cannibal:' + c.id, id: f.role, pid: c.id, fakeCannibal: true }, order);
+    else if (f.night === S.n && !order.includes(f.role) && DATA.order.first.includes(f.role))
+      insertStep(steps, { key: f.role + ':' + c.id + ':fresh', id: f.role, pid: c.id, fresh: true }, order);
+  }
   return steps;
+}
+// шаг на место роли в ночном порядке; роли нет в порядке этой ночи — перед рассветом
+function insertStep(steps, st, order) {
+  const k = order.indexOf(st.id);
+  let at = k < 0 ? -1 : steps.findIndex(s => order.indexOf(s.id) > k);
+  if (at < 0) at = steps.findIndex(s => s.id === 'dawn');
+  steps.splice(at < 0 ? steps.length : at, 0, st);
 }
 
 function currentStep(S) { return S.night && S.night.steps[S.night.i]; }
@@ -461,6 +500,22 @@ function execute(S, pid, opts) {
   if (r.died) {
     S.day.executionDeath = pid;
     if (p.role === 'saint' && !abilityOff(S, p)) return endGame(S, 'evil', 'казнён Святой');
+    if (!r.fake) cannibalEats(S, p);
+  }
+}
+
+// Каннибал: способность последнего казнённого и умершего игрока. Злой — Каннибал отравлен, пока не казнят доброго.
+// Какую способность получил, Каннибалу не говорят. flags.cannibal_<id> = {pid, role, evil, night}
+function cannibalEats(S, ex) {
+  for (const c of holders(S, 'cannibal')) {
+    if (!c.alive || c === ex) continue;
+    S.players.forEach(q => rmTok(q, 'lunch', 'cannibal'));
+    addTok(S, ex, 'lunch', 'cannibal');
+    const evil = ex.align === 'evil';
+    S.flags['cannibal_' + c.id] = { pid: ex.id, role: ex.role, evil, night: S.n + 1 };
+    if (evil) { c.gained = null; if (!hasTok(c, 'poisoned', 'cannibal')) addTok(S, c, 'poisoned', 'cannibal'); }
+    else { c.gained = ex.role; rmTok(c, 'poisoned', 'cannibal'); }
+    log(S, `Обед Каннибала (${c.name}): ${ex.name} — ${evil ? 'злой игрок, Каннибал отравлен, пока не казнят доброго' : `способность «${rname(ex.role)}» теперь у Каннибала`}`, 'effect');
   }
 }
 
@@ -529,6 +584,18 @@ function exile(S, pid, votes, passed) {
   die(S, p, 'exile', null);
 }
 
+// Каннибал съел злого: способности нет (отравлен), но можно разбудить и «дать» ему способность — лучше ту, которой блефовал казнённый
+function cannibalFakeSpec(S, step) {
+  const p = P(S, step.pid), f = S.flags['cannibal_' + p.id] || {}, ex = P(S, f.pid);
+  const spec = { title: 'Каннибал — отравлен', who: p.name, pid: p.id, team: 'townsfolk', text: '', active: p.alive, reason: p.alive ? '' : `${p.name} мёртв`,
+    inputs: [PL('t', 2, 'Выбор Каннибала, если будите его (можно никого)', () => true, { min: 0 })], defaults: {}, warn: [],
+    info: () => ({ show: null, lines: ['Любая информация может быть ложной: способности у Каннибала нет'] }),
+    apply: inp => log(S, `Каннибал (${p.name}) отравлен, «способность» понарошку${inp.t && inp.t.length ? ': ' + inp.t.map(id => nm(S, id)).join(', ') : ''}`, 'action'),
+    bounds: [Y(`Каннибал съел злого игрока${ex ? ` (${ex.name} — ${rname(ex.role)})` : ''} и отравлен, пока не казнят доброго`),
+      Y('Можно разбудить его, когда проснулась бы эта роль, и сделать вид, что у него новая способность — лучше та, которой блефовал казнённый. Можно и не будить')] };
+  return spec;
+}
+
 function fabledSpec(S, step, first) {
   const role = R(step.id);
   return { title: role.name, who: 'Сказочник', team: 'fabled', text: (first ? role.first : role.other) || '', active: true, reason: '',
@@ -541,9 +608,10 @@ function fabledSpec(S, step, first) {
 
 // общий вид шага: {title, who, text, active, reason, inputs, defaults, info(inp), apply(inp)}
 function stepSpec(S, step) {
-  const first = S.n === 1;
+  const first = S.n === 1 || !!step.fresh; // fresh: Каннибал получил способность «в 1-ю ночь» — работает как в первую
   if (DATA.special[step.id]) return specialSpec(S, step, first);
   if (step.fabled) return fabledSpec(S, step, first);
+  if (step.fakeCannibal) return cannibalFakeSpec(S, step);
   const p = P(S, step.pid), role = R(step.id);
   const base = {
     title: role.name, who: p.name, pid: p.id, team: role.team,
@@ -554,6 +622,7 @@ function stepSpec(S, step) {
   const off = abilityOff(S, p);
   if (off) base.warn.push(`${p.name}: ${off}. Способность не работает — можно дать ложную информацию, эффекты не применяются.`);
   if (p.believes && p.role === 'drunk') base.warn.push(`На самом деле ${p.name} — Пьяница (считает себя: ${rname(p.believes)})`);
+  if (p.role === 'cannibal') base.warn.push(`${p.name} — Каннибал со способностью съеденного игрока (${nm(S, (S.flags['cannibal_' + p.id] || {}).pid)}). Не говорите, какая это способность.`);
   if (vortoxActive(S) && role.team === 'townsfolk') base.warn.push('Вортокс в игре: информация Горожан должна быть ложной.');
   if (role.team === 'demon' && S.night.data.lunatic && p.role !== 'lunatic')
     base.warn.push(`Лунатик «атаковал»: ${S.night.data.lunatic.map(id => nm(S, id)).join(', ') || 'никого'} — покажите это Демону.`);
@@ -563,6 +632,7 @@ function stepSpec(S, step) {
   spec.bounds = boundsFor(step.id, first).slice();
   if (!spec.bounds.length) spec.bounds.push({ w: 'Способность', t: role.ability });
   if (off) spec.bounds.push(Y('Способность не работает: можно показать любую информацию, эффекты не применяются'));
+  if (p.role === 'cannibal') spec.bounds.push(Y('Каннибалу не говорят, чья это способность: будите его как обычную роль'));
   return spec;
 }
 
@@ -606,6 +676,7 @@ const PL = (key, n, label, filter, extra) => Object.assign({ type: 'players', ke
 const ROLE = (key, label, filter, extra) => Object.assign({ type: 'role', key, label, filter: filter || (() => true) }, extra || {});
 const CHOICE = (key, label, options) => ({ type: 'choice', key, label, options });
 const NUM = (key, label) => ({ type: 'number', key, label });
+const TEXT = (key, label) => ({ type: 'text', key, label });
 const notSelf = p => q => q.id !== p.id;
 const aliveOnly = q => q.alive;
 const both = (a, b) => q => a(q) && b(q);
@@ -905,7 +976,9 @@ const LOGIC = {
   philosopher: (S, p, first, off) => {
     if (once(S, p, 'philosopher')) return { active: false, reason: 'Способность уже использована' };
     return { inputs: [ROLE('r', 'Философ выбирает добрую роль (можно пропустить)', r => isGoodTeam(R(r).team), { optional: true, all: true })],
-      apply: inp => { if (!inp.r) return; markOnce(S, p, 'philosopher'); if (off) { log(S, `Философ (${p.name}) выбирает ${rname(inp.r)} — не работает`, 'action'); return; } p.gained = inp.r; holders(S, inp.r).forEach(q => addTok(S, q, 'drunk', 'philosopher')); log(S, `Философ (${p.name}) получает способность: ${rname(inp.r)}`, 'effect'); S.night.steps = S.night.steps.slice(0, S.night.i + 1).concat(buildSteps(S).filter(st => DATA.order[S.n === 1 ? 'first' : 'other'].indexOf(st.id) > DATA.order[S.n === 1 ? 'first' : 'other'].indexOf('philosopher'))); } };
+      apply: inp => { if (!inp.r) return; markOnce(S, p, 'philosopher'); if (off) { log(S, `Философ (${p.name}) выбирает ${rname(inp.r)} — не работает`, 'action'); return; } p.gained = inp.r; holders(S, inp.r).forEach(q => addTok(S, q, 'drunk', 'philosopher')); log(S, `Философ (${p.name}) получает способность: ${rname(inp.r)}`, 'effect');
+        const ord = DATA.order[S.n === 1 ? 'first' : 'other'], done = new Set(S.night.steps.slice(0, S.night.i + 1).map(st => st.key));
+        S.night.steps = S.night.steps.slice(0, S.night.i + 1).concat(buildSteps(S).filter(st => !done.has(st.key) && (st.fresh || st.fakeCannibal || ord.indexOf(st.id) > ord.indexOf('philosopher')))); } };
   },
   juggler: (S, p) => {
     if (S.n !== 2) return { active: false, reason: 'Жонглёр узнаёт результат только после 1-го дня' };
@@ -1000,6 +1073,54 @@ const LOGIC = {
     return { inputs: [PL('t', 3, 'Кого «атакует» Лунатик', () => true, { min: 0 })],
       apply: inp => { S.night.data.lunatic = inp.t || []; log(S, `Лунатик (${p.name}) «атакует»: ${(inp.t || []).map(id => nm(S, id)).join(', ') || 'никого'}`, 'action'); } };
   },
+
+  /* --- не из базовой коробки: роли сценария Catfishing (Carousel) */
+  widow: (S, p, first, off) => {
+    if (once(S, p, 'widow')) return { active: false, reason: 'Вдова действует только в свою 1-ю ночь' };
+    const goodOk = q => q.align === 'good' && q.id !== p.id, good = S.players.filter(goodOk);
+    return {
+      inputs: [PL('t', 1, 'Кого отравляет Вдова (посмотрев Гримуар)'), PL('know', 1, 'Добрый игрок, который узнаёт, что Вдова в игре', goodOk)],
+      defaults: stable(S, 'widowKnow:' + p.id, () => ({ know: good.length ? [pick(good).id] : [] })),
+      info: inp => { const k = inp.know && P(S, inp.know[0]); return { show: 'Покажите Вдове Гримуар', lines: [k ? `Затем разбудите ${k.name} и покажите жетон Вдовы` : ''] }; },
+      apply: inp => {
+        markOnce(S, p, 'widow');
+        const t = P(S, inp.t[0]), k = P(S, inp.know[0]);
+        if (!off) addTok(S, t, 'poisoned', 'widow');
+        addTok(S, k, 'know', 'widow');
+        log(S, `Вдова (${p.name}) смотрит Гримуар и травит ${t.name}${off ? ' — не работает' : ''}; ${k.name} узнаёт, что Вдова в игре`, 'action');
+      },
+    };
+  },
+  balloonist: (S, p, first, off) => {
+    const key = 'balloonLast_' + p.id, last = S.flags[key];
+    const TYPES = ['townsfolk', 'outsider', 'minion', 'demon'];
+    return {
+      inputs: [PL('t', 1, last ? 'Покажите игрока другого типа, чем прошлой ночью' : 'Покажите любого игрока')],
+      more: inp => { const t = inp.t && P(S, inp.t[0]); return t && (t.role === 'recluse' || t.role === 'spy') ? [Object.assign(CHOICE('reg', `Каким типом определяется ${t.name} (ваше решение; не выбрали — настоящим)`, TYPES.map(v => ({ v, l: TEAM_RU[v] }))), { optional: true })] : []; },
+      defaults: stable(S, 'balloon:' + p.id, () => {
+        const c = S.players.filter(q => q.id !== p.id && (!last || realTeam(q) !== last.type));
+        return { t: c.length ? [pick(c).id] : [] };
+      }),
+      info: inp => {
+        const t = inp.t && P(S, inp.t[0]); if (!t) return null;
+        const type = inp.reg || realTeam(t), same = last && type === last.type;
+        return { show: t.name, lines: [`Тип роли: ${TEAM_RU[type] || type}`, last ? `Прошлой ночью: ${nm(S, last.pid)} — ${TEAM_RU[last.type] || last.type}` : '',
+          same ? (off ? 'Тип тот же — можно: Аэронавт не трезв или не здоров' : 'Тип тот же, что прошлой ночью: трезвому и здоровому Аэронавту так нельзя') : ''] };
+      },
+      apply: inp => { const t = P(S, inp.t[0]); S.flags[key] = { pid: t.id, type: inp.reg || realTeam(t) }; log(S, `Аэронавт (${p.name}) узнаёт игрока: ${t.name}`, 'info'); },
+    };
+  },
+  amnesiac: (S, p) => {
+    const key = 'amnesiac_' + p.id;
+    return {
+      inputs: [TEXT('ability', 'Способность Амнезиака — решаете вы, игрок её не знает'), PL('t', 3, 'Выбор Амнезиака, если способность его требует', () => true, { min: 0 })],
+      defaults: { ability: S.flags[key] || '' },
+      apply: inp => {
+        S.flags[key] = String(inp.ability || '').trim();
+        log(S, `Амнезиак (${p.name})${S.flags[key] ? ': ' + S.flags[key] : ''}${inp.t && inp.t.length ? ' — выбор: ' + inp.t.map(id => nm(S, id)).join(', ') : ''}`, 'action');
+      },
+    };
+  },
 };
 // роль-обманка Пьяницы просыпается как настоящая роль, но без эффекта — логика та же (off=true)
 
@@ -1063,6 +1184,9 @@ const BOUNDS = {
   vigormortis: { other: [I('любого игрока'), Y('Если убит Приспешник — какой сосед-Горожанин отравлен')] },
   nodashii: { other: [I('любого игрока. Соседи-Горожане Но Даши отравлены всё время')] },
   vortox: { other: [I('любого игрока. Информация Горожан всегда ложная')] },
+  widow: { first: [Y('Покажите Гримуар столько, сколько нужно'), I('любого игрока: он отравлен, пока Вдова жива'), Y('1 доброго игрока: он узнаёт, что Вдова в игре (но не кто она и кого отравила)')] },
+  balloonist: { first: [Y('Любой игрок: живой или мёртвый, добрый или злой')], other: [Y('Игрок с типом роли не как у показанного прошлой ночью. Пьяному или отравленному Аэронавту можно тот же тип')] },
+  amnesiac: { all: [Y('Способность придумываете вы: будите и просите выбрать, только если она этого требует'), Y('Днём он раз в день приватно угадывает её — отвечайте «Холодно», «Тепло», «Горячо» или «В точку»')] },
 };
 function boundsFor(id, first) { const b = BOUNDS[id]; return b ? (b.all || (first ? b.first : b.other) || []) : []; }
 
@@ -1076,7 +1200,7 @@ function missingInputs(spec, inp) {
     const v = inp[f.key];
     if (f.type === 'players') return (v || []).length < (f.min ?? f.n);
     if (f.type === 'role') return !f.optional && !v;
-    if (f.type === 'choice') return v === undefined;
+    if (f.type === 'choice') return !f.optional && v === undefined;
     return false;
   }).map(f => f.label);
 }
@@ -1110,6 +1234,14 @@ function situation(S) {
   return out;
 }
 
+// Амнезиак раз в день угадывает свою способность; рассказчик отвечает, насколько он близок
+const AMNESIAC_ANSWERS = { cold: 'Холодно', warm: 'Тепло', hot: 'Горячо', bingo: 'В точку' };
+function amnesiacGuess(S, pid, guess, answer) {
+  const p = P(S, pid);
+  S.day.amnesiac = Object.assign({}, S.day.amnesiac, { [pid]: { guess: guess || '', answer } });
+  log(S, `Амнезиак (${p.name}) угадывает способность${guess ? `: «${guess}»` : ''} — ${AMNESIAC_ANSWERS[answer]}`, 'day');
+}
+
 function moonchildChoose(S, pid) { S.flags.moonchildTarget = pid; log(S, `Дитя Луны выбирает ${nm(S, pid)}`, 'day'); S.flags.moonchildPending = null; }
 function klutzChoose(S, pid) {
   const k = P(S, S.flags.klutzPending), t = P(S, pid); S.flags.klutzPending = null;
@@ -1118,7 +1250,8 @@ function klutzChoose(S, pid) {
 }
 
 
-const ENGINE = { newGame, newPlayer, P, nm, rname, realTeam, actsAs, aliveCount, aliveAll, coreCount, isTraveller, exile, exileThreshold, addTraveller, meetingBlocker, isDemon, distribution, countTeams, randomDeal,
+const ENGINE = { newGame, newPlayer, P, nm, rname, realTeam, actsAs, aliveCount, aliveAll, coreCount, isTraveller, exile, exileThreshold, addTraveller, meetingBlocker, isDemon, distribution, distCheck, countTeams, randomDeal,
+  amnesiacGuess, AMNESIAC_ANSWERS,
   finishRoles, autoSetup, setupProblems, jinxesInPlay, startGame, startNight, currentStep, stepSpec, applyStep, skipStep,
   stepInputs, missingInputs, endNight,
   nominate, nominationPreview, recordVote, block, execute, endDay, slayerShot, voteThreshold, situation, moonchildChoose, klutzChoose,

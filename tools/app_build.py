@@ -9,7 +9,7 @@ DIST.mkdir(exist_ok=True)
 FONTS = ('<link rel="preconnect" href="https://fonts.googleapis.com">'
          '<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>'
          '<link rel="stylesheet" href="https://fonts.googleapis.com/css2?'
-         'family=Alegreya+Sans:wght@400;500;700;800&display=swap">')
+         'family=Alegreya+Sans:ital,wght@0,400;0,500;0,700;0,800;1,400&display=swap">')
 
 import base64
 import io
@@ -49,7 +49,7 @@ if missing:
 
 css = (SRC / "style.css").read_text(encoding="utf-8")
 js = "\n".join([(SRC / "data.js").read_text(encoding="utf-8"), (SRC / "icons.js").read_text(encoding="utf-8"), art_js]
-               + [(SRC / f).read_text(encoding="utf-8") for f in ("engine.js", "ui.js")])
+               + [(SRC / f).read_text(encoding="utf-8") for f in ("engine.js", "morning.js", "ui.js")])
 assert "</script" not in js.lower()
 
 body = (f'<title>Гримуар рассказчика</title>\n{FONTS}\n<style>\n{css}\n</style>\n'

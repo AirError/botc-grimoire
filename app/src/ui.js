@@ -151,7 +151,17 @@ function fieldHtml(f, inp) {
   if (f.type === 'role') return `<div class="field"><label>${esc(f.label)}</label><select data-act="pickR" data-arg="${f.key}">${roleOptions(r => f.filter(r), v, { all: f.all, placeholder: f.optional ? '— не выбирать —' : undefined })}</select></div>`;
   if (f.type === 'choice') return `<div class="field"><label>${esc(f.label)}</label><div class="seg">${f.options.map(o => `<button class="${v === o.v ? 'on' : ''}" data-act="pickC" data-arg="${f.key}|${o.v}">${esc(o.l)}</button>`).join('')}</div></div>`;
   if (f.type === 'number') return `<div class="field"><label>${esc(f.label)}</label><div class="stepper"><button class="btn" data-act="num" data-arg="${f.key}|-1">−</button><b>${v ?? 0}</b><button class="btn" data-act="num" data-arg="${f.key}|1">+</button></div></div>`;
+  if (f.type === 'text') return `<div class="field"><label for="tx-${f.key}">${esc(f.label)}</label><textarea id="tx-${f.key}" data-act="pickT" data-arg="${f.key}">${esc(v)}</textarea></div>`;
   return '';
+}
+
+// слова рассказчика на рассвет: вариант закреплён за ночью, «другой вариант» листает по кругу
+function morningHtml(withNext) {
+  const names = S.night.deaths.map(d => `<b>${esc(E.nm(S, d.pid))}</b>`);
+  const seed = [...(S.id + ':' + S.n)].reduce((h, ch) => (h * 31 + ch.charCodeAt(0)) >>> 0, 7);
+  const m = morningText(names, S.n === 1, S.night.data.morn ?? seed);
+  return `<div class="tale"><div class="lab">Слова для утра</div><p>${m.text}</p>
+    ${withNext ? `<button class="linkish" data-act="mornNext" data-arg="${m.i}">Другой вариант · ${m.i + 1} из ${m.total}</button>` : ''}</div>`;
 }
 function boundsHtml(list) {
   return `<div class="bounds"><div class="lab">Рамки выбора</div>${list.map(b => `<div><b>${esc(b.w)}:</b> ${esc(b.t)}</div>`).join('')}</div>`;
@@ -160,11 +170,18 @@ function situationHtml() { return E.situation(S).map(w => `<div class="warn">${e
 const notesHtml = () => (UI.notes || []).map(t => `<div class="warn">${esc(t)}</div>`).join('');
 
 /* Странники и Сказочники — общие для подготовки и «Стола» */
+// Странники, рекомендованные сценарием, — первыми
+function travellerOptions() {
+  const free = DATA.travellers.filter(r => !S.players.some(p => p.role === r)), rec = (S.script.travellers || []).filter(r => free.includes(r));
+  const opt = r => `<option value="${r}">${esc(E.rname(r))}</option>`;
+  if (!rec.length) return plainOptions(free, null, '— роль Странника —');
+  return `<option value="">— роль Странника —</option><optgroup label="Из сценария">${rec.map(opt).join('')}</optgroup><optgroup label="Остальные">${free.filter(r => !rec.includes(r)).map(opt).join('')}</optgroup>`;
+}
 function travellerForm() {
   const pos = S.players.map(p => `<option value="${p.id}">после ${esc(p.name)}</option>`).join('');
   return `<details class="addbox"><summary>${art('traveller', 'hg')}Добавить Странника</summary><div class="field">
     <input type="text" id="trName" placeholder="Имя игрока" aria-label="Имя Странника">
-    <select id="trRole" aria-label="Роль Странника">${plainOptions(DATA.travellers.filter(r => !S.players.some(p => p.role === r)), null, '— роль Странника —')}</select>
+    <select id="trRole" aria-label="Роль Странника">${travellerOptions()}</select>
     <div class="flabel"><span>Сторону выбирает рассказчик</span></div>
     <div class="seg"><button class="${S.flags._trAlign === 'evil' ? '' : 'on'}" data-act="trAlign" data-arg="good">Добрый</button><button class="${S.flags._trAlign === 'evil' ? 'on' : ''}" data-act="trAlign" data-arg="evil">Злой</button></div>
     <select id="trPos" aria-label="Место в круге">${pos}<option value="" selected>в конец круга</option></select>
@@ -191,8 +208,8 @@ function viewSetup() {
       <button class="btn sq danger" data-act="delP" data-arg="${p.id}" aria-label="Удалить">×</button></div>`).join('');
   let roles = '';
   if (n >= 5 && n <= 15) {
-    const d = E.distribution(n, core.map(p => p.role).filter(Boolean)), c = E.countTeams(S);
-    const rowsD = ['townsfolk', 'outsider', 'minion', 'demon'].map(t => `<tr><td class="t-${t}">${E.TEAM_RU[t]}</td><td class="${c[t] !== d[t] ? 'bad' : ''}">${c[t]} из ${d[t]}${t === 'outsider' && d.godfather ? ' (±1)' : ''}</td></tr>`).join('');
+    const d = E.distribution(n, core.map(p => p.role).filter(Boolean));
+    const rowsD = E.distCheck(d, E.countTeams(S)).map(x => `<tr><td class="t-${x.t}">${E.TEAM_RU[x.t]}</td><td class="${x.bad ? 'bad' : ''}">${x.have} из ${x.want}</td></tr>`).join('');
     roles = `<div class="card"><h3>Роли</h3><table class="dist">${rowsD}</table>${d.notes.length ? `<div class="small muted">${d.notes.map(esc).join('<br>')}</div>` : ''}
       <button class="btn" data-act="deal">Раздать роли случайно</button>
       ${S.players.map(p => {
@@ -212,6 +229,8 @@ function viewSetup() {
       ${S.players.some(p => p.role === 'grandmother') ? pickSel('setFlag-grandchild', 'Внук Бабушки', S.flags.grandchild, goodPl.filter(p => p.role !== 'grandmother')) : ''}
       ${S.players.some(p => p.role === 'fortuneteller') ? pickSel('setFlag-ftHerring', 'Ложная цель Гадалки (добрый игрок)', S.flags.ftHerring, goodPl) : ''}
       ${S.players.some(p => p.role === 'eviltwin') ? pickSel('setFlag-goodTwin', 'Добрый близнец', S.flags.goodTwin, goodPl) : ''}
+      ${S.players.filter(p => p.role === 'amnesiac').map(p => `<div class="field"><label for="amn-${p.id}">Способность Амнезиака (${esc(p.name)}) — придумайте сами, игрок её не узнает</label>
+        <textarea id="amn-${p.id}" data-act="amnText" data-arg="${p.id}" placeholder="Например: каждую ночь узнаёт, сколько живых Горожан среди его соседей">${esc(S.flags['amnesiac_' + p.id] || '')}</textarea></div>`).join('')}
       <button class="btn" data-act="autoPrep">Заполнить случайно</button></div>` : '';
   const probs = E.setupProblems(S), jinx = E.jinxesInPlay(S);
   return `${notesHtml()}<div class="card"><h3>Сценарий</h3><div class="seg">${presets}</div><div class="small muted">«${esc(sc.name)}» — ${counts}</div>
@@ -241,9 +260,9 @@ function viewNight() {
   const fields = spec.active ? E.stepInputs(spec, inp) : [];
   const missing = spec.active ? E.missingInputs(spec, inp) : [];
   let info = null; try { info = spec.active ? spec.info(inp) : null; } catch (e) { info = null; }
-  const next = S.night.steps.slice(i + 1, i + 5).map(s => `<div>${s.pid ? ico(s.id, null, 'ui') : ''}${esc(s.meet ? 'Злые знакомятся' : E.rname(s.id))}${s.pid ? ` <span>· ${esc(E.nm(S, s.pid))}</span>` : ''}</div>`).join('');
+  const next = S.night.steps.slice(i + 1, i + 5).map(s => `<div>${s.pid ? ico(s.fakeCannibal ? 'cannibal' : s.id, null, 'ui') : ''}${esc(s.meet ? 'Злые знакомятся' : s.fakeCannibal ? 'Каннибал — отравлен' : E.rname(s.id))}${s.pid ? ` <span>· ${esc(E.nm(S, s.pid))}</span>` : ''}</div>`).join('');
   const deaths = S.night.deaths.length ? `<div class="small"><b>Умерли этой ночью:</b> ${S.night.deaths.map(d => esc(E.nm(S, d.pid))).join(', ')}</div>` : '';
-  const icon = st.pid ? ico(st.id, null, 'si') : st.fabled ? ico(st.id, 'good', 'si') : art(st.id, 'si');
+  const icon = st.pid ? ico(st.fakeCannibal ? 'cannibal' : st.id, null, 'si') : st.fabled ? ico(st.id, 'good', 'si') : art(st.id, 'si');
   return `<div class="phase-wrap">${art('night', 'phase-art')}</div><div class="progress"><i style="width:${Math.round(100 * i / total)}%"></i></div>
     ${situationHtml()}${deaths}
     <div class="card ${spec.active ? '' : 'inactive'}">
@@ -254,6 +273,7 @@ function viewNight() {
       ${(spec.warn || []).map(w => `<div class="warn">${esc(w)}</div>`).join('')}
       ${fields.map(f => fieldHtml(f, inp)).join('')}
       ${info && (info.show || (info.lines || []).filter(Boolean).length) ? `<div class="reveal"><div class="lab">Покажите / объявите</div>${info.show ? `<div class="big">${esc(info.show)}</div>` : ''}${(info.lines || []).filter(Boolean).map(l => `<div class="ln">${esc(l)}</div>`).join('')}</div>` : ''}
+      ${st.id === 'dawn' ? morningHtml(true) : ''}
       ${missing.length ? `<div class="small muted">Осталось выбрать: ${missing.map(esc).join('; ')}</div>` : ''}
       <div class="actions"><button class="btn primary" data-act="stepDone" ${missing.length ? 'disabled' : ''}>${spec.active ? 'Готово' : 'Дальше'}</button>
         <button class="btn" data-act="stepSkip">Пропустить</button></div>
@@ -268,8 +288,19 @@ function viewDay() {
   parts.push(`<div class="phase-wrap">${art('day', 'phase-art')}</div>`);
   parts.push(`<div class="card"><div class="row"><h2>День ${S.n}</h2><span class="muted">живых ${E.aliveAll(S)} · для казни нужно ${th}</span></div>
     ${S.night && S.night.deaths.length ? `<div class="small">Ночью умерли: ${S.night.deaths.map(x => esc(E.nm(S, x.pid))).join(', ')}</div>` : '<div class="small muted">Ночью никто не умер</div>'}
+    ${S.night ? `<details><summary class="small">Слова для утра</summary>${morningHtml(false)}</details>` : ''}
     ${notesHtml()}</div>`);
   parts.push(situationHtml());
+  // Амнезиак: раз в день приватно угадывает свою способность
+  for (const a of S.players.filter(p => p.role === 'amnesiac' && p.alive)) {
+    const done = (d.amnesiac || {})[a.id], ab = S.flags['amnesiac_' + a.id];
+    parts.push(`<div class="card"><h3>Амнезиак: ${esc(a.name)}</h3>
+      ${boundsHtml([{ w: 'Игрок', t: 'раз в день приватно угадывает, какая у него способность' }, { w: 'Вы отвечаете', t: '«Холодно» — совсем не то, «Тепло» — в верную сторону, «Горячо» — очень близко, «В точку» — угадал (даже другими словами)' }])}
+      <div class="small"><b>Его способность:</b> ${ab ? esc(ab) : '<span class="muted">не задана — впишите на подготовке или ночью на шаге Амнезиака</span>'}</div>
+      ${done ? `<div class="note-ok">Сегодня: ${done.guess ? `«${esc(done.guess)}» — ` : ''}${esc(E.AMNESIAC_ANSWERS[done.answer])}</div>`
+        : `<textarea data-act="amnGuessText" data-arg="${a.id}" placeholder="Догадка игрока (необязательно)" aria-label="Догадка Амнезиака">${esc(picks['amnGuess_' + a.id] || '')}</textarea>
+      <div class="seg">${Object.entries(E.AMNESIAC_ANSWERS).map(([k, l]) => `<button data-act="amnAnswer" data-arg="${a.id}|${k}">${esc(l)}</button>`).join('')}</div>`}</div>`);
+  }
   for (const [flag, label, actName] of [['moonchildPending', 'Дитя Луны выбирает живого игрока', 'moonchild'], ['klutzPending', 'Растяпа выбирает живого игрока', 'klutz']]) {
     if (!S.flags[flag]) continue;
     const sel = picks[actName] || [];
@@ -395,10 +426,13 @@ function render() {
   if (UI.tab === 'menu') body = viewMenu();
   const last = HISTORY[HISTORY.length - 1];
   const scrollY = window.scrollY;
+  // раскрытые блоки <details> остаются раскрытыми после перерисовки (узнаём их по заголовку)
+  const opened = new Set([...app.querySelectorAll('details[open] > summary')].map(s => s.textContent));
   app.innerHTML = `<header class="top"><span class="brand">${art('icon', 'logo')}Гримуар</span><span class="phase">${esc(ph)}</span>
       <button class="hundo" data-act="undo" ${last ? '' : 'disabled'} aria-label="${last ? esc('Отменить: ' + last.label) : 'Нечего отменять'}" title="${last ? esc('Отменить: ' + last.label) : ''}">↶</button><span class="save"></span></header>
     <main>${body}</main>
     <nav class="tabs">${[['game', S.phase === 'night' ? 'Ночь' : S.phase === 'day' ? 'День' : 'Игра'], ['table', 'Стол'], ['log', 'Журнал'], ['menu', 'Ещё']].map(([k, l]) => `<button class="${UI.tab === k ? 'on' : ''}" data-act="tab" data-arg="${k}">${l}</button>`).join('')}</nav>`;
+  app.querySelectorAll('details > summary').forEach(s => { if (opened.has(s.textContent)) s.parentElement.open = true; });
   paintSave();
   window.scrollTo(0, scrollY);
 }
@@ -409,14 +443,14 @@ const A = {
   tab: k => { UI.tab = k; render(); window.scrollTo(0, 0); },
   undo: () => undo(),
   // подготовка
-  script: k => act(S => { const sc = DATA.scripts[k]; S.script = { key: k, name: sc.name, roles: sc.roles.slice() }; S.players.forEach(p => { if (p.role && !E.isTraveller(p) && !S.script.roles.includes(p.role)) p.role = null; }); }, 'сценарий «' + DATA.scripts[k].name + '»'),
+  script: k => act(S => { const sc = DATA.scripts[k]; S.script = { key: k, name: sc.name, roles: sc.roles.slice(), travellers: (sc.travellers || []).slice() }; S.players.forEach(p => { if (p.role && !E.isTraveller(p) && !S.script.roles.includes(p.role)) p.role = null; }); }, 'сценарий «' + DATA.scripts[k].name + '»'),
   customText: (a, el) => { UI.customText = el.value; },
   customLoad: () => {
     try {
       const arr = JSON.parse(UI.customText); const meta = arr.find(x => x && x.id === '_meta');
       const ids = arr.filter(x => !(x && x.id === '_meta')).map(x => String(typeof x === 'string' ? x : x.id).toLowerCase().replace(/[^a-z]/g, ''));
       const known = ids.filter(id => DATA.roles[id] && ['townsfolk', 'outsider', 'minion', 'demon'].includes(team(id))), unknown = ids.filter(id => !DATA.roles[id]);
-      act(S => { S.script = { key: 'custom', name: (meta && meta.name) || 'Свой сценарий', roles: known }; }, 'свой сценарий');
+      act(S => { S.script = { key: 'custom', name: (meta && meta.name) || 'Свой сценарий', roles: known, travellers: ids.filter(id => team(id) === 'traveller') }; }, 'свой сценарий');
       UI.notes = unknown.length ? [`Нет в данных приложения, пропущены: ${unknown.join(', ')}`] : []; render();
     } catch (e) { alertNote('Не получилось прочитать JSON: проверьте, что вставлен текст сценария целиком.'); }
   },
@@ -454,6 +488,12 @@ const A = {
   pickR: (key, el) => draft(S => { S.draft.inp[key] = el.value || null; }),
   pickC: arg => { const [key, v] = arg.split('|'); draft(S => { S.draft.inp[key] = v; }); },
   num: arg => { const [key, d] = arg.split('|'); draft(S => { S.draft.inp[key] = Math.max(0, (S.draft.inp[key] || 0) + (+d)); }); },
+  // текст печатается — сохраняем без перерисовки, иначе поле теряет фокус
+  pickT: (key, el) => { S.draft.inp[key] = el.value; S.updated = Date.now(); persist(); },
+  mornNext: i => draft(S => { S.night.data.morn = +i + 1; }),
+  amnText: (id, el) => { S.flags['amnesiac_' + id] = el.value; S.updated = Date.now(); persist(); },
+  amnGuessText: (id, el) => { S.day.picks['amnGuess_' + id] = el.value; S.updated = Date.now(); persist(); },
+  amnAnswer: arg => { const [id, ans] = arg.split('|'), guess = (S.day.picks['amnGuess_' + id] || '').trim(); act(S => { E.amnesiacGuess(S, id, guess, ans); delete S.day.picks['amnGuess_' + id]; }); },
   stepDone: () => { const st = E.currentStep(S), spec = E.stepSpec(S, st), inp = clone(S.draft.inp); UI.notes = []; act(S => { if (spec.active) E.applyStep(S, st, inp); else E.skipStep(S); }, spec.title + (spec.who ? ' (' + spec.who + ')' : '')); window.scrollTo(0, 0); },
   stepSkip: () => { const spec = E.stepSpec(S, E.currentStep(S)); act(S => E.skipStep(S), 'пропущен шаг: ' + spec.title); window.scrollTo(0, 0); },
   // день
