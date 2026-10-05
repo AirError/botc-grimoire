@@ -241,8 +241,9 @@ function distribution(nPlayers, roles) {
   if (!base) return null;
   let [t, o, m, d] = base;
   const notes = [];
-  let godfatherSign = null, balloon = false;
-  for (const r of roles) {
+  let godfatherSign = null, balloon = false, sentinel = false;
+  for (const r of roles) { // roles — роли в игре и Сказочники
+    if (r === 'sentinel') { sentinel = true; notes.push('Привратник: Изгоев может быть на 1 больше или меньше — решаете вы'); }
     if (r === 'baron') { t -= 2; o += 2; notes.push('Барон: +2 Изгоя'); }
     if (r === 'fanggu') { t -= 1; o += 1; notes.push('Фань Гу: +1 Изгой'); }
     if (r === 'vigormortis') { t += 1; o -= 1; notes.push('Вигормортис: −1 Изгой'); }
@@ -252,6 +253,7 @@ function distribution(nPlayers, roles) {
   // допустимое число Изгоев (Горожане — остаток)
   let deltas = godfatherSign ? [-1, 0, 1] : [0];
   if (balloon) deltas = deltas.concat(deltas.map(x => x + 1));
+  if (sentinel) deltas = deltas.concat(deltas.map(x => x - 1), deltas.map(x => x + 1));
   const outs = [...new Set(deltas.map(x => o + x))].filter(x => x >= 0).sort((a, b) => a - b);
   return { townsfolk: t, outsider: o, minion: m, demon: d, notes, godfather: godfatherSign, outs };
 }
@@ -261,7 +263,7 @@ function distCheck(d, c) {
   const okOut = d.outs.includes(c.outsider);
   const wantT = d.townsfolk + d.outsider - (okOut ? c.outsider : d.outsider);
   return ['townsfolk', 'outsider', 'minion', 'demon'].map(t => {
-    const want = t === 'outsider' ? d.outs.join(' или ') : t === 'townsfolk' ? wantT : d[t];
+    const want = t === 'outsider' ? d.outs.join(', ').replace(/, (\d+)$/, ' или $1') : t === 'townsfolk' ? wantT : d[t];
     const bad = t === 'outsider' ? !okOut : t === 'townsfolk' ? c.townsfolk !== wantT : c[t] !== d[t];
     return { t, have: c[t], want, bad };
   });
@@ -283,6 +285,8 @@ function randomDeal(S) {
   const chosen = [demon, ...minions];
   let { townsfolk: t, outsider: o } = distribution(n, chosen);
   if (chosen.includes('godfather')) { const s = Math.random() < 0.5 ? 1 : -1; if (o + s >= 0) { o += s; t -= s; } }
+  // Сказочник Привратник: −1, 0 или +1 Изгой — решаем случайно
+  if ((S.fabled || []).includes('sentinel')) { const s = pick([-1, 0, 1]); if (o + s >= 0 && t - s > 0) { o += s; t -= s; } }
   const outs = byTeam('outsider');
   if (o > outs.length) { t += o - outs.length; o = outs.length; }
   const tf = byTeam('townsfolk').slice(0, Math.max(0, t));
@@ -332,7 +336,7 @@ function setupProblems(S) {
   if (core.length < 5) out.push('Нужно хотя бы 5 игроков (не считая Странников)');
   if (S.players.some(p => !p.role)) out.push('Не всем игрокам выданы роли');
   if (core.length >= 5 && S.players.every(p => p.role)) {
-    const diff = distCheck(distribution(core.length, core.map(p => p.role)), countTeams(S)).filter(x => x.bad);
+    const diff = distCheck(distribution(core.length, core.map(p => p.role).concat(S.fabled || [])), countTeams(S)).filter(x => x.bad);
     if (diff.length) out.push('Раскладка не совпадает с таблицей: ' + diff.map(x => `${TEAM_RU[x.t]}: ${x.have} из ${x.want}`).join(', '));
     const c = countTeams(S);
     if (c.demon !== 1) out.push('В игре должен быть ровно 1 Демон');

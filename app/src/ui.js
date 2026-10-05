@@ -192,7 +192,7 @@ function fabledZone() {
     <button class="btn" data-act="fabDel" data-arg="${id}" aria-label="Убрать ${esc(E.rname(id))}">×</button></div>`).join('');
   return `<div class="card fabzone"><h3 class="hi">${art('fabled', 'hg')}Сказочники — вне круга</h3><div class="small muted">Персонажи рассказчика: без жизни и смерти, видны всем.</div>
     ${list || '<div class="small muted">Пока нет</div>'}
-    <div class="row" style="flex-wrap:nowrap"><select id="fabAdd" aria-label="Добавить Сказочника">${plainOptions(DATA.fabled.filter(r => !(S.fabled || []).includes(r)), null, '— добавить Сказочника —')}</select><button class="btn" data-act="fabAdd">+</button></div></div>`;
+    <select id="fabAdd" data-act="fabAdd" aria-label="Добавить Сказочника">${plainOptions(DATA.fabled.filter(r => !(S.fabled || []).includes(r)), null, '— добавить Сказочника —')}</select></div>`;
 }
 
 /* ------------------------------------------------------------ экраны */
@@ -208,7 +208,7 @@ function viewSetup() {
       <button class="btn sq danger" data-act="delP" data-arg="${p.id}" aria-label="Удалить">×</button></div>`).join('');
   let roles = '';
   if (n >= 5 && n <= 15) {
-    const d = E.distribution(n, core.map(p => p.role).filter(Boolean));
+    const d = E.distribution(n, core.map(p => p.role).filter(Boolean).concat(S.fabled || []));
     const rowsD = E.distCheck(d, E.countTeams(S)).map(x => `<tr><td class="t-${x.t}">${E.TEAM_RU[x.t]}</td><td class="${x.bad ? 'bad' : ''}">${x.have} из ${x.want}</td></tr>`).join('');
     roles = `<div class="card"><h3>Роли</h3><table class="dist">${rowsD}</table>${d.notes.length ? `<div class="small muted">${d.notes.map(esc).join('<br>')}</div>` : ''}
       <button class="btn" data-act="deal">Раздать роли случайно</button>

@@ -236,6 +236,14 @@ try {
   ok('Аэронавт: +1 Изгой допустим', E.setupProblems(S).length === 0, E.setupProblems(S).join('; '));
   S = game(['investigator', 'chef', 'savant', 'dreamer', 'recluse', 'mutant', 'widow', 'imp'], 'catfishing');
   ok('без Аэронавта лишний Изгой — ошибка раскладки', E.setupProblems(S).some(t => /Раскладка/.test(t)));
+  // Сказочник Привратник: −1, 0 или +1 Изгой
+  S = game(['librarian', 'clockmaker', 'grandmother', 'fortuneteller', 'tealady', 'monk', 'witch', 'imp']);
+  ok('без Привратника 0 Изгоев при 8 игроках — ошибка раскладки', E.setupProblems(S).some(t => /Раскладка/.test(t)));
+  S.fabled = ['sentinel'];
+  ok('Привратник: 0 Изгоев вместо 1 допустимо', E.setupProblems(S).length === 0, E.setupProblems(S).join('; '));
+  ok('Привратник: в таблице «0, 1 или 2»', E.distCheck(E.distribution(8, S.players.map(p => p.role).concat(S.fabled)), E.countTeams(S)).find(x => x.t === 'outsider').want === '0, 1 или 2');
+  S = game(['librarian', 'clockmaker', 'grandmother', 'fortuneteller', 'recluse', 'moonchild', 'witch', 'imp']); S.fabled = ['sentinel'];
+  ok('Привратник: 2 Изгоя вместо 1 допустимо', E.setupProblems(S).length === 0, E.setupProblems(S).join('; '));
   // Амнезиак
   S = game(['amnesiac', 'chef', 'balloonist', 'dreamer', 'savant', 'recluse', 'widow', 'imp'], 'catfishing');
   E.autoSetup(S, true); E.startGame(S);
