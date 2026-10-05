@@ -3,14 +3,14 @@
   "configurations": [
     {
       "name": "grimoire",
-      "runtimeExecutable": ".venv/Scripts/python.exe",
+      "runtimeExecutable": "python",
       "runtimeArgs": ["-m", "http.server", "8765", "--directory", "app/dist"],
       "port": 8765
     },
     {
       "name": "site",
-      "runtimeExecutable": ".venv/Scripts/python.exe",
-      "runtimeArgs": ["-m", "http.server", "8766", "--directory", "out/site"],
+      "runtimeExecutable": "python",
+      "runtimeArgs": ["-m", "http.server", "8766", "--directory", "docs"],
       "port": 8766
     }
   ]

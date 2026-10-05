@@ -16,19 +16,23 @@ from pathlib import Path
 from PIL import Image, ImageDraw
 
 ROOT = Path(__file__).resolve().parent.parent
-DESK = ROOT / "app" / "desktop"
+# тяжёлое — вне проекта (он в OneDrive); окружение готовит tools/setup_env.py
+HOME = Path(os.environ.get("LOCALAPPDATA", Path.home())) / "botc-grimoire"
+DESK = HOME / "desktop"                      # рабочая папка сборки: package.json, main.js, index.html, node_modules
 BUILD = DESK / "build"
 OUT = ROOT / "out" / "desktop"
-CACHE = ROOT / "tools" / "electron_cache"
+CACHE = HOME / "electron_cache"
 for d in (BUILD, OUT, CACHE):
     d.mkdir(parents=True, exist_ok=True)
 
 ELECTRON = "44.5.1"
 NAME = "Гримуар"
-NODE = next((ROOT / "tools" / "node_dl").glob("node-v24*"))
+NODE = next((HOME / "node").glob("node-v24*"))
 APP_FILES = ["package.json", "main.js", "index.html"]
 
-# 1. страница приложения
+# 1. файлы приложения в рабочую папку
+for f in ("package.json", "main.js"):
+    shutil.copy2(ROOT / "app" / "desktop" / f, DESK / f)
 shutil.copy2(ROOT / "app" / "dist" / "preview.html", DESK / "index.html")
 
 # 2. иконки: Windows — квадрат со слегка скруглёнными углами, macOS — по сетке Apple (824 из 1024, радиус ~185)

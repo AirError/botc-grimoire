@@ -47,30 +47,33 @@
 - Тесты движка: `app/test/tests.js`, запуск `python tools/run_tests.py` (headless Edge). Сейчас 44/44.
 
 ## Сборка
+**Окружение — одной командой, системным Python:** `python tools\setup_env.py`.
+Всё тяжёлое лежит ВНЕ проекта (папка проекта в OneDrive — синхронизировать тысячи файлов незачем):
+`%LOCALAPPDATA%\botc-grimoire\` → `venv\` (pillow, numpy, scipy, pymupdf), `node\` (Node.js 24.21.0), `git\` (MinGit),
+`desktop\` (рабочая папка Electron + node_modules), `electron_cache\`. Скрипт качает только недостающее и сверяет контрольные суммы.
+Внимание: приложение Claude изолирует AppData — эти папки видны сессиям Claude, но не обычному терминалу пользователя.
+
+Ниже `PY` = `%LOCALAPPDATA%\botc-grimoire\venv\Scripts\python.exe`:
 ```
-python -m venv .venv
-.venv\Scripts\pip install pillow numpy scipy pymupdf
-.venv\Scripts\python tools\app_build_data.py   # data.js из app/data/*.json
-.venv\Scripts\python tools\fetch_icons.py      # иконки (качает только недостающие)
-.venv\Scripts\python tools\prep_art.py         # вырезка фона арта → art/cut
-.venv\Scripts\python tools\app_build.py        # app/dist/grimoire.html + preview.html
-.venv\Scripts\python tools\run_tests.py
-.venv\Scripts\python tools\build_sheets.py ; .venv\Scripts\python tools\render.py   # листы → out/*.pdf
-.venv\Scripts\python tools\site_build.py       # PWA для GitHub Pages → out/site (скопировать в docs/)
-.venv\Scripts\python tools\desktop_build.py    # Electron: Windows + Mac (нужен tools/node_dl с Node.js 24 и npm install в app/desktop)
+PY tools\app_build_data.py   # data.js из app/data/*.json (без зависимостей)
+PY tools\fetch_icons.py      # иконки (качает только недостающие; нужен Pillow)
+PY tools\prep_art.py         # вырезка фона арта → art/cut (Pillow, numpy, scipy)
+PY tools\app_build.py        # app/dist/grimoire.html + preview.html (Pillow)
+python tools\run_tests.py    # тесты движка в headless Edge (без зависимостей)
+PY tools\build_sheets.py ; PY tools\render.py   # листы → out/*.pdf (Pillow, pymupdf)
+PY tools\site_build.py       # PWA для GitHub Pages → out/site; затем скопировать в docs/
+PY tools\desktop_build.py    # Electron: Windows + Mac → out/desktop
 ```
-- Node.js портативный: nodejs.org/dist/v24.21.0/node-v24.21.0-win-x64.zip → `tools/node_dl/`; затем `npm install` в `app/desktop`.
 - Mac-сборки собираются из официальных zip Electron в Python (сохраняет симлинки); без подписи — на Mac нужно
   `xattr -cr` и `codesign --force --deep --sign -`.
-- Git: портативный MinGit уже лежит в `tools/git/cmd/git.exe` (в .gitignore; заново — `python tools/fetch_mingit.py`,
-  но запускать из короткого пути: из длинных путей MinGit падает с «Filename too long»). GitHub CLI установлен: `C:\Program Files\GitHub CLI\gh.exe`.
-  Локальный репозиторий уже создан (ветка main, первый коммит); автор коммитов — заглушка `grimoire@localhost`.
+- Git: `%LOCALAPPDATA%\botc-grimoire\git\cmd\git.exe` (MinGit падает «Filename too long» на очень длинных путях).
+  GitHub CLI установлен: `C:\Program Files\GitHub CLI\gh.exe`.
 
 ## Публикация
 - **GitHub:** https://github.com/AirError/botc-grimoire (публичный; аккаунт пользователя AirError).
 - **Сайт (GitHub Pages, из `main` / `docs`):** https://airerror.github.io/botc-grimoire/ — PWA для Safari на iPhone/iPad.
 - Обновить сайт: `tools/site_build.py` (поднять `VERSION` — это номер кэша service worker, иначе телефоны держат старое),
-  скопировать `out/site/*` в `docs/`, закоммитить и `git push` (git: `tools/git/cmd/git.exe`, вход через gh уже настроен
+  скопировать `out/site/*` в `docs/`, закоммитить и `git push` (git из `%LOCALAPPDATA%\botc-grimoire\git`, вход через gh уже настроен
   в локальном конфиге репозитория). Почта коммитов: `252884166+AirError@users.noreply.github.com` — личную не использовать.
 - gh в сессиях Claude Desktop видит только свой вход (AppData изолирована): если `gh auth status` говорит «не вошли» —
   запустить `gh auth login --hostname github.com --git-protocol https --web` в фоне и передать пользователю одноразовый код.
