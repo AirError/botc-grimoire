@@ -1,0 +1,17 @@
+{
+  "version": "0.0.1",
+  "configurations": [
+    {
+      "name": "grimoire",
+      "runtimeExecutable": ".venv/Scripts/python.exe",
+      "runtimeArgs": ["-m", "http.server", "8765", "--directory", "app/dist"],
+      "port": 8765
+    },
+    {
+      "name": "site",
+      "runtimeExecutable": ".venv/Scripts/python.exe",
+      "runtimeArgs": ["-m", "http.server", "8766", "--directory", "out/site"],
+      "port": 8766
+    }
+  ]
+}

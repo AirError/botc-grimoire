@@ -1,0 +1,15 @@
+# окружение и скачиваемые инструменты — восстанавливаются скриптами (см. CLAUDE.md)
+.venv/
+node_modules/
+tools/node_dl/
+tools/git_dl/
+tools/git/
+tools/electron_cache/
+__pycache__/
+# промежуточные и большие файлы сборки
+out/
+app/dist/
+app/desktop/index.html
+app/desktop/build/
+art/cut/
+art/*.jpg
