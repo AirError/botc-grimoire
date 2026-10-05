@@ -62,7 +62,9 @@ python -m venv .venv
 - Node.js портативный: nodejs.org/dist/v24.21.0/node-v24.21.0-win-x64.zip → `tools/node_dl/`; затем `npm install` в `app/desktop`.
 - Mac-сборки собираются из официальных zip Electron в Python (сохраняет симлинки); без подписи — на Mac нужно
   `xattr -cr` и `codesign --force --deep --sign -`.
-- Git: портативный MinGit — `python tools/fetch_mingit.py` → `tools/git/cmd/git.exe`. GitHub CLI установлен: `C:\Program Files\GitHub CLI\gh.exe`.
+- Git: портативный MinGit уже лежит в `tools/git/cmd/git.exe` (в .gitignore; заново — `python tools/fetch_mingit.py`,
+  но запускать из короткого пути: из длинных путей MinGit падает с «Filename too long»). GitHub CLI установлен: `C:\Program Files\GitHub CLI\gh.exe`.
+  Локальный репозиторий уже создан (ветка main, первый коммит); автор коммитов — заглушка `grimoire@localhost`.
 
 ## Что не доделано
 1. **GitHub Pages.** Ждём `gh auth login` от пользователя. Затем:
