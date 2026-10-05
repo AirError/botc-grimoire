@@ -14,10 +14,11 @@ from PIL import Image, ImageDraw
 
 ROOT = Path(__file__).resolve().parent.parent
 SITE = ROOT / "out" / "site"
-if SITE.exists():
-    shutil.rmtree(SITE)
-SITE.mkdir(parents=True)
-VERSION = "6"
+# чистим содержимое, а не саму папку: OneDrive иногда держит пустую папку и не даёт её удалить
+SITE.mkdir(parents=True, exist_ok=True)
+for f in SITE.iterdir():
+    shutil.rmtree(f) if f.is_dir() else f.unlink()
+VERSION = "7"
 
 body = (ROOT / "app" / "dist" / "grimoire.html").read_text(encoding="utf-8")
 head = ('<!doctype html><html lang="ru"><head><meta charset="utf-8">'
