@@ -5,7 +5,7 @@ import sys
 import tempfile
 from pathlib import Path
 
-import fitz  # PyMuPDF
+import pymupdf
 
 ROOT = Path(__file__).resolve().parent.parent
 OUT = ROOT / "out"
@@ -26,7 +26,7 @@ def render(name, dpi=70):
     edge("--no-pdf-header-footer", f"--print-to-pdf={pdf.resolve()}", url)
     dom = edge("--dump-dom", url).stdout
     fit = re.search(r'data-fit="([^"]*)"', dom)
-    doc = fitz.open(pdf)
+    doc = pymupdf.open(pdf)
     print(f"{name}: страниц {doc.page_count}; автоподгонка: {fit.group(1) if fit else 'нет данных'}")
     for i, page in enumerate(doc):
         page.get_pixmap(dpi=dpi).save(OUT / f"{name}_p{i + 1}.png")
