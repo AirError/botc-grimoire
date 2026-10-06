@@ -284,6 +284,117 @@ try {
   runNight(S, { imp: { t: ids(S, 'drunk') }, poisoner: { t: ids(S, 'chef') }, ravenkeeper: { t: ids(S, 'imp') } });
   ok('Пьяница-«Смотритель» просыпается после смерти', S.log.some(e => /^Смотритель воронов \(P5:drunk\)/.test(e.t)));
 
+  // 28. смерти и победы: проверка всех способностей
+  const tbGame = (extra) => { const g = game(['washerwoman', 'librarian', 'soldier', 'chef', 'empath', 'monk', 'poisoner', 'imp'], 'tb'); E.autoSetup(g, true); (extra || []).forEach(([n, r, a]) => E.addTraveller(g, n, r, a || 'good', null)); E.finishRoles(g); return g; };
+  const trv = (S, r) => S.players.find(p => p.role === r);
+  // Ассасин убивает даже защищённого (Солдат)
+  S = game(['washerwoman', 'librarian', 'soldier', 'chef', 'empath', 'monk', 'assassin', 'imp'], 'bmr');
+  E.autoSetup(S, true); E.startGame(S); runNight(S, {}); E.endDay(S);
+  runNight(S, { assassin: { t: ids(S, 'soldier') }, imp: { t: ids(S, 'chef') }, monk: { t: ids(S, 'washerwoman') } });
+  ok('Ассасин убивает Солдата, несмотря на защиту', !byRole(S, 'soldier').alive && !byRole(S, 'chef').alive);
+  // Куртизанка: согласие и решение «оба умирают»
+  S = tbGame([['Кур', 'harlot']]); E.startGame(S); runNight(S, { poisoner: { t: ids(S, 'chef') } }); E.endDay(S);
+  runNight(S, { harlot: { t: ids(S, 'empath'), yes: 'yes', die: 'yes' }, imp: { t: ids(S, 'chef') }, monk: { t: ids(S, 'washerwoman') }, poisoner: { t: ids(S, 'chef') } });
+  ok('Куртизанка: согласие + «оба умирают» — умерли оба и попали в рассвет', !trv(S, 'harlot').alive && !byRole(S, 'empath').alive
+     && ['harlot', 'empath', 'chef'].every(r => S.night.deaths.some(x => x.pid === (trv(S, r) || byRole(S, r)).id)), S.night.deaths.map(x => E.nm(S, x.pid)).join(','));
+  S = tbGame([['Кур', 'harlot']]); E.startGame(S); runNight(S, { poisoner: { t: ids(S, 'chef') } }); E.endDay(S);
+  runNight(S, { harlot: { t: ids(S, 'empath'), yes: 'no' }, imp: { t: ids(S, 'chef') }, monk: { t: ids(S, 'washerwoman') }, poisoner: { t: ids(S, 'chef') } });
+  ok('Куртизанка: отказ — никто не умирает', trv(S, 'harlot').alive && byRole(S, 'empath').alive);
+  // смерть по решению рассказчика ночью — в объявлении на рассвете, Смотритель просыпается
+  S = game(['washerwoman', 'librarian', 'ravenkeeper', 'chef', 'empath', 'monk', 'poisoner', 'imp'], 'tb');
+  E.autoSetup(S, true); E.startGame(S); runNight(S, { poisoner: { t: ids(S, 'chef') } }); E.endDay(S);
+  E.storytellerKill(S, byRole(S, 'ravenkeeper').id);
+  ok('смерть по решению рассказчика ночью: в списке рассвета, Смотритель просыпается', S.night.deaths.some(x => x.pid === byRole(S, 'ravenkeeper').id)
+     && E.stepSpec(S, S.night.steps.find(s => s.id === 'ravenkeeper')).active);
+  // Механик
+  S = game(['washerwoman', 'librarian', 'tinker', 'chef', 'empath', 'monk', 'poisoner', 'imp'], 'tb');
+  S.script.roles.push('tinker'); E.autoSetup(S, true); E.startGame(S); runNight(S, { poisoner: { t: ids(S, 'chef') } }); E.endDay(S);
+  runNight(S, { tinker: { die: 'yes' }, imp: { t: ids(S, 'chef') }, monk: { t: ids(S, 'washerwoman') }, poisoner: { t: ids(S, 'chef') } });
+  ok('Механик умирает ночью по решению рассказчика', !byRole(S, 'tinker').alive);
+  // Стрелок, Козёл Отпущения, Судья, Мясник, Бюрократ, Вор, Шаман Вуду, Епископ
+  S = tbGame([['Стр', 'gunslinger']]); E.startGame(S); runNight(S, { poisoner: { t: ids(S, 'chef') } });
+  E.nominate(S, byRole(S, 'chef').id, byRole(S, 'empath').id); E.recordVote(S, byRole(S, 'empath').id, ids(S, 'chef', 'monk'));
+  E.gunslingerShot(S, trv(S, 'gunslinger').id, byRole(S, 'monk').id);
+  ok('Стрелок застрелил проголосовавшего', !byRole(S, 'monk').alive && S.day.gunUsed);
+  S = tbGame([['Коз', 'scapegoat', 'good']]); E.startGame(S); runNight(S, { poisoner: { t: ids(S, 'chef') } });
+  E.execute(S, byRole(S, 'chef').id, { scapegoat: trv(S, 'scapegoat').id });
+  ok('Козёл Отпущения казнён вместо доброго', !trv(S, 'scapegoat').alive && byRole(S, 'chef').alive && S.day.executed === trv(S, 'scapegoat').id);
+  S = tbGame([['Суд', 'judge']]); E.startGame(S); runNight(S, { poisoner: { t: ids(S, 'chef') } });
+  E.nominate(S, byRole(S, 'chef').id, byRole(S, 'empath').id); E.recordVote(S, byRole(S, 'empath').id, ids(S, 'chef', 'monk', 'soldier', 'librarian', 'washerwoman'));
+  E.judgeRuling(S, trv(S, 'judge').id, byRole(S, 'empath').id, false);
+  ok('Судья: «казни не будет» — голоса не считаются', E.block(S) === null);
+  E.nominate(S, byRole(S, 'monk').id, byRole(S, 'chef').id);
+  ok('Судья тратит способность один раз', !!S.flags['judge_' + trv(S, 'judge').id]);
+  S = tbGame([['Суд', 'judge']]); E.startGame(S); runNight(S, { poisoner: { t: ids(S, 'chef') } });
+  E.nominate(S, byRole(S, 'chef').id, byRole(S, 'empath').id);
+  ok('Судья: «казнь состоится» — казнён без голосов', E.judgeRuling(S, trv(S, 'judge').id, byRole(S, 'empath').id, true).ended && !byRole(S, 'empath').alive);
+  S = tbGame([['Мяс', 'butcher']]); E.startGame(S); runNight(S, { poisoner: { t: ids(S, 'chef') } });
+  E.nominate(S, byRole(S, 'chef').id, byRole(S, 'empath').id); E.recordVote(S, byRole(S, 'empath').id, ids(S, 'chef', 'monk', 'soldier', 'librarian', 'washerwoman'));
+  E.executeNow(S);
+  ok('Мясник: после казни можно номинировать ещё раз', !byRole(S, 'empath').alive && S.day.butcherOpen);
+  E.nominate(S, trv(S, 'butcher').id, byRole(S, 'librarian').id); E.recordVote(S, byRole(S, 'librarian').id, ids(S, 'chef', 'monk', 'soldier', 'washerwoman', 'imp'));
+  E.endDay(S);
+  ok('Мясник: вторая казнь за день', !byRole(S, 'librarian').alive && S.phase === 'night');
+  S = tbGame([['Бюр', 'bureaucrat'], ['Вор', 'thief', 'evil']]); E.startGame(S);
+  runNight(S, { bureaucrat: { t: ids(S, 'chef') }, thief: { t: ids(S, 'monk') }, poisoner: { t: ids(S, 'empath') } });
+  ok('Бюрократ ×3, Вор −1: 1 обычный + 3 + (−1) = 3', E.voteCount(S, ids(S, 'chef', 'monk', 'soldier')) === 3, String(E.voteCount(S, ids(S, 'chef', 'monk', 'soldier'))));
+  E.exile(S, trv(S, 'thief').id, 99);
+  ok('Вор изгнан — голос снова обычный', E.voteCount(S, ids(S, 'monk')) === 1);
+  S = tbGame([['Вуд', 'voudon']]); E.startGame(S); runNight(S, { poisoner: { t: ids(S, 'chef') } });
+  byRole(S, 'librarian').alive = false;
+  ok('Шаман Вуду: для казни хватает 1 голоса', E.voteThreshold(S) === 1);
+  E.nominate(S, byRole(S, 'chef').id, byRole(S, 'empath').id); E.recordVote(S, byRole(S, 'empath').id, ids(S, 'librarian'));
+  ok('Шаман Вуду: мёртвый проголосовал и не потратил голос', byRole(S, 'librarian').ghost && E.block(S) === byRole(S, 'empath').id);
+  S = tbGame([['Епи', 'bishop']]); E.startGame(S); runNight(S, { poisoner: { t: ids(S, 'chef') } });
+  E.nominate(S, 'st', byRole(S, 'imp').id);
+  ok('Епископ: номинирует рассказчик', S.day.nominated.includes(byRole(S, 'imp').id) && /Рассказчик номинирует/.test(S.log[S.log.length - 1].t));
+  // Девиант, Надзирательница
+  S = tbGame([['Дев', 'deviant']]); E.startGame(S); runNight(S, { poisoner: { t: ids(S, 'chef') } });
+  E.exile(S, trv(S, 'deviant').id, 99, null, { funny: true });
+  ok('Девиант был забавным — изгнание не убивает', trv(S, 'deviant').alive);
+  const a0 = S.players[0].id, a1 = S.players[1].id; E.swapSeats(S, a0, a1);
+  ok('Надзирательница: игроки поменялись местами', S.players[0].id === a1 && S.players[1].id === a0);
+  // Наёмник: Демон выбрал Наёмника — Демон пьян, атака не проходит, Наёмник злой
+  S = game(['washerwoman', 'librarian', 'goon', 'chef', 'empath', 'monk', 'poisoner', 'imp'], 'tb'); S.script.roles.push('goon');
+  E.autoSetup(S, true); E.startGame(S); runNight(S, { poisoner: { t: ids(S, 'chef') } }); E.endDay(S);
+  runNight(S, { imp: { t: ids(S, 'goon') }, monk: { t: ids(S, 'washerwoman') }, poisoner: { t: ids(S, 'chef') } });
+  ok('Наёмник: Чёрт выбрал его — Чёрт пьян, Наёмник жив и стал злым', byRole(S, 'goon').alive && byRole(S, 'goon').align === 'evil' && E.hasTok(byRole(S, 'imp'), 'drunk', 'goon'));
+  // Вигормортис: убитый Приспешник сохраняет способность и просыпается мёртвым
+  S = game(['clockmaker', 'dreamer', 'seamstress', 'oracle', 'sage', 'vigormortis', 'witch'], 'snv');
+  E.autoSetup(S, true); E.startGame(S); runNight(S, { witch: { t: ids(S, 'sage') }, dreamer: { t: ids(S, 'sage') }, seamstress: { t: [] } }); E.endDay(S);
+  runNight(S, { vigormortis: { t: ids(S, 'witch'), nb: ids(S, 'clockmaker') }, witch: { t: ids(S, 'sage') }, dreamer: { t: ids(S, 'sage') }, seamstress: { t: [] } }); E.endDay(S);
+  ok('Вигормортис: мёртвая Ведьма с сохранённой способностью просыпается', !byRole(S, 'witch').alive && E.stepSpec(S, S.night.steps.find(s => s.id === 'witch')).active);
+  // Собиратель Костей, Ученик, Бариста
+  S = tbGame([['Кос', 'bonecollector']]); E.startGame(S); runNight(S, { poisoner: { t: ids(S, 'chef') } });
+  E.execute(S, byRole(S, 'monk').id); E.endDay(S);
+  runNight(S, { bonecollector: { t: ids(S, 'monk') }, imp: { t: ids(S, 'chef') }, poisoner: { t: ids(S, 'chef') }, monk: { t: ids(S, 'washerwoman') } });
+  ok('Собиратель Костей: мёртвый Монах вернул способность и защитил', E.hasTok(byRole(S, 'washerwoman'), 'protected', 'monk') || S.log.some(e => /Монах .* защищает/.test(e.t)));
+  S = tbGame(); E.startGame(S); runNight(S, { poisoner: { t: ids(S, 'chef') } }); E.endDay(S);
+  const ap = E.addTraveller(S, 'Уч', 'apprentice', 'good', null);
+  E.endDay(S);
+  ok('Ученик, вошедший позже, просыпается после заката', S.night.steps[1] && S.night.steps[1].id === 'apprentice');
+  runNight(S, { apprentice: { r: 'monk' }, imp: { t: ids(S, 'chef') }, monk: { t: ids(S, 'washerwoman') }, poisoner: { t: ids(S, 'chef') } });
+  ok('Ученик получил способность Монаха и действует в ту же ночь', ap.gained === 'monk' && S.log.some(e => e.t.startsWith(`Монах (${ap.name})`)));
+  S = tbGame([['Бар', 'barista']]); E.startGame(S);
+  runNight(S, { barista: { t: ids(S, 'chef'), mode: 'sober' }, poisoner: { t: ids(S, 'chef') } });
+  ok('Бариста: отравленный, но «трезв и здоров» — способность работает', E.hasTok(byRole(S, 'chef'), 'poisoned', 'poisoner') && !E.abilityOff(S, byRole(S, 'chef')));
+  // Сказочники: Кукольник, Фаталист, Скрипач, Герцогиня
+  S = game(['washerwoman', 'librarian', 'chef', 'empath', 'poisoner', 'imp'], 'tb'); S.fabled = ['toymaker']; E.autoSetup(S, true); E.startGame(S);
+  ok('Кукольник: при 6 игроках злые знакомятся', S.night.steps.some(s => s.id === 'minioninfo') && S.night.steps.some(s => s.id === 'demoninfo'));
+  runNight(S, { poisoner: { t: ids(S, 'chef') } }); E.endDay(S);
+  runNight(S, { imp: { t: [] }, poisoner: { t: ids(S, 'chef') } });
+  ok('Кукольник: Демон может не нападать', S.flags.toyNoAttack && S.players.every(p => p.alive));
+  S = tbGame(); S.fabled = ['doomsayer']; E.startGame(S); runNight(S, { poisoner: { t: ids(S, 'chef') } });
+  E.doomsayerKill(S, byRole(S, 'chef').id, byRole(S, 'empath').id);
+  ok('Фаталист: умер игрок той же стороны', !byRole(S, 'empath').alive && S.flags['doomUsed_' + byRole(S, 'chef').id]);
+  E.fiddlerEnd(S, byRole(S, 'chef').id, 'challenger');
+  ok('Скрипач: победил добрый игрок — победа добра', S.result && S.result.winner === 'good');
+  S = tbGame(); S.fabled = ['duchess']; E.startGame(S); runNight(S, { poisoner: { t: ids(S, 'chef') } }); E.endDay(S);
+  const du = E.stepSpec(S, S.night.steps.find(s => s.id === 'duchess'));
+  ok('Герцогиня: число злых среди троих посетителей', /Злых посетителей: 2/.test(du.info({ t: ids(S, 'chef', 'imp', 'poisoner'), f: ids(S, 'chef') }).show));
+  // Ведьма, Крёстный Отец, Девственница, близнецы — уже проверены выше; Девственница + Странник-Судья не мешают
+  ok('Ведьма убивает проклятого номинатора (тест выше)', results.some(r => r.startsWith('PASS Ведьма: номинировавший проклятый умер')));
+
   // 27. слова для утра
   const placeholders = [];
   for (let n = 0; n <= 6; n++) for (const first of [true, false]) for (let k = 0; k < 8; k++) {

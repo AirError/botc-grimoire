@@ -264,6 +264,7 @@ function viewNight() {
   const fields = spec.active ? E.stepInputs(spec, inp) : [];
   const missing = spec.active ? E.missingInputs(spec, inp) : [];
   let info = null; try { info = spec.active ? spec.info(inp) : null; } catch (e) { info = null; }
+  const goon = spec.active ? E.goonWarn(S, st, spec, inp) : null;
   const next = S.night.steps.slice(i + 1, i + 5).map(s => `<div>${s.pid ? ico(s.fakeCannibal ? 'cannibal' : s.id, null, 'ui') : ''}${esc(s.meet ? 'Злые знакомятся' : s.fakeCannibal ? 'Каннибал — отравлен' : E.rname(s.id))}${s.pid ? ` <span>· ${esc(E.nm(S, s.pid))}</span>` : ''}</div>`).join('');
   const deaths = S.night.deaths.length ? `<div class="small"><b>Умерли этой ночью:</b> ${S.night.deaths.map(d => esc(E.nm(S, d.pid))).join(', ')}</div>` : '';
   const icon = st.pid ? ico(st.fakeCannibal ? 'cannibal' : st.id, null, 'si') : st.fabled ? ico(st.id, 'good', 'si') : art(st.id, 'si');
@@ -276,6 +277,7 @@ function viewNight() {
       ${spec.active && spec.bounds && spec.bounds.length ? boundsHtml(spec.bounds) : ''}
       ${(spec.warn || []).map(w => `<div class="warn">${esc(w)}</div>`).join('')}
       ${fields.map(f => fieldHtml(f, inp)).join('')}
+      ${goon ? `<div class="warn">${esc(goon)}</div>` : ''}
       ${info && (info.show || (info.lines || []).filter(Boolean).length) ? `<div class="reveal"><div class="lab">Покажите / объявите</div>${info.show ? `<div class="big">${esc(info.show)}</div>` : ''}${(info.lines || []).filter(Boolean).map(l => `<div class="ln">${esc(l)}</div>`).join('')}</div>` : ''}
       ${st.id === 'dawn' ? morningHtml(true) : ''}
       ${missing.length ? `<div class="small muted">Осталось выбрать: ${missing.map(esc).join('; ')}</div>` : ''}
@@ -317,6 +319,42 @@ function viewDay() {
       ${t && t.role === 'recluse' ? `<div class="field"><label>Ваше решение: Затворник определяется Демоном?</label><div class="seg"><button class="${picks.slayReg ? '' : 'on'}" data-act="slayReg" data-arg="0">Нет</button><button class="${picks.slayReg ? 'on' : ''}" data-act="slayReg" data-arg="1">Да — он умрёт</button></div></div>` : ''}
       <button class="btn" data-act="slay" data-arg="${s.id}" ${sel.length ? '' : 'disabled'}>Выстрел</button></div>`);
   }
+  // Стрелок: сразу после подсчёта 1-го голосования может застрелить проголосовавшего (раз в день)
+  for (const g of S.players.filter(p => p.role === 'gunslinger' && p.alive)) {
+    if (d.gunUsed || !d.noms.length) continue;
+    const first = d.noms[0], sel = picks.gun || [];
+    parts.push(`<div class="card"><h3>Стрелок: ${esc(g.name)}</h3>${boundsHtml([{ w: 'Игрок выбирает', t: `сразу после подсчёта 1-го голосования (за ${E.nm(S, first.on)}) — 1 проголосовавшего: тот умирает. Раз в день` }])}
+      ${chipsPlayers('gun', 1, p => p.alive && first.voters.includes(p.id), sel, { act: 'dayPick', noRole: true })}
+      <div class="row"><button class="btn danger" data-act="gunShoot" data-arg="${g.id}" ${sel.length ? '' : 'disabled'}>Выстрел</button><button class="btn" data-act="gunSkip">Стрелок не стреляет сегодня</button></div></div>`);
+  }
+  // Механик может умереть в любой момент — по решению рассказчика
+  for (const t of S.players.filter(p => p.role === 'tinker' && p.alive))
+    parts.push(`<div class="card"><details><summary class="small"><b>Механик (${esc(t.name)})</b> может умереть в любой момент</summary><div class="field" style="margin-top:8px">
+      ${boundsHtml([{ w: 'Вы решаете', t: 'днём — объявите смерть сразу; не заканчивайте этим игру' }])}<button class="btn danger" data-act="tinkerDie" data-arg="${t.id}">Механик умирает сейчас</button></div></details></div>`);
+  // Сказочник Фаталист: живой игрок раз за игру требует смерти игрока своей стороны
+  if ((S.fabled || []).includes('doomsayer') && alive >= 4) {
+    const by = (picks.doomBy || [])[0], a = by && E.P(S, by), vic = picks.doomV || [];
+    parts.push(`<div class="card"><details><summary class="small"><b>Фаталист:</b> игрок требует смерти игрока своей стороны</summary><div class="field" style="margin-top:8px">
+      ${boundsHtml([{ w: 'Игрок', t: 'живой, раз за игру, публично (пока живы 4 и больше)' }, { w: 'Вы решаете', t: 'кто из живых игроков его стороны умирает; Демона — только если игра продолжится' }])}
+      <div class="flabel"><span>Кто требует</span></div>${chipsPlayers('doomBy', 1, p => p.alive && !E.isTraveller(p) && !S.flags['doomUsed_' + p.id], by ? [by] : [], { act: 'dayPick', noRole: true })}
+      ${a ? `<div class="flabel"><span>Кто умирает (${a.align === 'good' ? 'добрые' : 'злые'})</span></div>${chipsPlayers('doomV', 1, p => p.alive && p.align === a.align, vic, { act: 'dayPick' })}` : ''}
+      <button class="btn danger" data-act="doom" ${a && vic.length ? '' : 'disabled'}>Записать смерть</button></div></details></div>`);
+  }
+  // Сказочник Скрипач: состязание Демона и игрока другой стороны — игра заканчивается
+  if ((S.fabled || []).includes('fiddler')) {
+    const dm = S.players.find(p => E.isDemon(p) && p.alive), ch = (picks.fidCh || [])[0];
+    if (dm) parts.push(`<div class="card"><details><summary class="small"><b>Скрипач:</b> закончить игру состязанием</summary><div class="field" style="margin-top:8px">
+      ${boundsHtml([{ w: 'Демон выбирает', t: 'тайно, 1 игрока другой стороны' }, { w: 'Голосуют', t: 'все, живые и мёртвые, за одного из двоих; ничья — победа зла' }])}
+      ${chipsPlayers('fidCh', 1, p => p.align !== dm.align, ch ? [ch] : [], { act: 'dayPick', noRole: true })}
+      ${ch ? `<div class="seg"><button data-act="fiddler" data-arg="demon">Победил ${esc(dm.name)}</button><button data-act="fiddler" data-arg="challenger">Победил ${esc(E.nm(S, ch))}</button><button data-act="fiddler" data-arg="tie">Ничья</button></div>` : ''}</div></details></div>`);
+  }
+  // Надзирательница: до 3 пар игроков меняются местами
+  if (S.players.some(p => p.role === 'matron' && p.alive) && (d.matronSwaps || 0) < 3) {
+    const sel = picks.matron || [];
+    parts.push(`<div class="card"><details><summary class="small"><b>Надзирательница:</b> поменять игроков местами (${d.matronSwaps || 0} из 3)</summary><div class="field" style="margin-top:8px">
+      ${chipsPlayers('matron', 2, () => true, sel, { act: 'dayPick2', noRole: true })}
+      <button class="btn" data-act="matronSwap" ${sel.length === 2 ? '' : 'disabled'}>Поменять местами</button></div></details></div>`);
+  }
   if (S.n === 1 && S.players.some(p => p.role === 'juggler' && p.alive)) {
     const g = S.flags.jugglerGuesses || [];
     parts.push(`<div class="card"><h3>Догадки Жонглёра (до 5)</h3>${g.map((x, i) => `<div class="small">${esc(E.nm(S, x.pid))} — ${esc(E.rname(x.role))} <button class="linkish" data-act="jugDel" data-arg="${i}">убрать</button></div>`).join('')}
@@ -333,29 +371,54 @@ function viewDay() {
       ${chipsPlayers('exPid', 1, p => E.isTraveller(p) && p.alive, ex.pid ? [ex.pid] : [], { act: 'exPick' })}
       ${ex.pid ? `<div class="flabel"><span>Кто голосует за изгнание</span><span>${ex.voters.length}</span></div>${chipsPlayers('exV', 99, () => true, ex.voters, { act: 'exVote', noRole: true })}
       <div class="reveal"><div class="lab">Голосов</div><div class="big">${ex.voters.length} из ${eth} — ${pass ? 'изгнан' : 'не изгнан'}</div></div>
+      ${pass && E.P(S, ex.pid).role === 'deviant' ? `<div class="seg"><button class="${picks.exFunny ? 'on' : ''}" data-act="exFunny">Девиант сегодня был забавным — не умирает</button></div>` : ''}
       <button class="btn ${pass ? 'danger' : ''} wide" data-act="exile">Записать: ${pass ? 'Странник изгнан' : 'Странник остаётся'}</button>` : ''}</div>`);
   }
+  // Судья: раз за игру решает исход номинации, сделанной другим игроком (во время голосования или сразу после)
+  const judge = S.players.find(p => p.role === 'judge' && p.alive && !S.flags['judge_' + p.id]);
+  const judgeHtml = (onId, byId) => judge && byId !== judge.id && !d.executed ? `<div class="field"><label>Судья (${esc(judge.name)}), раз за игру: исход номинации ${esc(E.nm(S, onId))}</label>
+    <div class="seg"><button data-act="judge" data-arg="${judge.id}|${onId}|1">Казнь состоится — сейчас</button><button data-act="judge" data-arg="${judge.id}|${onId}|0">Казни не будет</button></div></div>` : '';
+  const vd = E.voudonActive(S), bishop = E.bishopActive(S), butcherTurn = !!d.butcherOpen;
   if (nm.stage === 'vote') {
-    const on = E.P(S, nm.on), by = E.P(S, nm.by);
-    const canVote = p => p.alive || p.ghost;
-    parts.push(`<div class="card"><h3 class="hi">${art('vote', 'hg')}Голосование: ${esc(on.name)}</h3><div class="small muted">Номинировал ${esc(by.name)}. Отметьте всех, кто поднял руку.</div>
-      ${boundsHtml([{ w: 'Голосуют', t: 'все живые; мёртвые — только если у них остался голос призрака (тратится при голосовании)' }, { w: 'Казнь', t: `на плаху попадает тот, у кого не меньше ${th} голосов и больше, чем у остальных; при равенстве — никто` }].concat(S.players.some(p => p.role === 'butler' && p.alive) ? [{ w: 'Дворецкий', t: 'голосует, только если голосует его хозяин' }] : []))}
-      ${chipsPlayers('voters', 99, canVote, nm.voters, { act: 'vote', noRole: true, ghost: true })}
-      <div class="reveal"><div class="lab">Голосов</div><div class="big">${nm.voters.length} из ${th}</div></div>
+    const on = E.P(S, nm.on), by = nm.by === 'st' ? null : E.P(S, nm.by);
+    const canVote = vd ? (p => !p.alive || p.role === 'voudon') : (p => p.alive || p.ghost);
+    const cnt = E.voteCount(S, nm.voters);
+    const weighted = nm.voters.map(id => E.P(S, id)).filter(v => E.voteWeight(S, v) !== 1).map(v => `${v.name}: ${E.voteWeight(S, v) === 3 ? 'голос за троих (Бюрократ)' : E.voteWeight(S, v) === -3 ? 'три голоса против (Бюрократ и Вор)' : 'голос против (Вор)'}`);
+    const rules = [vd ? { w: 'Голосуют', t: 'только Шаман Вуду и мёртвые; жетон голоса не нужен и не тратится' } : { w: 'Голосуют', t: 'все живые; мёртвые — только если у них остался голос призрака (тратится при голосовании)' },
+      { w: 'Казнь', t: `на плаху попадает тот, у кого не меньше ${th} голос. и больше, чем у остальных; при равенстве — никто` }];
+    if (S.players.some(p => p.role === 'butler' && p.alive)) rules.push({ w: 'Дворецкий', t: 'голосует, только если голосует его хозяин' });
+    if (S.players.some(p => p.role === 'beggar' && p.alive)) rules.push({ w: 'Нищий', t: 'голосует, только если у него есть жетон голоса (мёртвые могут отдать ему свой — он узнаёт их сторону)' });
+    parts.push(`<div class="card"><h3 class="hi">${art('vote', 'hg')}Голосование: ${esc(on.name)}</h3><div class="small muted">Номинировал ${esc(by ? by.name : 'рассказчик')}${d.lastNom && d.lastNom.butcher ? ' (Мясник, после казни: порог тот же, превышать первую не нужно)' : ''}. Отметьте всех, кто поднял руку.</div>
+      ${boundsHtml(rules)}
+      ${chipsPlayers('voters', 99, canVote, nm.voters, { act: 'vote', noRole: true, ghost: !vd })}
+      <div class="reveal"><div class="lab">Голосов</div><div class="big">${cnt} из ${th}</div>${weighted.map(t => `<div class="ln">${esc(t)}</div>`).join('')}</div>
+      ${judgeHtml(nm.on, nm.by)}
       <div class="actions"><button class="btn primary" data-act="voteDone">Записать голоса</button><button class="btn" data-act="voteCancel">Отменить номинацию</button></div></div>`);
-  } else {
-    const byOk = p => p.alive && !d.nominators.includes(p.id), onOk = p => !d.nominated.includes(p.id) && !E.isTraveller(p);
+  } else if (!d.executed || butcherTurn) {
+    const byOk = butcherTurn ? (p => p.role === 'butcher' && p.alive) : (p => p.alive && !d.nominators.includes(p.id));
+    const onOk = p => !E.isTraveller(p) && (butcherTurn || !d.nominated.includes(p.id));
     const pv = E.nominationPreview(S, nm.by, nm.on);
-    parts.push(`<div class="card"><h3 class="hi">${art('nominate', 'hg')}Номинация</h3>
-      ${boundsHtml([{ w: 'Номинирует', t: 'живой игрок, не больше 1 раза за день' }, { w: 'Номинировать', t: 'любого, кроме Странников (их изгоняют), каждого — не больше 1 раза за день' }])}
-      <div class="field"><div class="flabel"><span>Кто номинирует</span></div>${chipsPlayers('by', 1, byOk, nm.by ? [nm.by] : [], { act: 'nomPick', noRole: true })}</div>
+    const rules = bishop ? [{ w: 'Номинирует', t: 'только рассказчик (Епископ); за день — хотя бы 1 игрока стороны, противоположной Епископу' }]
+      : butcherTurn ? [{ w: 'Номинирует', t: 'Мясник — ещё раз после казни; можно того, кого уже номинировали' }]
+        : [{ w: 'Номинирует', t: 'живой игрок, не больше 1 раза за день' }, { w: 'Номинировать', t: 'любого, кроме Странников (их изгоняют), каждого — не больше 1 раза за день' }];
+    parts.push(`<div class="card"><h3 class="hi">${art('nominate', 'hg')}${butcherTurn ? 'Номинация Мясника' : 'Номинация'}</h3>
+      ${boundsHtml(rules)}
+      ${bishop ? '' : `<div class="field"><div class="flabel"><span>Кто номинирует</span></div>${chipsPlayers('by', 1, byOk, nm.by ? [nm.by] : [], { act: 'nomPick', noRole: true })}</div>`}
       <div class="field"><div class="flabel"><span>Кого</span></div>${chipsPlayers('on', 1, onOk, nm.on ? [nm.on] : [], { act: 'nomPick', noRole: true })}</div>
       ${pv.notes.map(t => `<div class="warn">${esc(t)}</div>`).join('')}
       ${pv.askSpy ? `<div class="field"><label>Ваше решение: Шпион определяется Горожанином?</label><div class="seg"><button class="${nm.spy ? '' : 'on'}" data-act="nomSpy" data-arg="0">Нет</button><button class="${nm.spy ? 'on' : ''}" data-act="nomSpy" data-arg="1">Да — его казнят</button></div></div>` : ''}
-      <button class="btn primary" data-act="nominate" ${nm.by && nm.on ? '' : 'disabled'}>Номинировать</button></div>`);
+      <button class="btn primary" data-act="nominate" ${(bishop || nm.by) && nm.on ? '' : 'disabled'}>Номинировать</button></div>`);
+    // Судья может решить исход последней номинации и после подсчёта, пока не номинировали следующего
+    const last = d.lastNom && d.noms.some(x => x.on === d.lastNom.on && !x.pardoned) ? d.lastNom : null;
+    if (last && judge && !nm.on) parts.push(`<div class="card">${judgeHtml(last.on, last.by)}</div>`);
   }
-  if (d.noms.length) parts.push(`<div class="card"><h3>Номинации сегодня</h3>${d.noms.map(x => `<div class="row"><b>${esc(E.nm(S, x.on))}</b><span class="muted">${x.count} голос.</span>${x.on === blk ? '<span class="badge evil">на плахе</span>' : ''}</div>`).join('')}</div>`);
-  parts.push(`<div class="card"><button class="btn primary wide" data-act="endDay">${art('execute', 'bg')}${blk && !d.executed ? `Завершить день и казнить: ${esc(E.nm(S, blk))}` : 'Завершить день без казни'}</button>
+  if (d.noms.length) parts.push(`<div class="card"><h3>Номинации сегодня</h3>${d.noms.map(x => `<div class="row"><b>${esc(E.nm(S, x.on))}</b><span class="muted">${x.count} голос.</span>${x.pardoned ? '<span class="badge">Судья: казни не будет</span>' : ''}${x.butcher ? '<span class="badge">Мясник</span>' : ''}${x.on === blk ? '<span class="badge evil">на плахе</span>' : ''}</div>`).join('')}</div>`);
+  const second = d.executed && d.noms.find(x => x.butcher && x.count >= th);
+  const scapegoat = blk && !d.executed ? S.players.find(p => p.role === 'scapegoat' && p.alive && p.id !== blk && p.align === E.P(S, blk).align) : null;
+  const endLabel = d.executed ? (second ? `Завершить день и казнить: ${esc(E.nm(S, second.on))} (Мясник)` : 'Завершить день') : blk ? `Завершить день и казнить: ${esc(E.nm(S, blk))}` : 'Завершить день без казни';
+  parts.push(`<div class="card"><button class="btn primary wide" data-act="endDay">${art('execute', 'bg')}${endLabel}</button>
+    ${blk && !d.executed && E.travellerWorks(S, 'butcher') ? `<button class="btn wide" data-act="executeNow">Казнить ${esc(E.nm(S, blk))} сейчас — Мясник номинирует ещё раз</button>` : ''}
+    ${scapegoat ? `<div class="seg"><button class="${picks.scapegoat ? 'on' : ''}" data-act="scapegoat" data-arg="${scapegoat.id}">Козёл Отпущения (${esc(scapegoat.name)}) казнён вместо ${esc(E.nm(S, blk))}</button></div>` : ''}
     ${blk && !d.executed && S.players.some(p => p.role === 'pacifist' && p.alive) && E.P(S, blk).align === 'good' ? `<div class="seg"><button class="${picks.pacifist ? 'on' : ''}" data-act="pacifist">Пацифист спасает казнённого</button></div>` : ''}
     <details><summary class="small">Казнить другого игрока (решение рассказчика)</summary><div style="margin-top:8px">${chipsPlayers('manualExe', 1, p => p.alive && !E.isTraveller(p), picks.manualExe || [], { act: 'dayPick', noRole: true })}
     <button class="btn danger" data-act="manualExe" ${(picks.manualExe || []).length ? '' : 'disabled'}>Казнить и завершить день</button></div></details></div>`);
@@ -377,7 +440,7 @@ function viewTable() {
 }
 
 function editorHtml(p) {
-  const tokKinds = ['poisoned', 'drunk', 'protected', 'cursed', 'safe', 'mad', 'note'];
+  const tokKinds = ['poisoned', 'drunk', 'protected', 'cursed', 'safe', 'mad', 'bad', 'note'];
   return `<div class="editor">
     <div class="field"><label>Роль</label><select data-act="edRole" data-arg="${p.id}">${E.isTraveller(p) ? plainOptions(DATA.travellers, p.role) : roleOptions(() => true, p.role, { all: true })}</select></div>
     <div class="seg"><button data-act="edAlive" data-arg="${p.id}">${p.alive ? 'Отметить смерть' : 'Воскресить'}</button>
@@ -511,15 +574,26 @@ const A = {
   jugDel: i => act(S => S.flags.jugglerGuesses.splice(+i, 1), 'убрана догадка'),
   exPick: arg => { const id = arg.split('|')[1]; draft(S => { const ex = S.day.picks.exile || { pid: null, voters: [] }; ex.pid = ex.pid === id ? null : id; ex.voters = []; S.day.picks.exile = ex; }); },
   exVote: arg => { const id = arg.split('|')[1]; draft(S => { const v = S.day.picks.exile.voters; if (v.includes(id)) v.splice(v.indexOf(id), 1); else v.push(id); }); },
-  exile: () => { const ex = clone(S.day.picks.exile); act(S => { E.exile(S, ex.pid, ex.voters.length); S.day.picks.exile = null; }); },
+  exile: () => { const ex = clone(S.day.picks.exile), funny = !!S.day.picks.exFunny; act(S => { E.exile(S, ex.pid, ex.voters.length, null, { funny }); S.day.picks.exile = null; S.day.picks.exFunny = false; }); },
+  exFunny: () => draft(S => { S.day.picks.exFunny = !S.day.picks.exFunny; }),
+  dayPick2: arg => { const [key, id] = arg.split('|'); draft(S => { const sel = (S.day.picks[key] || []).slice(); if (sel.includes(id)) sel.splice(sel.indexOf(id), 1); else { if (sel.length >= 2) sel.shift(); sel.push(id); } S.day.picks[key] = sel; }); },
+  gunShoot: gid => { const t = S.day.picks.gun[0]; act(S => { E.gunslingerShot(S, gid, t); S.day.picks.gun = []; }); },
+  gunSkip: () => act(S => { S.day.gunUsed = true; E.log(S, 'Стрелок сегодня не стреляет', 'day'); }),
+  tinkerDie: id => act(S => E.tinkerDies(S, id), 'Механик умирает'),
+  doom: () => { const a = S.day.picks.doomBy[0], v = S.day.picks.doomV[0]; act(S => { E.doomsayerKill(S, a, v); S.day.picks.doomBy = []; S.day.picks.doomV = []; }); },
+  fiddler: res => { const ch = S.day.picks.fidCh[0]; act(S => E.fiddlerEnd(S, ch, res), 'Скрипач'); },
+  matronSwap: () => { const [a, b] = S.day.picks.matron; act(S => { E.swapSeats(S, a, b); S.day.picks.matron = []; }); },
+  judge: arg => { const [j, on, pass] = arg.split('|'); act(S => { const r = E.judgeRuling(S, j, on, pass === '1'); S.day.draft = { by: null, on: null, voters: [], stage: 'pick', spy: false }; if (r.ended && !S.result) E.endDay(S); }); window.scrollTo(0, 0); },
+  executeNow: () => { const o = { pacifist: S.day.picks.pacifist, scapegoat: S.day.picks.scapegoat }; act(S => { E.executeNow(S, o); S.day.picks.scapegoat = null; S.day.draft = { by: null, on: null, voters: [], stage: 'pick', spy: false }; }); },
+  scapegoat: id => draft(S => { S.day.picks.scapegoat = S.day.picks.scapegoat ? null : id; }),
   nomPick: arg => { const [key, id] = arg.split('|'); draft(S => { const d = S.day.draft; d[key] = d[key] === id ? null : id; d.spy = false; }); },
   nomSpy: v => draft(S => { S.day.draft.spy = v === '1'; }),
   nominate: () => {
-    let res = null; const d0 = clone(S.day.draft);
+    let res = null; const d0 = clone(S.day.draft), by = E.bishopActive(S) ? 'st' : d0.by;
     act(S => {
-      res = E.nominate(S, d0.by, d0.on, { spyTownsfolk: !!d0.spy });
+      res = E.nominate(S, by, d0.on, { spyTownsfolk: !!d0.spy });
       if (res.ended) E.endDay(S);
-      else if (S.phase === 'day') S.day.draft = { by: d0.by, on: d0.on, voters: [], stage: 'vote', spy: false };
+      else if (S.phase === 'day') S.day.draft = { by, on: d0.on, voters: [], stage: 'vote', spy: false };
     });
     UI.notes = res ? res.notes : []; render();
   },
@@ -527,12 +601,13 @@ const A = {
   voteDone: () => { const d0 = clone(S.day.draft); act(S => { E.recordVote(S, d0.on, d0.voters); S.day.draft = { by: null, on: null, voters: [], stage: 'pick', spy: false }; }); },
   voteCancel: () => act(S => { S.day.draft = { by: null, on: null, voters: [], stage: 'pick', spy: false }; }, 'номинация отменена'),
   pacifist: () => draft(S => { S.day.picks.pacifist = !S.day.picks.pacifist; }),
-  endDay: () => { const pac = S.day.picks.pacifist; UI.notes = []; act(S => E.endDay(S, { pacifist: pac }), 'конец дня ' + S.n); window.scrollTo(0, 0); },
+  endDay: () => { const pac = S.day.picks.pacifist, sg = S.day.picks.scapegoat; UI.notes = []; act(S => E.endDay(S, { pacifist: pac, scapegoat: sg }), 'конец дня ' + S.n); window.scrollTo(0, 0); },
   manualExe: () => { const id = S.day.picks.manualExe[0]; act(S => { E.execute(S, id); if (!S.result) E.endDay(S, { skipExecution: true }); }); window.scrollTo(0, 0); },
   // стол
   openP: id => { UI.open = UI.open === id ? null : id; render(); },
   edRole: (id, el) => act(S => { const p = E.P(S, id); const old = p.role; p.role = el.value || null; E.log(S, `Рассказчик меняет роль ${p.name}: ${E.rname(old)} → ${E.rname(p.role)}`, 'effect'); }),
-  edAlive: id => act(S => { const p = E.P(S, id); if (p.alive) { E.log(S, `Рассказчик отмечает смерть: ${p.name}`, 'death'); p.alive = false; p.ghost = true; E.checkWin(S); } else { p.alive = true; E.log(S, `Рассказчик воскрешает ${p.name}`, 'effect'); } }),
+  // смерть по решению рассказчика — настоящая: ночью попадёт в объявление на рассвете, сработают последствия
+  edAlive: id => act(S => { const p = E.P(S, id); if (p.alive) E.storytellerKill(S, id); else { p.alive = true; E.log(S, `Рассказчик воскрешает ${p.name}`, 'effect'); } }),
   edAlign: id => act(S => { const p = E.P(S, id); p.align = p.align === 'good' ? 'evil' : 'good'; E.log(S, `${p.name} теперь ${p.align === 'good' ? 'добрый' : 'злой'}`, 'effect'); }),
   edGhost: id => act(S => { const p = E.P(S, id); p.ghost = !p.ghost; }, 'голос призрака'),
   edTok: id => { const k = document.getElementById('tokKind-' + id).value; act(S => E.addTok(S, E.P(S, id), k, null, null), 'жетон «' + E.TOK_RU[k] + '»'); },
