@@ -18,7 +18,7 @@ SITE = ROOT / "out" / "site"
 SITE.mkdir(parents=True, exist_ok=True)
 for f in SITE.iterdir():
     shutil.rmtree(f) if f.is_dir() else f.unlink()
-VERSION = "8"
+VERSION = "9"
 
 body = (ROOT / "app" / "dist" / "grimoire.html").read_text(encoding="utf-8")
 head = ('<!doctype html><html lang="ru"><head><meta charset="utf-8">'
