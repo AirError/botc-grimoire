@@ -306,6 +306,9 @@ try {
   E.storytellerKill(S, byRole(S, 'ravenkeeper').id);
   ok('смерть по решению рассказчика ночью: в списке рассвета, Смотритель просыпается', S.night.deaths.some(x => x.pid === byRole(S, 'ravenkeeper').id)
      && E.stepSpec(S, S.night.steps.find(s => s.id === 'ravenkeeper')).active);
+  E.storytellerKill(S, byRole(S, 'chef').id, null, 'Ангел — что-то плохое');
+  ok('смерть с причиной: причина в журнале и у игрока, смерть — в рассвете', byRole(S, 'chef').deathNote === 'Ангел — что-то плохое'
+     && /Причина: Ангел — что-то плохое/.test(S.log[S.log.length - 1].t) && S.night.deaths.some(x => x.pid === byRole(S, 'chef').id));
   // Механик
   S = game(['washerwoman', 'librarian', 'tinker', 'chef', 'empath', 'monk', 'poisoner', 'imp'], 'tb');
   S.script.roles.push('tinker'); E.autoSetup(S, true); E.startGame(S); runNight(S, { poisoner: { t: ids(S, 'chef') } }); E.endDay(S);

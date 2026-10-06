@@ -155,9 +155,10 @@ function saved(S, p, by) { log(S, `${p.name} не умирает: ${by}`, 'save'
 
 // смерть по решению рассказчика («что-то плохое» Ангела, ручная отметка на «Столе»): без защит, но со всеми
 // последствиями — ночью попадёт в объявление на рассвете, сработают Смотритель, Дитя Луны, проверка победы и т. д.
-function storytellerKill(S, pid, src) {
+// reason — примечание рассказчика (видно в журнале и на «Столе», в объявлении на рассвете не звучит)
+function storytellerKill(S, pid, src, reason) {
   const p = P(S, pid);
-  if (p && p.alive) die(S, p, 'storyteller', src || null);
+  if (p && p.alive) die(S, p, 'storyteller', src || null, { reason: String(reason || '').trim() });
 }
 
 function die(S, p, cause, src, opts) {
@@ -166,7 +167,8 @@ function die(S, p, cause, src, opts) {
   p.alive = false; p.secretlyAlive = false; p.ghost = true;
   const how = { exile: 'изгнан', demon: 'убит Демоном', minion: 'убит Приспешником', ability: 'умер от способности',
     execution: 'казнён', unstoppable: 'убит Ассасином', storyteller: 'умирает по решению рассказчика' }[cause] || 'умер';
-  log(S, `${p.name} (${rname(p.role)}) ${how}${src && R(src) && cause !== 'execution' ? ` — ${R(src).name}` : ''}`, 'death');
+  p.deathNote = opts.reason || null;
+  log(S, `${p.name} (${rname(p.role)}) ${how}${src && R(src) && cause !== 'execution' ? ` — ${R(src).name}` : ''}${opts.reason ? `. Причина: ${opts.reason}` : ''}`, 'death');
   if (S.phase === 'night' && S.night) S.night.deaths.push({ pid: p.id, cause });
   if (S.phase === 'day' && S.day) S.day.deaths.push(p.id);
   afterDeath(S, p, cause, false, aliveBefore, opts);

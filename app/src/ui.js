@@ -7,7 +7,7 @@ let S = null;
 // История для отмены: массив снимков состояния до каждого действия (паттерн History)
 let HISTORY = [];
 const HIST_MAX = 40;
-const UI = { tab: 'game', open: null, notes: [], hideInactive: true, confirm: null, importText: '', customText: '', save: 'local', copied: '' };
+const UI = { tab: 'game', open: null, notes: [], hideInactive: true, confirm: null, importText: '', customText: '', save: 'local', copied: '', killPid: null, killWhy: '' };
 
 const esc = s => String(s ?? '').replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
 const team = rid => rid && DATA.roles[rid] ? DATA.roles[rid].team : '';
@@ -284,7 +284,8 @@ function viewNight() {
       <div class="actions"><button class="btn primary" data-act="stepDone" ${missing.length ? 'disabled' : ''}>${spec.active ? 'Готово' : 'Дальше'}</button>
         <button class="btn" data-act="stepSkip">Пропустить</button></div>
     </div>
-    ${next ? `<div class="card"><h3>Дальше этой ночью</h3><div class="upnext">${next}</div></div>` : ''}`;
+    ${next ? `<div class="card"><h3>Дальше этой ночью</h3><div class="upnext">${next}</div></div>` : ''}
+    ${killFormHtml()}`;
 }
 
 function viewDay() {
@@ -422,7 +423,18 @@ function viewDay() {
     ${blk && !d.executed && S.players.some(p => p.role === 'pacifist' && p.alive) && E.P(S, blk).align === 'good' ? `<div class="seg"><button class="${picks.pacifist ? 'on' : ''}" data-act="pacifist">Пацифист спасает казнённого</button></div>` : ''}
     <details><summary class="small">Казнить другого игрока (решение рассказчика)</summary><div style="margin-top:8px">${chipsPlayers('manualExe', 1, p => p.alive && !E.isTraveller(p), picks.manualExe || [], { act: 'dayPick', noRole: true })}
     <button class="btn danger" data-act="manualExe" ${(picks.manualExe || []).length ? '' : 'disabled'}>Казнить и завершить день</button></div></details></div>`);
+  parts.push(killFormHtml());
   return parts.join('');
+}
+
+// убить игрока по решению рассказчика, с причиной-примечанием (днём и ночью)
+function killFormHtml() {
+  const sel = UI.killPid && E.P(S, UI.killPid) && E.P(S, UI.killPid).alive ? [UI.killPid] : [];
+  return `<div class="card"><details><summary class="small"><b>Убить игрока</b> — решение рассказчика, с причиной</summary><div class="field" style="margin-top:8px">
+    ${boundsHtml([{ w: 'Вы решаете', t: 'игрок умирает сразу, без защит; ночью смерть попадёт в объявление на рассвете. Причина видна только вам — в журнале и на «Столе»' }])}
+    ${chipsPlayers('kill', 1, p => p.alive, sel, { act: 'killPick' })}
+    <input type="text" id="killWhy" data-act="killWhy" value="${esc(UI.killWhy)}" placeholder="Причина (необязательно), например: «Ангел — что-то плохое»" aria-label="Причина смерти">
+    <button class="btn danger" data-act="killDo" ${sel.length ? '' : 'disabled'}>Убить${sel.length ? ': ' + esc(E.nm(S, sel[0])) : ''}</button></div></details></div>`;
 }
 
 function viewTable() {
@@ -431,7 +443,7 @@ function viewTable() {
     const off = S.phase !== 'setup' && E.abilityOff(S, p);
     return `<button class="seat ${p.alive ? '' : 'dead'}" data-act="openP" data-arg="${p.id}" aria-expanded="${UI.open === p.id}">
       <span class="no">${i + 1}</span><span class="sic">${ico(p.role, p.align, 'ti')}</span>
-      <span><div class="pn">${esc(p.name)}</div><div class="pr t-${team(p.role)}">${esc(E.rname(p.role))}${E.isTraveller(p) ? ' · Странник' : ''}${p.believes ? ` <span class="muted">(считает себя: ${esc(E.rname(p.believes))})</span>` : ''}${p.gained ? ` <span class="muted">(способность: ${esc(E.rname(p.gained))})</span>` : ''}</div></span>
+      <span><div class="pn">${esc(p.name)}</div><div class="pr t-${team(p.role)}">${esc(E.rname(p.role))}${E.isTraveller(p) ? ' · Странник' : ''}${p.believes ? ` <span class="muted">(считает себя: ${esc(E.rname(p.believes))})</span>` : ''}${p.gained ? ` <span class="muted">(способность: ${esc(E.rname(p.gained))})</span>` : ''}</div>${!p.alive && p.deathNote ? `<div class="small muted">Причина смерти: ${esc(p.deathNote)}</div>` : ''}</span>
       <span class="badges"><span class="badge ${p.align}">${p.align === 'good' ? 'добрый' : 'злой'}</span>${p.alive ? '' : `<span class="badge dead">${art('dead', 'bd')}мёртв${p.ghost ? ' · голос' : ''}</span>`}${off ? `<span class="badge evil">${esc(off)}</span>` : ''}${toks}</span></button>
       ${UI.open === p.id ? editorHtml(p) : ''}`;
   }).join('');
@@ -443,7 +455,9 @@ function editorHtml(p) {
   const tokKinds = ['poisoned', 'drunk', 'protected', 'cursed', 'safe', 'mad', 'bad', 'note'];
   return `<div class="editor">
     <div class="field"><label>Роль</label><select data-act="edRole" data-arg="${p.id}">${E.isTraveller(p) ? plainOptions(DATA.travellers, p.role) : roleOptions(() => true, p.role, { all: true })}</select></div>
-    <div class="seg"><button data-act="edAlive" data-arg="${p.id}">${p.alive ? 'Отметить смерть' : 'Воскресить'}</button>
+    ${p.alive && S.phase !== 'setup' ? `<div class="row" style="flex-wrap:nowrap"><input type="text" id="edWhy-${p.id}" placeholder="Причина смерти (необязательно)" aria-label="Причина смерти ${esc(p.name)}">
+      <button class="btn danger" data-act="edKill" data-arg="${p.id}">Убить</button></div>` : ''}
+    <div class="seg">${p.alive ? '' : `<button data-act="edAlive" data-arg="${p.id}">Воскресить</button>`}
       <button data-act="edAlign" data-arg="${p.id}">Сделать ${p.align === 'good' ? 'злым' : 'добрым'}</button>
       ${p.alive ? '' : `<button data-act="edGhost" data-arg="${p.id}">${p.ghost ? 'Голос призрака: есть' : 'Голос призрака: потрачен'}</button>`}
       ${E.isTraveller(p) && S.phase !== 'setup' ? `<button data-act="trLeave" data-arg="${p.id}">Странник ушёл из игры</button>` : ''}</div>
@@ -607,7 +621,17 @@ const A = {
   openP: id => { UI.open = UI.open === id ? null : id; render(); },
   edRole: (id, el) => act(S => { const p = E.P(S, id); const old = p.role; p.role = el.value || null; E.log(S, `Рассказчик меняет роль ${p.name}: ${E.rname(old)} → ${E.rname(p.role)}`, 'effect'); }),
   // смерть по решению рассказчика — настоящая: ночью попадёт в объявление на рассвете, сработают последствия
-  edAlive: id => act(S => { const p = E.P(S, id); if (p.alive) E.storytellerKill(S, id); else { p.alive = true; E.log(S, `Рассказчик воскрешает ${p.name}`, 'effect'); } }),
+  edKill: id => { const why = (document.getElementById('edWhy-' + id) || {}).value || ''; act(S => E.storytellerKill(S, id, null, why), 'смерть: ' + E.nm(S, id)); },
+  edAlive: id => act(S => { const p = E.P(S, id); if (!p.alive) { p.alive = true; p.deathNote = null; E.log(S, `Рассказчик воскрешает ${p.name}`, 'effect'); } }),
+  // «Убить игрока» на экранах дня и ночи; причину запоминаем при уходе из поля, чтобы перерисовка её не стёрла
+  killWhy: (a, el) => { UI.killWhy = el.value; },
+  killPick: arg => { const id = arg.split('|')[1], el = document.getElementById('killWhy'); if (el) UI.killWhy = el.value; UI.killPid = UI.killPid === id ? null : id; render(); },
+  killDo: () => {
+    const el = document.getElementById('killWhy'), why = el ? el.value : UI.killWhy, id = UI.killPid;
+    if (!id) return;
+    UI.killPid = null; UI.killWhy = '';
+    act(S => E.storytellerKill(S, id, null, why), 'смерть: ' + E.nm(S, id));
+  },
   edAlign: id => act(S => { const p = E.P(S, id); p.align = p.align === 'good' ? 'evil' : 'good'; E.log(S, `${p.name} теперь ${p.align === 'good' ? 'добрый' : 'злой'}`, 'effect'); }),
   edGhost: id => act(S => { const p = E.P(S, id); p.ghost = !p.ghost; }, 'голос призрака'),
   edTok: id => { const k = document.getElementById('tokKind-' + id).value; act(S => E.addTok(S, E.P(S, id), k, null, null), 'жетон «' + E.TOK_RU[k] + '»'); },

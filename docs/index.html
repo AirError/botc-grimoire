@@ -281,6 +281,7 @@ const TOK_RU = {
   poisoned: 'Отравлен', drunk: 'Пьян', protected: 'Защищён', cursed: 'Проклят', safe: 'Не умрёт при казни',
   master: 'Хозяин', mad: 'Помешан', hasability: 'Сохранил способность', twin: 'Близнец', grandchild: 'Внук',
   herring: 'Ложная цель', chosen: 'Выбран', note: 'Заметка', know: 'Раскрытый', lunch: 'Обед',
+  votes3: '3 голоса', voteneg: 'Голос против', sober: 'Трезв и здоров', twice: 'Действует дважды', bad: 'Что-то плохое',
 };
 
 function expire(S, when) { // when: 'dusk' | 'dawn'
@@ -316,9 +317,13 @@ function townsfolkNeighbours(S, p) {
 const widowWorks = S => holders(S, 'widow').some(w => w.alive && !w.tokens.some(x => (x.k === 'drunk' || x.k === 'poisoned') && x.src !== 'widow'));
 const tokOff = (S, t) => (t.k === 'drunk' || t.k === 'poisoned') && (t.src !== 'widow' || widowWorks(S));
 
+// Нищий всегда трезв и здоров; Бариста может сделать игрока трезвым и здоровым до заката
+const alwaysSober = p => p.role === 'beggar' || p.tokens.some(t => t.k === 'sober' && t.src === 'barista');
+
 function abilityOff(S, p) { // способность не работает (пьян/отравлен/роль-обманка)
   if (p.role === 'drunk' && !p.gained) return 'Пьяница';
   if (p.role === 'lunatic') return 'Лунатик';
+  if (alwaysSober(p)) return null;
   const t = p.tokens.find(t => tokOff(S, t));
   if (t) return (t.k === 'drunk' ? 'пьян' : 'отравлен') + (t.src && R(t.src) ? ` (${R(t.src).name})` : '');
   for (const nd of holders(S, 'nodashii')) {
@@ -328,6 +333,7 @@ function abilityOff(S, p) { // способность не работает (п�
 }
 function abilityOffNoND(S, p) { // то же, но без Но Даши (чтобы не зациклиться)
   if (p.role === 'drunk' && !p.gained) return 'Пьяница';
+  if (alwaysSober(p)) return null;
   const t = p.tokens.find(t => tokOff(S, t));
   return t ? t.k : null;
 }
@@ -371,13 +377,22 @@ function attemptKill(S, p, cause, src, opts) {
 }
 function saved(S, p, by) { log(S, `${p.name} не умирает: ${by}`, 'save'); return { died: false, why: by }; }
 
+// смерть по решению рассказчика («что-то плохое» Ангела, ручная отметка на «Столе»): без защит, но со всеми
+// последствиями — ночью попадёт в объявление на рассвете, сработают Смотритель, Дитя Луны, проверка победы и т. д.
+// reason — примечание рассказчика (видно в журнале и на «Столе», в объявлении на рассвете не звучит)
+function storytellerKill(S, pid, src, reason) {
+  const p = P(S, pid);
+  if (p && p.alive) die(S, p, 'storyteller', src || null, { reason: String(reason || '').trim() });
+}
+
 function die(S, p, cause, src, opts) {
   opts = opts || {};
   const aliveBefore = aliveCount(S);
   p.alive = false; p.secretlyAlive = false; p.ghost = true;
   const how = { exile: 'изгнан', demon: 'убит Демоном', minion: 'убит Приспешником', ability: 'умер от способности',
-    execution: 'казнён', unstoppable: 'убит Ассасином' }[cause] || 'умер';
-  log(S, `${p.name} (${rname(p.role)}) ${how}${src && R(src) && cause !== 'execution' ? ` — ${R(src).name}` : ''}`, 'death');
+    execution: 'казнён', unstoppable: 'убит Ассасином', storyteller: 'умирает по решению рассказчика' }[cause] || 'умер';
+  p.deathNote = opts.reason || null;
+  log(S, `${p.name} (${rname(p.role)}) ${how}${src && R(src) && cause !== 'execution' ? ` — ${R(src).name}` : ''}${opts.reason ? `. Причина: ${opts.reason}` : ''}`, 'death');
   if (S.phase === 'night' && S.night) S.night.deaths.push({ pid: p.id, cause });
   if (S.phase === 'day' && S.day) S.day.deaths.push(p.id);
   afterDeath(S, p, cause, false, aliveBefore, opts);
@@ -628,7 +643,8 @@ function buildSteps(S) {
   const first = S.n === 1, order = DATA.order[first ? 'first' : 'other'], steps = [];
   for (const id of order) {
     if (DATA.special[id]) {
-      if ((id === 'minioninfo' || id === 'demoninfo') && coreCount(S) < 7) continue;
+      // при 5–6 игроках злые не знакомятся — кроме игры с Кукольником
+      if ((id === 'minioninfo' || id === 'demoninfo') && coreCount(S) < 7 && !(S.fabled || []).includes('toymaker')) continue;
       steps.push({ key: id, id, pid: null });
       if (id === 'dusk' && !first && S.flags.evilWakes) {
         steps.push({ key: 'minioninfo:meet', id: 'minioninfo', pid: null, meet: true }, { key: 'demoninfo:meet', id: 'demoninfo', pid: null, meet: true });
@@ -650,7 +666,26 @@ function buildSteps(S) {
     else if (f.night === S.n && !order.includes(f.role) && DATA.order.first.includes(f.role))
       insertStep(steps, { key: f.role + ':' + c.id + ':fresh', id: f.role, pid: c.id, fresh: true }, order);
   }
+  // Ученик вошёл в игру позже 1-й ночи: его «первая ночь» — сразу после заката
+  if (!first) for (const a of holders(S, 'apprentice')) {
+    if (once(S, a, 'apprentice') || a.gained) continue;
+    const at = steps.findIndex(s => s.id === 'dusk');
+    steps.splice(at + 1, 0, { key: 'apprentice:' + a.id, id: 'apprentice', pid: a.id });
+  }
+  // способность «только в 1-ю ночь», полученная этой ночью (Ученик, Собиратель Костей)
+  if (!first) for (const f of S.flags.fresh || []) {
+    if (f.night !== S.n || order.includes(f.role) || !DATA.order.first.includes(f.role)) continue;
+    insertStep(steps, { key: f.role + ':' + f.pid + ':fresh', id: f.role, pid: f.pid, fresh: true }, order);
+  }
   return steps;
+}
+function addFresh(S, pid, role) { S.flags.fresh = (S.flags.fresh || []).filter(f => f.night >= S.n).concat({ pid, role, night: S.n }); }
+// после смены способностей посреди ночи — перестраиваем оставшиеся шаги этой ночи
+function rebuildRest(S) {
+  const ord = DATA.order[S.n === 1 ? 'first' : 'other'], cur = S.night.steps[S.night.i];
+  const done = new Set(S.night.steps.slice(0, S.night.i + 1).map(st => st.key)), k = ord.indexOf(cur.id);
+  S.night.steps = S.night.steps.slice(0, S.night.i + 1).concat(buildSteps(S).filter(st => !done.has(st.key)
+    && (st.fresh || st.fakeCannibal || k < 0 || ord.indexOf(st.id) > k)));
 }
 // шаг на место роли в ночном порядке; роли нет в порядке этой ночи — перед рассветом
 function insertStep(steps, st, order) {
@@ -676,7 +711,20 @@ function endNight(S) {
 
 /* ------------------------------------------------------------ день */
 
-const voteThreshold = S => Math.ceil(aliveAll(S) / 2);
+const travellerWorks = (S, rid) => holders(S, rid).some(h => h.alive && !abilityOff(S, h));
+// Шаман Вуду: голосуют только он и мёртвые (жетон не тратится), половина голосов не нужна — хватает 1 голоса
+const voudonActive = S => travellerWorks(S, 'voudon');
+// Епископ: номинирует только рассказчик
+const bishopActive = S => travellerWorks(S, 'bishop');
+const voteThreshold = S => voudonActive(S) ? 1 : Math.ceil(aliveAll(S) / 2);
+// вес голоса: Бюрократ — за 3, Вор — против; пропадает, если Странник умер, изгнан или без способности
+function voteWeight(S, v) {
+  let w = 1;
+  if (hasTok(v, 'votes3', 'bureaucrat') && travellerWorks(S, 'bureaucrat')) w = 3;
+  if (hasTok(v, 'voteneg', 'thief') && travellerWorks(S, 'thief')) w = -w;
+  return w;
+}
+const voteCount = (S, ids) => ids.reduce((sum, id) => sum + voteWeight(S, P(S, id)), 0);
 
 // что произойдёт при номинации — чтобы показать рассказчику заранее и спросить решения
 function nominationPreview(S, byId, onId) {
@@ -694,12 +742,15 @@ function nominationPreview(S, byId, onId) {
   return out;
 }
 
+// byId === 'st' — номинирует рассказчик (Епископ)
 function nominate(S, byId, onId, opts) {
   opts = opts || {};
-  const by = P(S, byId), on = P(S, onId), d = S.day, res = { ended: false, notes: [] };
-  d.nominators.push(byId); d.nominated.push(onId);
-  if (realTeam(by) === 'minion') d.minionNominated = true;
-  log(S, `${by.name} номинирует ${on.name}`, 'day');
+  const by = byId === 'st' ? null : P(S, byId), on = P(S, onId), d = S.day, res = { ended: false, notes: [] };
+  if (by) d.nominators.push(byId);
+  d.nominated.push(onId); d.lastNom = { by: byId, on: onId, butcher: !!d.butcherOpen };
+  if (by && realTeam(by) === 'minion') d.minionNominated = true;
+  log(S, `${by ? by.name : 'Рассказчик'} номинирует ${on.name}${d.butcherOpen ? ' (Мясник, после казни)' : ''}`, 'day');
+  if (!by) { if (on.role === 'virgin') S.flags['virginUsed_' + on.id] = true; return res; }
   // Ведьма
   if (hasTok(by, 'cursed', 'witch') && holders(S, 'witch').some(w => w.alive && !abilityOff(S, w)) && aliveCount(S) > 3) {
     log(S, `${by.name} был проклят Ведьмой и умирает, номинировав`, 'death');
@@ -718,17 +769,19 @@ function nominate(S, byId, onId, opts) {
 }
 
 function recordVote(S, onId, voterIds) {
-  const d = S.day;
-  for (const id of voterIds) { const v = P(S, id); if (!v.alive) v.ghost = false; if (isDemon(v)) d.demonVoted = true; }
+  const d = S.day, vd = voudonActive(S);
+  for (const id of voterIds) { const v = P(S, id); if (!v.alive && !vd) v.ghost = false; if (isDemon(v)) d.demonVoted = true; }
   const nomi = d.noms.find(x => x.on === onId && x.open) || { on: onId };
-  Object.assign(nomi, { voters: voterIds.slice(), count: voterIds.length, open: false });
+  const count = voteCount(S, voterIds), raw = voterIds.length;
+  Object.assign(nomi, { voters: voterIds.slice(), count, open: false, butcher: !!d.butcherOpen });
   if (!d.noms.includes(nomi)) d.noms.push(nomi);
-  log(S, `Голосование за ${nm(S, onId)}: ${voterIds.length} (нужно ${voteThreshold(S)})`, 'day');
+  d.butcherOpen = false; // Мясник номинирует ещё раз только однажды
+  log(S, `Голосование за ${nm(S, onId)}: ${count}${count !== raw ? ` (рук ${raw})` : ''} (нужно ${voteThreshold(S)})`, 'day');
   return block(S);
 }
 
-function block(S) { // кто на плахе: больше всех голосов и не меньше порога; ничья — никто
-  const th = voteThreshold(S), noms = S.day.noms.filter(x => x.count >= th);
+function block(S) { // кто на плахе: больше всех голосов и не меньше порога; ничья — никто (номинация Мясника — отдельно)
+  const th = voteThreshold(S), noms = S.day.noms.filter(x => !x.butcher && x.count >= th);
   if (!noms.length) return null;
   const max = Math.max(...noms.map(x => x.count)), top = noms.filter(x => x.count === max);
   return top.length === 1 ? top[0].on : null;
@@ -736,7 +789,12 @@ function block(S) { // кто на плахе: больше всех голос�
 
 function execute(S, pid, opts) {
   opts = opts || {};
-  const p = P(S, pid);
+  let p = P(S, pid);
+  // Козёл Отпущения: рассказчик решил, что вместо игрока его стороны казнят его
+  const sg = opts.scapegoat && P(S, opts.scapegoat);
+  if (sg && sg.alive && sg !== p && sg.align === p.align && !abilityOff(S, sg)) {
+    log(S, `Козёл Отпущения (${sg.name}) казнён вместо ${p.name}`, 'effect'); p = sg; pid = sg.id;
+  }
   S.day.executed = pid;
   log(S, `Казнь: ${p.name}`, 'day');
   if (S.flags.goodTwin === pid && S.players.some(q => q.role === 'eviltwin' && q.alive && !abilityOff(S, q)))
@@ -768,12 +826,23 @@ function cannibalEats(S, ex) {
   }
 }
 
+// Мясник: казнить сейчас — после этого Мясник может номинировать ещё раз
+function executeNow(S, opts) {
+  const b = block(S);
+  if (!b || S.day.executed) return;
+  execute(S, b, opts);
+  if (!S.result && travellerWorks(S, 'butcher')) { S.day.butcherOpen = true; log(S, 'После казни Мясник может номинировать ещё раз', 'day'); }
+}
+
 function endDay(S, opts) {
   opts = opts || {};
   const d = S.day;
   if (!d.executed) {
     const b = block(S);
     if (b && !opts.skipExecution) execute(S, b, opts);
+  } else if (!d.executed2) { // вторая казнь: номинация Мясника набрала порог (превышать первую не нужно)
+    const bn = d.noms.find(x => x.butcher && x.count >= voteThreshold(S));
+    if (bn) { d.executed2 = bn.on; execute(S, bn.on, { scapegoat: opts.scapegoat }); }
   }
   if (S.result) return;
   if (!d.executed) {
@@ -794,6 +863,53 @@ function slayerShot(S, slayerId, targetId, registersAsDemon) {
   if (!abilityOff(S, s) && (isDemon(t) || registersAsDemon)) {
     attemptKill(S, t, 'ability', 'slayer');
   } else log(S, 'Ничего не происходит', 'day');
+}
+
+// Судья (раз за игру, номинировал другой игрок): казнь состоится немедленно — или не состоится (голоса не считаются)
+function judgeRuling(S, judgeId, onId, pass) {
+  const j = P(S, judgeId), on = P(S, onId), d = S.day;
+  markOnce(S, j, 'judge');
+  if (abilityOff(S, j)) { log(S, `Судья (${j.name}) выносит решение — способность не работает`, 'day'); return { ended: false }; }
+  if (pass) { log(S, `Судья (${j.name}): казнь ${on.name} состоится`, 'day'); execute(S, onId); return { ended: true }; }
+  const nomi = d.noms.filter(x => x.on === onId).pop();
+  if (nomi) Object.assign(nomi, { count: 0, open: false, pardoned: true }); else d.noms.push({ on: onId, voters: [], count: 0, open: false, pardoned: true });
+  log(S, `Судья (${j.name}): казни ${on.name} не будет — голоса за него не считаются`, 'day');
+  return { ended: false };
+}
+// Стрелок: после 1-го подсчёта голосов может выбрать проголосовавшего — тот умирает
+function gunslingerShot(S, gid, tid) {
+  const g = P(S, gid), t = P(S, tid);
+  S.day.gunUsed = true;
+  log(S, `Стрелок (${g.name}) стреляет в ${t.name}`, 'day');
+  if (abilityOff(S, g)) return log(S, 'Ничего не происходит — способность не работает', 'day');
+  attemptKill(S, t, 'ability', 'gunslinger');
+}
+// Механик может умереть в любой момент (решение рассказчика)
+function tinkerDies(S, pid) {
+  const t = P(S, pid);
+  if (abilityOff(S, t)) return log(S, `Механик (${t.name}) мог бы умереть — способность не работает`, 'day');
+  attemptKill(S, t, 'ability', 'tinker');
+}
+// Сказочник Фаталист: живой игрок (раз за игру) требует смерти игрока своей стороны; кого — решает рассказчик
+function doomsayerKill(S, invokerId, victimId) {
+  const a = P(S, invokerId), v = P(S, victimId);
+  S.flags['doomUsed_' + a.id] = true;
+  log(S, `Фаталист: ${a.name} требует смерти игрока своей стороны`, 'day');
+  attemptKill(S, v, 'ability', 'doomsayer');
+}
+// Сказочник Скрипач: Демон против выбранного игрока другой стороны; ничья — победа зла
+function fiddlerEnd(S, challengerId, result) {
+  const dm = S.players.find(demonAlive), ch = P(S, challengerId);
+  const side = result === 'demon' ? (dm ? dm.align : 'evil') : result === 'challenger' ? ch.align : 'evil';
+  endGame(S, side, `Скрипач: ${result === 'tie' ? 'ничья — побеждает зло' : `в состязании победил ${result === 'demon' ? (dm ? dm.name : 'Демон') : ch.name}`}`);
+}
+// Надзирательница: до 3 пар игроков за день меняются местами
+function swapSeats(S, aId, bId) {
+  const i = S.players.findIndex(p => p.id === aId), j = S.players.findIndex(p => p.id === bId);
+  if (i < 0 || j < 0 || i === j) return;
+  [S.players[i], S.players[j]] = [S.players[j], S.players[i]];
+  S.day.matronSwaps = (S.day.matronSwaps || 0) + 1;
+  log(S, `Надзирательница: ${S.players[j].name} и ${S.players[i].name} меняются местами`, 'day');
 }
 
 /* ------------------------------------------------------------ Странники, Сказочники, свойства ролей */
@@ -824,11 +940,14 @@ function addTraveller(S, name, roleId, align, afterId) {
 const exileThreshold = S => Math.ceil(S.players.length / 2);
 
 // изгнание Странника: не казнь, за день может быть сколько угодно
-function exile(S, pid, votes, passed) {
+function exile(S, pid, votes, passed, opts) {
+  opts = opts || {};
   const p = P(S, pid);
-  if (passed === undefined) passed = votes >= exileThreshold(S);
+  if (passed === undefined || passed === null) passed = votes >= exileThreshold(S);
   log(S, `Изгнание Странника ${p.name}: ${votes} голос. (нужно ${exileThreshold(S)})`, 'day');
   if (!passed) { log(S, `${p.name} не изгнан`, 'day'); return; }
+  // Девиант: если сегодня был забавным, изгнание его не убивает (решает рассказчик)
+  if (p.role === 'deviant' && opts.funny) { log(S, `Девиант (${p.name}) сегодня был забавным — изгнание его не убивает`, 'save'); return; }
   S.day.exiled = (S.day.exiled || []).concat(pid);
   die(S, p, 'exile', null);
 }
@@ -847,10 +966,23 @@ function cannibalFakeSpec(S, step) {
 
 function fabledSpec(S, step, first) {
   const role = R(step.id);
-  return { title: role.name, who: 'Сказочник', team: 'fabled', text: (first ? role.first : role.other) || '', active: true, reason: '',
+  const spec = { title: role.name, who: 'Сказочник', team: 'fabled', text: (first ? role.first : role.other) || '', active: true, reason: '',
     inputs: [PL('t', 2, 'Выбор (если нужен)', () => true, { min: 0 })], defaults: {}, warn: [], info: () => null,
     apply: inp => log(S, `${role.name}${inp.t && inp.t.length ? ': ' + inp.t.map(id => nm(S, id)).join(', ') : ''}`, 'action'),
     bounds: [{ w: 'Способность', t: role.ability }] };
+  // Герцогиня: ровно 3 посетителя узнают, сколько из них злых; один получает ложное число
+  if (step.id === 'duchess') Object.assign(spec, {
+    inputs: [PL('t', 3, 'Посетители Герцогини (ровно 3; иначе никто не просыпается)', () => true, { min: 0 })],
+    more: inp => (inp.t || []).length === 3 ? [PL('f', 1, 'Кто из них получает ложное число', q => inp.t.includes(q.id))] : [],
+    info: inp => {
+      const vs = (inp.t || []).map(id => P(S, id)); if (vs.length !== 3) return { show: 'Посетителей не 3 — Герцогиня не действует', lines: [] };
+      const n = vs.filter(q => q.align === 'evil').length, f = inp.f && P(S, inp.f[0]);
+      return { show: `Злых посетителей: ${n}`, lines: [`Покажите это число двоим, ${f ? f.name : 'третьему'} — любое другое`, ...regNote(S, inp.t)] };
+    },
+    apply: inp => log(S, (inp.t || []).length === 3 ? `Герцогиня: посетители ${inp.t.map(id => nm(S, id)).join(', ')}; ложное число — ${nm(S, (inp.f || [])[0])}` : 'Герцогиня: посетителей не 3 — никто не просыпается', 'info'),
+    bounds: [{ w: 'Способность', t: role.ability }, Y('Каждому посетителю — число злых среди троих (себя тоже); одному — любое другое число')],
+  });
+  return spec;
 }
 
 /* ------------------------------------------------------------ шаги ночи */
@@ -877,7 +1009,19 @@ function stepSpec(S, step) {
     base.warn.push(`Лунатик «атаковал»: ${S.night.data.lunatic.map(id => nm(S, id)).join(', ') || 'никого'} — покажите это Демону.`);
   const logic = LOGIC[step.id];
   const spec = logic ? Object.assign(base, logic(S, p, first, !!off, base) || {}) : Object.assign(base, genericLogic(S, p, first, !!off, base));
-  if (spec.active && !p.alive && !spec.deadOk) { spec.active = false; spec.reason = `${p.name} мёртв`; }
+  // мёртвый просыпается, если способность сохранена (Вигормортис) или возвращена (Собиратель Костей)
+  if (spec.active && !p.alive && !spec.deadOk && !hasTok(p, 'hasability')) { spec.active = false; spec.reason = `${p.name} мёртв`; }
+  if (hasTok(p, 'twice', 'barista')) spec.warn.push('Бариста: способность срабатывает дважды — шаг повторится ещё раз.');
+  // Кукольник: Демон может не нападать (и обязан сделать это хотя бы раз за игру)
+  if (spec.active && role.team === 'demon' && (S.fabled || []).includes('toymaker') && spec.inputs.some(f => f.key === 't')) {
+    spec.inputs = spec.inputs.map(f => f.key === 't' ? Object.assign({}, f, { min: 0, label: f.label + ' (Кукольник: можно никого)' }) : f);
+    const orig = spec.apply;
+    spec.apply = inp => {
+      if (inp.t && inp.t.length) return orig(inp);
+      S.flags.toyNoAttack = true; log(S, `${rname(p.role)} (${p.name}) не нападает этой ночью (Кукольник)`, 'action');
+    };
+    if (!S.flags.toyNoAttack) spec.warn.push('Кукольник: Демон ещё ни разу не отказывался от нападения. Если его нападение может закончить игру — он этой ночью не нападает (не выбирайте никого).');
+  }
   spec.bounds = boundsFor(step.id, first).slice();
   if (!spec.bounds.length) spec.bounds.push({ w: 'Способность', t: role.ability });
   if (off) spec.bounds.push(Y('Способность не работает: можно показать любую информацию, эффекты не применяются'));
@@ -1225,9 +1369,7 @@ const LOGIC = {
   philosopher: (S, p, first, off) => {
     if (once(S, p, 'philosopher')) return { active: false, reason: 'Способность уже использована' };
     return { inputs: [ROLE('r', 'Философ выбирает добрую роль (можно пропустить)', r => isGoodTeam(R(r).team), { optional: true, all: true })],
-      apply: inp => { if (!inp.r) return; markOnce(S, p, 'philosopher'); if (off) { log(S, `Философ (${p.name}) выбирает ${rname(inp.r)} — не работает`, 'action'); return; } p.gained = inp.r; holders(S, inp.r).forEach(q => addTok(S, q, 'drunk', 'philosopher')); log(S, `Философ (${p.name}) получает способность: ${rname(inp.r)}`, 'effect');
-        const ord = DATA.order[S.n === 1 ? 'first' : 'other'], done = new Set(S.night.steps.slice(0, S.night.i + 1).map(st => st.key));
-        S.night.steps = S.night.steps.slice(0, S.night.i + 1).concat(buildSteps(S).filter(st => !done.has(st.key) && (st.fresh || st.fakeCannibal || ord.indexOf(st.id) > ord.indexOf('philosopher')))); } };
+      apply: inp => { if (!inp.r) return; markOnce(S, p, 'philosopher'); if (off) { log(S, `Философ (${p.name}) выбирает ${rname(inp.r)} — не работает`, 'action'); return; } p.gained = inp.r; holders(S, inp.r).forEach(q => addTok(S, q, 'drunk', 'philosopher')); log(S, `Философ (${p.name}) получает способность: ${rname(inp.r)}`, 'effect'); rebuildRest(S); } };
   },
   juggler: (S, p) => {
     if (S.n !== 2) return { active: false, reason: 'Жонглёр узнаёт результат только после 1-го дня' };
@@ -1359,6 +1501,79 @@ const LOGIC = {
       apply: inp => { const t = P(S, inp.t[0]); S.flags[key] = { pid: t.id, type: inp.reg || realTeam(t) }; log(S, `Аэронавт (${p.name}) узнаёт игрока: ${t.name}`, 'info'); },
     };
   },
+  tinker: (S, p, first, off) => ({
+    inputs: [CHOICE('die', 'Механик умирает этой ночью? (ваше решение)', [{ v: 'no', l: 'Нет' }, { v: 'yes', l: 'Да' }])], defaults: { die: 'no' },
+    apply: inp => { if (inp.die !== 'yes') return; if (off) log(S, `Механик (${p.name}) мог бы умереть — способность не работает`, 'action'); else attemptKill(S, p, 'ability', 'tinker'); },
+  }),
+
+  /* --- Странники */
+  harlot: (S, p, first, off) => ({
+    inputs: [PL('t', 1, 'Куртизанка выбирает живого игрока', both(aliveOnly, notSelf(p))),
+      CHOICE('yes', 'Выбранный согласился показать свою роль?', [{ v: 'no', l: 'Нет' }, { v: 'yes', l: 'Да' }])],
+    defaults: { yes: 'no', die: 'no' },
+    more: inp => inp.yes === 'yes' ? [CHOICE('die', 'Умирают оба? (ваше решение)', [{ v: 'no', l: 'Нет' }, { v: 'yes', l: 'Да, оба' }])] : [],
+    info: inp => {
+      const t = inp.t && P(S, inp.t[0]); if (!t) return null;
+      if (inp.yes !== 'yes') return { show: 'Отказ — ничего не происходит', lines: [] };
+      return { show: `Покажите Куртизанке жетон: ${rname(t.role)}`, lines: [isDemon(t) ? 'Это Демон: не убивайте обоих, если это закончит игру' : '', inp.die === 'yes' && off ? 'Куртизанка пьяна или отравлена — никто не умрёт' : ''] };
+    },
+    apply: inp => {
+      const t = P(S, inp.t[0]);
+      log(S, `Куртизанка (${p.name}) выбирает ${t.name}: ${inp.yes === 'yes' ? 'согласие, узнаёт роль ' + rname(t.role) : 'отказ'}`, 'action');
+      if (inp.yes === 'yes' && inp.die === 'yes' && !off) { attemptKill(S, t, 'ability', 'harlot'); attemptKill(S, p, 'ability', 'harlot'); }
+    },
+  }),
+  bureaucrat: (S, p, first, off) => ({
+    inputs: [PL('t', 1, 'Бюрократ выбирает игрока', notSelf(p))],
+    apply: inp => { const t = P(S, inp.t[0]); if (!off) addTok(S, t, 'votes3', 'bureaucrat', ['dusk', S.n + 1]); log(S, `Бюрократ (${p.name}): голос ${t.name} завтра считается за 3${off ? ' — не работает' : ''}`, 'action'); },
+  }),
+  thief: (S, p, first, off) => ({
+    inputs: [PL('t', 1, 'Вор выбирает игрока', notSelf(p))],
+    apply: inp => { const t = P(S, inp.t[0]); if (!off) addTok(S, t, 'voteneg', 'thief', ['dusk', S.n + 1]); log(S, `Вор (${p.name}): голос ${t.name} завтра считается против${off ? ' — не работает' : ''}`, 'action'); },
+  }),
+  barista: (S, p, first, off) => ({
+    inputs: [PL('t', 1, 'Кого выбираете вы'), CHOICE('mode', 'Что с ним до заката', [{ v: 'sober', l: 'Трезв, здоров, верная информация' }, { v: 'twice', l: 'Способность дважды' }])],
+    defaults: { mode: 'sober' },
+    info: inp => { const t = inp.t && P(S, inp.t[0]); return t ? { show: inp.mode === 'twice' ? 'Два пальца' : 'Один палец', lines: [`Разбудите ${t.name}: жетон «ОБЛАДАТЕЛЬ ЭТОЙ РОЛИ ВЫБРАЛ ВАС», жетон Баристы, затем пальцы`] } : null; },
+    apply: inp => {
+      const t = P(S, inp.t[0]);
+      S.players.forEach(q => { rmTok(q, 'sober', 'barista'); rmTok(q, 'twice', 'barista'); });
+      log(S, `Бариста (${p.name}): ${t.name} — ${inp.mode === 'twice' ? 'способность дважды' : 'трезв и здоров'} до заката${off ? ' (Бариста не работает)' : ''}`, 'action');
+      if (off) return;
+      addTok(S, t, inp.mode === 'twice' ? 'twice' : 'sober', 'barista', ['dusk', S.n + 1]);
+      if (inp.mode === 'twice') { // повторяем ещё не пройденный шаг этого игрока
+        const k = S.night.steps.findIndex((s, j) => j > S.night.i && s.pid === t.id && !s.twice);
+        if (k >= 0) S.night.steps.splice(k + 1, 0, Object.assign({}, S.night.steps[k], { key: S.night.steps[k].key + ':twice', twice: true }));
+      }
+    },
+  }),
+  bonecollector: (S, p, first, off) => {
+    if (once(S, p, 'bonecollector')) return { active: false, reason: 'Способность уже использована' };
+    return {
+      inputs: [PL('t', 1, 'Собиратель Костей выбирает мёртвого (можно никого)', q => !q.alive, { min: 0 })],
+      apply: inp => {
+        const t = inp.t && inp.t[0] && P(S, inp.t[0]);
+        if (!t) return;
+        markOnce(S, p, 'bonecollector');
+        log(S, `Собиратель Костей (${p.name}) выбирает ${t.name}${off ? ' — не работает' : `: способность «${rname(actsAs(t))}» вернулась до заката`}`, 'action');
+        if (off) return;
+        addTok(S, t, 'hasability', 'bonecollector', ['dusk', S.n + 1]);
+        addFresh(S, t.id, actsAs(t)); rebuildRest(S);
+      },
+    };
+  },
+  apprentice: (S, p, first, off) => {
+    const team = p.align === 'evil' ? 'minion' : 'townsfolk';
+    return {
+      inputs: [ROLE('r', `Способность ${team === 'minion' ? 'Приспешника (Ученик злой)' : 'Горожанина (Ученик добрый)'} — лучше роль не в игре`, r => R(r).team === team)],
+      info: inp => inp.r ? { show: `Покажите «ТЕПЕРЬ ВЫ» и жетон: ${rname(inp.r)}`, lines: [] } : null,
+      apply: inp => {
+        markOnce(S, p, 'apprentice'); p.gained = inp.r; addFresh(S, p.id, inp.r);
+        log(S, `Ученик (${p.name}) получает способность: ${rname(inp.r)}`, 'effect'); rebuildRest(S);
+      },
+    };
+  },
+
   amnesiac: (S, p) => {
     const key = 'amnesiac_' + p.id;
     return {
@@ -1435,6 +1650,13 @@ const BOUNDS = {
   vortox: { other: [I('любого игрока. Информация Горожан всегда ложная')] },
   widow: { first: [Y('Покажите Гримуар столько, сколько нужно'), I('любого игрока: он отравлен, пока Вдова жива'), Y('1 доброго игрока: он узнаёт, что Вдова в игре (но не кто она и кого отравила)')] },
   balloonist: { first: [Y('Любой игрок: живой или мёртвый, добрый или злой')], other: [Y('Игрок с типом роли не как у показанного прошлой ночью. Пьяному или отравленному Аэронавту можно тот же тип')] },
+  tinker: { other: [Y('Можете решить, что Механик умирает (днём — кнопкой на экране дня). Не заканчивайте этим игру')] },
+  harlot: { other: [I('1 живого игрока, не себя'), Y('Если выбранный согласился — покажите Куртизанке его роль; можете решить, что умирают оба. Если это Демон, не заканчивайте этим игру')] },
+  bureaucrat: { all: [I('1 игрока, не себя: завтра его голос считается за 3')] },
+  thief: { all: [I('1 игрока, не себя: завтра его голос считается против (−1)')] },
+  barista: { all: [Y('Любой игрок до заката: либо трезв, здоров и получает верную информацию, либо действует дважды. Он узнаёт, что именно')] },
+  bonecollector: { other: [I('1 мёртвого игрока или никого, раз за игру: он восстанавливает способность до заката')] },
+  apprentice: { all: [Y('Ученик получает способность Горожанина (если добрый) или Приспешника (если злой) из сценария; лучше роль, которой нет в игре')] },
   amnesiac: { all: [Y('Способность придумываете вы: будите и просите выбрать, только если она этого требует'), Y('Днём он раз в день приватно угадывает её — отвечайте «Холодно», «Тепло», «Горячо» или «В точку»')] },
 };
 function boundsFor(id, first) { const b = BOUNDS[id]; return b ? (b.all || (first ? b.first : b.other) || []) : []; }
@@ -1454,11 +1676,35 @@ function missingInputs(spec, inp) {
   }).map(f => f.label);
 }
 
+// Наёмник: первый за ночь игрок, выбравший его своей способностью, пьян до заката, а Наёмник переходит на его сторону.
+// Считаем только шаги, где выбирает сам игрок (в рамках выбора есть «Игрок выбирает»)
+function goonTarget(S, step, spec, inp) {
+  if (!step.pid || S.night.data.goonHit || !(spec.bounds || []).some(b => b.w === 'Игрок выбирает')) return null;
+  const actor = P(S, step.pid);
+  return (inp.t || []).map(id => P(S, id)).find(q => q && q.role === 'goon' && q.alive && q !== actor && !abilityOff(S, q)) || null;
+}
+function goonWarn(S, step, spec, inp) {
+  const g = goonTarget(S, step, spec, inp), a = g && P(S, step.pid);
+  if (!g) return null;
+  return `Выбран Наёмник (${g.name}): ${a.role === 'assassin' ? 'Ассасин всё равно убивает' : `${a.name} становится пьяным до заката — способность не сработает`}; Наёмник переходит на сторону ${a.name}${g.align !== a.align ? ' — разбудите его и покажите большой палец ' + (a.align === 'good' ? 'вверх' : 'вниз') : ''}.`;
+}
+function goonHit(S, step, spec, inp) {
+  const g = goonTarget(S, step, spec, inp);
+  if (!g) return false;
+  const a = P(S, step.pid), was = g.align;
+  S.night.data.goonHit = true;
+  if (a.role !== 'assassin') addTok(S, a, 'drunk', 'goon', ['dusk', S.n + 1]); // по вики: Ассасин убивает Наёмника, но тот всё равно меняет сторону
+  g.align = a.align;
+  log(S, `Наёмник (${g.name}) выбран: ${a.role !== 'assassin' ? `${a.name} пьян до заката; ` : ''}Наёмник ${was !== g.align ? 'теперь ' + (g.align === 'good' ? 'добрый' : 'злой') : 'остаётся на своей стороне'}`, 'effect');
+  return true;
+}
+
 function applyStep(S, step, inp) {
-  const spec = stepSpec(S, step);
+  let spec = stepSpec(S, step);
   if (spec.active && missingInputs(spec, inp).length) return { ok: false, missing: missingInputs(spec, inp) };
   if (spec.active) {
     if (step.pid && !S.night.woke.includes(step.pid)) S.night.woke.push(step.pid);
+    if (goonHit(S, step, spec, inp || {})) spec = stepSpec(S, step); // выбравший Наёмника пьян — пересчитываем шаг
     spec.apply(inp || {});
   }
   if (!S.result) { S.night.i += 1; if (S.night.i >= S.night.steps.length) endNight(S); }
@@ -1480,6 +1726,13 @@ function situation(S) {
   if (S.flags.moonchildPending) out.push(`Дитя Луны (${nm(S, S.flags.moonchildPending)}) должно публично выбрать игрока.`);
   if (S.flags.klutzPending) out.push(`Растяпа (${nm(S, S.flags.klutzPending)}) должен публично выбрать игрока.`);
   if (vortoxActive(S)) out.push('Вортокс: день без казни — победа зла.');
+  if (S.phase === 'day' && S.day) {
+    const bishop = holders(S, 'bishop').find(h => h.alive && !abilityOff(S, h));
+    if (bishop && !S.day.nominated.some(id => P(S, id) && P(S, id).align !== bishop.align))
+      out.push(`Епископ: номинирует только рассказчик; сегодня нужно номинировать хотя бы 1 ${bishop.align === 'good' ? 'злого' : 'доброго'} игрока.`);
+    if (voudonActive(S)) out.push('Шаман Вуду: голосуют только он и мёртвые (жетоны не тратятся); для казни хватает 1 голоса, побеждает больше всех.');
+    if (S.day.butcherOpen) out.push('Мясник может номинировать ещё раз: для второй казни нужен порог голосов, превышать первую не нужно.');
+  }
   return out;
 }
 
@@ -1500,7 +1753,8 @@ function klutzChoose(S, pid) {
 
 
 const ENGINE = { newGame, newPlayer, P, nm, rname, realTeam, actsAs, aliveCount, aliveAll, coreCount, isTraveller, exile, exileThreshold, addTraveller, meetingBlocker, isDemon, distribution, setupDistribution, distCheck, countTeams, randomDeal,
-  amnesiacGuess, AMNESIAC_ANSWERS,
+  amnesiacGuess, AMNESIAC_ANSWERS, storytellerKill, voteCount, voteWeight, voudonActive, bishopActive, travellerWorks, executeNow,
+  judgeRuling, gunslingerShot, tinkerDies, doomsayerKill, fiddlerEnd, swapSeats, goonWarn,
   finishRoles, autoSetup, setupProblems, jinxesInPlay, startGame, startNight, currentStep, stepSpec, applyStep, skipStep,
   stepInputs, missingInputs, endNight,
   nominate, nominationPreview, recordVote, block, execute, endDay, slayerShot, voteThreshold, situation, moonchildChoose, klutzChoose,
@@ -1577,7 +1831,7 @@ let S = null;
 // История для отмены: массив снимков состояния до каждого действия (паттерн History)
 let HISTORY = [];
 const HIST_MAX = 40;
-const UI = { tab: 'game', open: null, notes: [], hideInactive: true, confirm: null, importText: '', customText: '', save: 'local', copied: '' };
+const UI = { tab: 'game', open: null, notes: [], hideInactive: true, confirm: null, importText: '', customText: '', save: 'local', copied: '', killPid: null, killWhy: '' };
 
 const esc = s => String(s ?? '').replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
 const team = rid => rid && DATA.roles[rid] ? DATA.roles[rid].team : '';
@@ -1834,6 +2088,7 @@ function viewNight() {
   const fields = spec.active ? E.stepInputs(spec, inp) : [];
   const missing = spec.active ? E.missingInputs(spec, inp) : [];
   let info = null; try { info = spec.active ? spec.info(inp) : null; } catch (e) { info = null; }
+  const goon = spec.active ? E.goonWarn(S, st, spec, inp) : null;
   const next = S.night.steps.slice(i + 1, i + 5).map(s => `<div>${s.pid ? ico(s.fakeCannibal ? 'cannibal' : s.id, null, 'ui') : ''}${esc(s.meet ? 'Злые знакомятся' : s.fakeCannibal ? 'Каннибал — отравлен' : E.rname(s.id))}${s.pid ? ` <span>· ${esc(E.nm(S, s.pid))}</span>` : ''}</div>`).join('');
   const deaths = S.night.deaths.length ? `<div class="small"><b>Умерли этой ночью:</b> ${S.night.deaths.map(d => esc(E.nm(S, d.pid))).join(', ')}</div>` : '';
   const icon = st.pid ? ico(st.fakeCannibal ? 'cannibal' : st.id, null, 'si') : st.fabled ? ico(st.id, 'good', 'si') : art(st.id, 'si');
@@ -1846,13 +2101,15 @@ function viewNight() {
       ${spec.active && spec.bounds && spec.bounds.length ? boundsHtml(spec.bounds) : ''}
       ${(spec.warn || []).map(w => `<div class="warn">${esc(w)}</div>`).join('')}
       ${fields.map(f => fieldHtml(f, inp)).join('')}
+      ${goon ? `<div class="warn">${esc(goon)}</div>` : ''}
       ${info && (info.show || (info.lines || []).filter(Boolean).length) ? `<div class="reveal"><div class="lab">Покажите / объявите</div>${info.show ? `<div class="big">${esc(info.show)}</div>` : ''}${(info.lines || []).filter(Boolean).map(l => `<div class="ln">${esc(l)}</div>`).join('')}</div>` : ''}
       ${st.id === 'dawn' ? morningHtml(true) : ''}
       ${missing.length ? `<div class="small muted">Осталось выбрать: ${missing.map(esc).join('; ')}</div>` : ''}
       <div class="actions"><button class="btn primary" data-act="stepDone" ${missing.length ? 'disabled' : ''}>${spec.active ? 'Готово' : 'Дальше'}</button>
         <button class="btn" data-act="stepSkip">Пропустить</button></div>
     </div>
-    ${next ? `<div class="card"><h3>Дальше этой ночью</h3><div class="upnext">${next}</div></div>` : ''}`;
+    ${next ? `<div class="card"><h3>Дальше этой ночью</h3><div class="upnext">${next}</div></div>` : ''}
+    ${killFormHtml()}`;
 }
 
 function viewDay() {
@@ -1887,6 +2144,42 @@ function viewDay() {
       ${t && t.role === 'recluse' ? `<div class="field"><label>Ваше решение: Затворник определяется Демоном?</label><div class="seg"><button class="${picks.slayReg ? '' : 'on'}" data-act="slayReg" data-arg="0">Нет</button><button class="${picks.slayReg ? 'on' : ''}" data-act="slayReg" data-arg="1">Да — он умрёт</button></div></div>` : ''}
       <button class="btn" data-act="slay" data-arg="${s.id}" ${sel.length ? '' : 'disabled'}>Выстрел</button></div>`);
   }
+  // Стрелок: сразу после подсчёта 1-го голосования может застрелить проголосовавшего (раз в день)
+  for (const g of S.players.filter(p => p.role === 'gunslinger' && p.alive)) {
+    if (d.gunUsed || !d.noms.length) continue;
+    const first = d.noms[0], sel = picks.gun || [];
+    parts.push(`<div class="card"><h3>Стрелок: ${esc(g.name)}</h3>${boundsHtml([{ w: 'Игрок выбирает', t: `сразу после подсчёта 1-го голосования (за ${E.nm(S, first.on)}) — 1 проголосовавшего: тот умирает. Раз в день` }])}
+      ${chipsPlayers('gun', 1, p => p.alive && first.voters.includes(p.id), sel, { act: 'dayPick', noRole: true })}
+      <div class="row"><button class="btn danger" data-act="gunShoot" data-arg="${g.id}" ${sel.length ? '' : 'disabled'}>Выстрел</button><button class="btn" data-act="gunSkip">Стрелок не стреляет сегодня</button></div></div>`);
+  }
+  // Механик может умереть в любой момент — по решению рассказчика
+  for (const t of S.players.filter(p => p.role === 'tinker' && p.alive))
+    parts.push(`<div class="card"><details><summary class="small"><b>Механик (${esc(t.name)})</b> может умереть в любой момент</summary><div class="field" style="margin-top:8px">
+      ${boundsHtml([{ w: 'Вы решаете', t: 'днём — объявите смерть сразу; не заканчивайте этим игру' }])}<button class="btn danger" data-act="tinkerDie" data-arg="${t.id}">Механик умирает сейчас</button></div></details></div>`);
+  // Сказочник Фаталист: живой игрок раз за игру требует смерти игрока своей стороны
+  if ((S.fabled || []).includes('doomsayer') && alive >= 4) {
+    const by = (picks.doomBy || [])[0], a = by && E.P(S, by), vic = picks.doomV || [];
+    parts.push(`<div class="card"><details><summary class="small"><b>Фаталист:</b> игрок требует смерти игрока своей стороны</summary><div class="field" style="margin-top:8px">
+      ${boundsHtml([{ w: 'Игрок', t: 'живой, раз за игру, публично (пока живы 4 и больше)' }, { w: 'Вы решаете', t: 'кто из живых игроков его стороны умирает; Демона — только если игра продолжится' }])}
+      <div class="flabel"><span>Кто требует</span></div>${chipsPlayers('doomBy', 1, p => p.alive && !E.isTraveller(p) && !S.flags['doomUsed_' + p.id], by ? [by] : [], { act: 'dayPick', noRole: true })}
+      ${a ? `<div class="flabel"><span>Кто умирает (${a.align === 'good' ? 'добрые' : 'злые'})</span></div>${chipsPlayers('doomV', 1, p => p.alive && p.align === a.align, vic, { act: 'dayPick' })}` : ''}
+      <button class="btn danger" data-act="doom" ${a && vic.length ? '' : 'disabled'}>Записать смерть</button></div></details></div>`);
+  }
+  // Сказочник Скрипач: состязание Демона и игрока другой стороны — игра заканчивается
+  if ((S.fabled || []).includes('fiddler')) {
+    const dm = S.players.find(p => E.isDemon(p) && p.alive), ch = (picks.fidCh || [])[0];
+    if (dm) parts.push(`<div class="card"><details><summary class="small"><b>Скрипач:</b> закончить игру состязанием</summary><div class="field" style="margin-top:8px">
+      ${boundsHtml([{ w: 'Демон выбирает', t: 'тайно, 1 игрока другой стороны' }, { w: 'Голосуют', t: 'все, живые и мёртвые, за одного из двоих; ничья — победа зла' }])}
+      ${chipsPlayers('fidCh', 1, p => p.align !== dm.align, ch ? [ch] : [], { act: 'dayPick', noRole: true })}
+      ${ch ? `<div class="seg"><button data-act="fiddler" data-arg="demon">Победил ${esc(dm.name)}</button><button data-act="fiddler" data-arg="challenger">Победил ${esc(E.nm(S, ch))}</button><button data-act="fiddler" data-arg="tie">Ничья</button></div>` : ''}</div></details></div>`);
+  }
+  // Надзирательница: до 3 пар игроков меняются местами
+  if (S.players.some(p => p.role === 'matron' && p.alive) && (d.matronSwaps || 0) < 3) {
+    const sel = picks.matron || [];
+    parts.push(`<div class="card"><details><summary class="small"><b>Надзирательница:</b> поменять игроков местами (${d.matronSwaps || 0} из 3)</summary><div class="field" style="margin-top:8px">
+      ${chipsPlayers('matron', 2, () => true, sel, { act: 'dayPick2', noRole: true })}
+      <button class="btn" data-act="matronSwap" ${sel.length === 2 ? '' : 'disabled'}>Поменять местами</button></div></details></div>`);
+  }
   if (S.n === 1 && S.players.some(p => p.role === 'juggler' && p.alive)) {
     const g = S.flags.jugglerGuesses || [];
     parts.push(`<div class="card"><h3>Догадки Жонглёра (до 5)</h3>${g.map((x, i) => `<div class="small">${esc(E.nm(S, x.pid))} — ${esc(E.rname(x.role))} <button class="linkish" data-act="jugDel" data-arg="${i}">убрать</button></div>`).join('')}
@@ -1903,33 +2196,69 @@ function viewDay() {
       ${chipsPlayers('exPid', 1, p => E.isTraveller(p) && p.alive, ex.pid ? [ex.pid] : [], { act: 'exPick' })}
       ${ex.pid ? `<div class="flabel"><span>Кто голосует за изгнание</span><span>${ex.voters.length}</span></div>${chipsPlayers('exV', 99, () => true, ex.voters, { act: 'exVote', noRole: true })}
       <div class="reveal"><div class="lab">Голосов</div><div class="big">${ex.voters.length} из ${eth} — ${pass ? 'изгнан' : 'не изгнан'}</div></div>
+      ${pass && E.P(S, ex.pid).role === 'deviant' ? `<div class="seg"><button class="${picks.exFunny ? 'on' : ''}" data-act="exFunny">Девиант сегодня был забавным — не умирает</button></div>` : ''}
       <button class="btn ${pass ? 'danger' : ''} wide" data-act="exile">Записать: ${pass ? 'Странник изгнан' : 'Странник остаётся'}</button>` : ''}</div>`);
   }
+  // Судья: раз за игру решает исход номинации, сделанной другим игроком (во время голосования или сразу после)
+  const judge = S.players.find(p => p.role === 'judge' && p.alive && !S.flags['judge_' + p.id]);
+  const judgeHtml = (onId, byId) => judge && byId !== judge.id && !d.executed ? `<div class="field"><label>Судья (${esc(judge.name)}), раз за игру: исход номинации ${esc(E.nm(S, onId))}</label>
+    <div class="seg"><button data-act="judge" data-arg="${judge.id}|${onId}|1">Казнь состоится — сейчас</button><button data-act="judge" data-arg="${judge.id}|${onId}|0">Казни не будет</button></div></div>` : '';
+  const vd = E.voudonActive(S), bishop = E.bishopActive(S), butcherTurn = !!d.butcherOpen;
   if (nm.stage === 'vote') {
-    const on = E.P(S, nm.on), by = E.P(S, nm.by);
-    const canVote = p => p.alive || p.ghost;
-    parts.push(`<div class="card"><h3 class="hi">${art('vote', 'hg')}Голосование: ${esc(on.name)}</h3><div class="small muted">Номинировал ${esc(by.name)}. Отметьте всех, кто поднял руку.</div>
-      ${boundsHtml([{ w: 'Голосуют', t: 'все живые; мёртвые — только если у них остался голос призрака (тратится при голосовании)' }, { w: 'Казнь', t: `на плаху попадает тот, у кого не меньше ${th} голосов и больше, чем у остальных; при равенстве — никто` }].concat(S.players.some(p => p.role === 'butler' && p.alive) ? [{ w: 'Дворецкий', t: 'голосует, только если голосует его хозяин' }] : []))}
-      ${chipsPlayers('voters', 99, canVote, nm.voters, { act: 'vote', noRole: true, ghost: true })}
-      <div class="reveal"><div class="lab">Голосов</div><div class="big">${nm.voters.length} из ${th}</div></div>
+    const on = E.P(S, nm.on), by = nm.by === 'st' ? null : E.P(S, nm.by);
+    const canVote = vd ? (p => !p.alive || p.role === 'voudon') : (p => p.alive || p.ghost);
+    const cnt = E.voteCount(S, nm.voters);
+    const weighted = nm.voters.map(id => E.P(S, id)).filter(v => E.voteWeight(S, v) !== 1).map(v => `${v.name}: ${E.voteWeight(S, v) === 3 ? 'голос за троих (Бюрократ)' : E.voteWeight(S, v) === -3 ? 'три голоса против (Бюрократ и Вор)' : 'голос против (Вор)'}`);
+    const rules = [vd ? { w: 'Голосуют', t: 'только Шаман Вуду и мёртвые; жетон голоса не нужен и не тратится' } : { w: 'Голосуют', t: 'все живые; мёртвые — только если у них остался голос призрака (тратится при голосовании)' },
+      { w: 'Казнь', t: `на плаху попадает тот, у кого не меньше ${th} голос. и больше, чем у остальных; при равенстве — никто` }];
+    if (S.players.some(p => p.role === 'butler' && p.alive)) rules.push({ w: 'Дворецкий', t: 'голосует, только если голосует его хозяин' });
+    if (S.players.some(p => p.role === 'beggar' && p.alive)) rules.push({ w: 'Нищий', t: 'голосует, только если у него есть жетон голоса (мёртвые могут отдать ему свой — он узнаёт их сторону)' });
+    parts.push(`<div class="card"><h3 class="hi">${art('vote', 'hg')}Голосование: ${esc(on.name)}</h3><div class="small muted">Номинировал ${esc(by ? by.name : 'рассказчик')}${d.lastNom && d.lastNom.butcher ? ' (Мясник, после казни: порог тот же, превышать первую не нужно)' : ''}. Отметьте всех, кто поднял руку.</div>
+      ${boundsHtml(rules)}
+      ${chipsPlayers('voters', 99, canVote, nm.voters, { act: 'vote', noRole: true, ghost: !vd })}
+      <div class="reveal"><div class="lab">Голосов</div><div class="big">${cnt} из ${th}</div>${weighted.map(t => `<div class="ln">${esc(t)}</div>`).join('')}</div>
+      ${judgeHtml(nm.on, nm.by)}
       <div class="actions"><button class="btn primary" data-act="voteDone">Записать голоса</button><button class="btn" data-act="voteCancel">Отменить номинацию</button></div></div>`);
-  } else {
-    const byOk = p => p.alive && !d.nominators.includes(p.id), onOk = p => !d.nominated.includes(p.id) && !E.isTraveller(p);
+  } else if (!d.executed || butcherTurn) {
+    const byOk = butcherTurn ? (p => p.role === 'butcher' && p.alive) : (p => p.alive && !d.nominators.includes(p.id));
+    const onOk = p => !E.isTraveller(p) && (butcherTurn || !d.nominated.includes(p.id));
     const pv = E.nominationPreview(S, nm.by, nm.on);
-    parts.push(`<div class="card"><h3 class="hi">${art('nominate', 'hg')}Номинация</h3>
-      ${boundsHtml([{ w: 'Номинирует', t: 'живой игрок, не больше 1 раза за день' }, { w: 'Номинировать', t: 'любого, кроме Странников (их изгоняют), каждого — не больше 1 раза за день' }])}
-      <div class="field"><div class="flabel"><span>Кто номинирует</span></div>${chipsPlayers('by', 1, byOk, nm.by ? [nm.by] : [], { act: 'nomPick', noRole: true })}</div>
+    const rules = bishop ? [{ w: 'Номинирует', t: 'только рассказчик (Епископ); за день — хотя бы 1 игрока стороны, противоположной Епископу' }]
+      : butcherTurn ? [{ w: 'Номинирует', t: 'Мясник — ещё раз после казни; можно того, кого уже номинировали' }]
+        : [{ w: 'Номинирует', t: 'живой игрок, не больше 1 раза за день' }, { w: 'Номинировать', t: 'любого, кроме Странников (их изгоняют), каждого — не больше 1 раза за день' }];
+    parts.push(`<div class="card"><h3 class="hi">${art('nominate', 'hg')}${butcherTurn ? 'Номинация Мясника' : 'Номинация'}</h3>
+      ${boundsHtml(rules)}
+      ${bishop ? '' : `<div class="field"><div class="flabel"><span>Кто номинирует</span></div>${chipsPlayers('by', 1, byOk, nm.by ? [nm.by] : [], { act: 'nomPick', noRole: true })}</div>`}
       <div class="field"><div class="flabel"><span>Кого</span></div>${chipsPlayers('on', 1, onOk, nm.on ? [nm.on] : [], { act: 'nomPick', noRole: true })}</div>
       ${pv.notes.map(t => `<div class="warn">${esc(t)}</div>`).join('')}
       ${pv.askSpy ? `<div class="field"><label>Ваше решение: Шпион определяется Горожанином?</label><div class="seg"><button class="${nm.spy ? '' : 'on'}" data-act="nomSpy" data-arg="0">Нет</button><button class="${nm.spy ? 'on' : ''}" data-act="nomSpy" data-arg="1">Да — его казнят</button></div></div>` : ''}
-      <button class="btn primary" data-act="nominate" ${nm.by && nm.on ? '' : 'disabled'}>Номинировать</button></div>`);
+      <button class="btn primary" data-act="nominate" ${(bishop || nm.by) && nm.on ? '' : 'disabled'}>Номинировать</button></div>`);
+    // Судья может решить исход последней номинации и после подсчёта, пока не номинировали следующего
+    const last = d.lastNom && d.noms.some(x => x.on === d.lastNom.on && !x.pardoned) ? d.lastNom : null;
+    if (last && judge && !nm.on) parts.push(`<div class="card">${judgeHtml(last.on, last.by)}</div>`);
   }
-  if (d.noms.length) parts.push(`<div class="card"><h3>Номинации сегодня</h3>${d.noms.map(x => `<div class="row"><b>${esc(E.nm(S, x.on))}</b><span class="muted">${x.count} голос.</span>${x.on === blk ? '<span class="badge evil">на плахе</span>' : ''}</div>`).join('')}</div>`);
-  parts.push(`<div class="card"><button class="btn primary wide" data-act="endDay">${art('execute', 'bg')}${blk && !d.executed ? `Завершить день и казнить: ${esc(E.nm(S, blk))}` : 'Завершить день без казни'}</button>
+  if (d.noms.length) parts.push(`<div class="card"><h3>Номинации сегодня</h3>${d.noms.map(x => `<div class="row"><b>${esc(E.nm(S, x.on))}</b><span class="muted">${x.count} голос.</span>${x.pardoned ? '<span class="badge">Судья: казни не будет</span>' : ''}${x.butcher ? '<span class="badge">Мясник</span>' : ''}${x.on === blk ? '<span class="badge evil">на плахе</span>' : ''}</div>`).join('')}</div>`);
+  const second = d.executed && d.noms.find(x => x.butcher && x.count >= th);
+  const scapegoat = blk && !d.executed ? S.players.find(p => p.role === 'scapegoat' && p.alive && p.id !== blk && p.align === E.P(S, blk).align) : null;
+  const endLabel = d.executed ? (second ? `Завершить день и казнить: ${esc(E.nm(S, second.on))} (Мясник)` : 'Завершить день') : blk ? `Завершить день и казнить: ${esc(E.nm(S, blk))}` : 'Завершить день без казни';
+  parts.push(`<div class="card"><button class="btn primary wide" data-act="endDay">${art('execute', 'bg')}${endLabel}</button>
+    ${blk && !d.executed && E.travellerWorks(S, 'butcher') ? `<button class="btn wide" data-act="executeNow">Казнить ${esc(E.nm(S, blk))} сейчас — Мясник номинирует ещё раз</button>` : ''}
+    ${scapegoat ? `<div class="seg"><button class="${picks.scapegoat ? 'on' : ''}" data-act="scapegoat" data-arg="${scapegoat.id}">Козёл Отпущения (${esc(scapegoat.name)}) казнён вместо ${esc(E.nm(S, blk))}</button></div>` : ''}
     ${blk && !d.executed && S.players.some(p => p.role === 'pacifist' && p.alive) && E.P(S, blk).align === 'good' ? `<div class="seg"><button class="${picks.pacifist ? 'on' : ''}" data-act="pacifist">Пацифист спасает казнённого</button></div>` : ''}
     <details><summary class="small">Казнить другого игрока (решение рассказчика)</summary><div style="margin-top:8px">${chipsPlayers('manualExe', 1, p => p.alive && !E.isTraveller(p), picks.manualExe || [], { act: 'dayPick', noRole: true })}
     <button class="btn danger" data-act="manualExe" ${(picks.manualExe || []).length ? '' : 'disabled'}>Казнить и завершить день</button></div></details></div>`);
+  parts.push(killFormHtml());
   return parts.join('');
+}
+
+// убить игрока по решению рассказчика, с причиной-примечанием (днём и ночью)
+function killFormHtml() {
+  const sel = UI.killPid && E.P(S, UI.killPid) && E.P(S, UI.killPid).alive ? [UI.killPid] : [];
+  return `<div class="card"><details><summary class="small"><b>Убить игрока</b> — решение рассказчика, с причиной</summary><div class="field" style="margin-top:8px">
+    ${boundsHtml([{ w: 'Вы решаете', t: 'игрок умирает сразу, без защит; ночью смерть попадёт в объявление на рассвете. Причина видна только вам — в журнале и на «Столе»' }])}
+    ${chipsPlayers('kill', 1, p => p.alive, sel, { act: 'killPick' })}
+    <input type="text" id="killWhy" data-act="killWhy" value="${esc(UI.killWhy)}" placeholder="Причина (необязательно), например: «Ангел — что-то плохое»" aria-label="Причина смерти">
+    <button class="btn danger" data-act="killDo" ${sel.length ? '' : 'disabled'}>Убить${sel.length ? ': ' + esc(E.nm(S, sel[0])) : ''}</button></div></details></div>`;
 }
 
 function viewTable() {
@@ -1938,7 +2267,7 @@ function viewTable() {
     const off = S.phase !== 'setup' && E.abilityOff(S, p);
     return `<button class="seat ${p.alive ? '' : 'dead'}" data-act="openP" data-arg="${p.id}" aria-expanded="${UI.open === p.id}">
       <span class="no">${i + 1}</span><span class="sic">${ico(p.role, p.align, 'ti')}</span>
-      <span><div class="pn">${esc(p.name)}</div><div class="pr t-${team(p.role)}">${esc(E.rname(p.role))}${E.isTraveller(p) ? ' · Странник' : ''}${p.believes ? ` <span class="muted">(считает себя: ${esc(E.rname(p.believes))})</span>` : ''}${p.gained ? ` <span class="muted">(способность: ${esc(E.rname(p.gained))})</span>` : ''}</div></span>
+      <span><div class="pn">${esc(p.name)}</div><div class="pr t-${team(p.role)}">${esc(E.rname(p.role))}${E.isTraveller(p) ? ' · Странник' : ''}${p.believes ? ` <span class="muted">(считает себя: ${esc(E.rname(p.believes))})</span>` : ''}${p.gained ? ` <span class="muted">(способность: ${esc(E.rname(p.gained))})</span>` : ''}</div>${!p.alive && p.deathNote ? `<div class="small muted">Причина смерти: ${esc(p.deathNote)}</div>` : ''}</span>
       <span class="badges"><span class="badge ${p.align}">${p.align === 'good' ? 'добрый' : 'злой'}</span>${p.alive ? '' : `<span class="badge dead">${art('dead', 'bd')}мёртв${p.ghost ? ' · голос' : ''}</span>`}${off ? `<span class="badge evil">${esc(off)}</span>` : ''}${toks}</span></button>
       ${UI.open === p.id ? editorHtml(p) : ''}`;
   }).join('');
@@ -1947,10 +2276,12 @@ function viewTable() {
 }
 
 function editorHtml(p) {
-  const tokKinds = ['poisoned', 'drunk', 'protected', 'cursed', 'safe', 'mad', 'note'];
+  const tokKinds = ['poisoned', 'drunk', 'protected', 'cursed', 'safe', 'mad', 'bad', 'note'];
   return `<div class="editor">
     <div class="field"><label>Роль</label><select data-act="edRole" data-arg="${p.id}">${E.isTraveller(p) ? plainOptions(DATA.travellers, p.role) : roleOptions(() => true, p.role, { all: true })}</select></div>
-    <div class="seg"><button data-act="edAlive" data-arg="${p.id}">${p.alive ? 'Отметить смерть' : 'Воскресить'}</button>
+    ${p.alive && S.phase !== 'setup' ? `<div class="row" style="flex-wrap:nowrap"><input type="text" id="edWhy-${p.id}" placeholder="Причина смерти (необязательно)" aria-label="Причина смерти ${esc(p.name)}">
+      <button class="btn danger" data-act="edKill" data-arg="${p.id}">Убить</button></div>` : ''}
+    <div class="seg">${p.alive ? '' : `<button data-act="edAlive" data-arg="${p.id}">Воскресить</button>`}
       <button data-act="edAlign" data-arg="${p.id}">Сделать ${p.align === 'good' ? 'злым' : 'добрым'}</button>
       ${p.alive ? '' : `<button data-act="edGhost" data-arg="${p.id}">${p.ghost ? 'Голос призрака: есть' : 'Голос призрака: потрачен'}</button>`}
       ${E.isTraveller(p) && S.phase !== 'setup' ? `<button data-act="trLeave" data-arg="${p.id}">Странник ушёл из игры</button>` : ''}</div>
@@ -2081,15 +2412,26 @@ const A = {
   jugDel: i => act(S => S.flags.jugglerGuesses.splice(+i, 1), 'убрана догадка'),
   exPick: arg => { const id = arg.split('|')[1]; draft(S => { const ex = S.day.picks.exile || { pid: null, voters: [] }; ex.pid = ex.pid === id ? null : id; ex.voters = []; S.day.picks.exile = ex; }); },
   exVote: arg => { const id = arg.split('|')[1]; draft(S => { const v = S.day.picks.exile.voters; if (v.includes(id)) v.splice(v.indexOf(id), 1); else v.push(id); }); },
-  exile: () => { const ex = clone(S.day.picks.exile); act(S => { E.exile(S, ex.pid, ex.voters.length); S.day.picks.exile = null; }); },
+  exile: () => { const ex = clone(S.day.picks.exile), funny = !!S.day.picks.exFunny; act(S => { E.exile(S, ex.pid, ex.voters.length, null, { funny }); S.day.picks.exile = null; S.day.picks.exFunny = false; }); },
+  exFunny: () => draft(S => { S.day.picks.exFunny = !S.day.picks.exFunny; }),
+  dayPick2: arg => { const [key, id] = arg.split('|'); draft(S => { const sel = (S.day.picks[key] || []).slice(); if (sel.includes(id)) sel.splice(sel.indexOf(id), 1); else { if (sel.length >= 2) sel.shift(); sel.push(id); } S.day.picks[key] = sel; }); },
+  gunShoot: gid => { const t = S.day.picks.gun[0]; act(S => { E.gunslingerShot(S, gid, t); S.day.picks.gun = []; }); },
+  gunSkip: () => act(S => { S.day.gunUsed = true; E.log(S, 'Стрелок сегодня не стреляет', 'day'); }),
+  tinkerDie: id => act(S => E.tinkerDies(S, id), 'Механик умирает'),
+  doom: () => { const a = S.day.picks.doomBy[0], v = S.day.picks.doomV[0]; act(S => { E.doomsayerKill(S, a, v); S.day.picks.doomBy = []; S.day.picks.doomV = []; }); },
+  fiddler: res => { const ch = S.day.picks.fidCh[0]; act(S => E.fiddlerEnd(S, ch, res), 'Скрипач'); },
+  matronSwap: () => { const [a, b] = S.day.picks.matron; act(S => { E.swapSeats(S, a, b); S.day.picks.matron = []; }); },
+  judge: arg => { const [j, on, pass] = arg.split('|'); act(S => { const r = E.judgeRuling(S, j, on, pass === '1'); S.day.draft = { by: null, on: null, voters: [], stage: 'pick', spy: false }; if (r.ended && !S.result) E.endDay(S); }); window.scrollTo(0, 0); },
+  executeNow: () => { const o = { pacifist: S.day.picks.pacifist, scapegoat: S.day.picks.scapegoat }; act(S => { E.executeNow(S, o); S.day.picks.scapegoat = null; S.day.draft = { by: null, on: null, voters: [], stage: 'pick', spy: false }; }); },
+  scapegoat: id => draft(S => { S.day.picks.scapegoat = S.day.picks.scapegoat ? null : id; }),
   nomPick: arg => { const [key, id] = arg.split('|'); draft(S => { const d = S.day.draft; d[key] = d[key] === id ? null : id; d.spy = false; }); },
   nomSpy: v => draft(S => { S.day.draft.spy = v === '1'; }),
   nominate: () => {
-    let res = null; const d0 = clone(S.day.draft);
+    let res = null; const d0 = clone(S.day.draft), by = E.bishopActive(S) ? 'st' : d0.by;
     act(S => {
-      res = E.nominate(S, d0.by, d0.on, { spyTownsfolk: !!d0.spy });
+      res = E.nominate(S, by, d0.on, { spyTownsfolk: !!d0.spy });
       if (res.ended) E.endDay(S);
-      else if (S.phase === 'day') S.day.draft = { by: d0.by, on: d0.on, voters: [], stage: 'vote', spy: false };
+      else if (S.phase === 'day') S.day.draft = { by, on: d0.on, voters: [], stage: 'vote', spy: false };
     });
     UI.notes = res ? res.notes : []; render();
   },
@@ -2097,12 +2439,23 @@ const A = {
   voteDone: () => { const d0 = clone(S.day.draft); act(S => { E.recordVote(S, d0.on, d0.voters); S.day.draft = { by: null, on: null, voters: [], stage: 'pick', spy: false }; }); },
   voteCancel: () => act(S => { S.day.draft = { by: null, on: null, voters: [], stage: 'pick', spy: false }; }, 'номинация отменена'),
   pacifist: () => draft(S => { S.day.picks.pacifist = !S.day.picks.pacifist; }),
-  endDay: () => { const pac = S.day.picks.pacifist; UI.notes = []; act(S => E.endDay(S, { pacifist: pac }), 'конец дня ' + S.n); window.scrollTo(0, 0); },
+  endDay: () => { const pac = S.day.picks.pacifist, sg = S.day.picks.scapegoat; UI.notes = []; act(S => E.endDay(S, { pacifist: pac, scapegoat: sg }), 'конец дня ' + S.n); window.scrollTo(0, 0); },
   manualExe: () => { const id = S.day.picks.manualExe[0]; act(S => { E.execute(S, id); if (!S.result) E.endDay(S, { skipExecution: true }); }); window.scrollTo(0, 0); },
   // стол
   openP: id => { UI.open = UI.open === id ? null : id; render(); },
   edRole: (id, el) => act(S => { const p = E.P(S, id); const old = p.role; p.role = el.value || null; E.log(S, `Рассказчик меняет роль ${p.name}: ${E.rname(old)} → ${E.rname(p.role)}`, 'effect'); }),
-  edAlive: id => act(S => { const p = E.P(S, id); if (p.alive) { E.log(S, `Рассказчик отмечает смерть: ${p.name}`, 'death'); p.alive = false; p.ghost = true; E.checkWin(S); } else { p.alive = true; E.log(S, `Рассказчик воскрешает ${p.name}`, 'effect'); } }),
+  // смерть по решению рассказчика — настоящая: ночью попадёт в объявление на рассвете, сработают последствия
+  edKill: id => { const why = (document.getElementById('edWhy-' + id) || {}).value || ''; act(S => E.storytellerKill(S, id, null, why), 'смерть: ' + E.nm(S, id)); },
+  edAlive: id => act(S => { const p = E.P(S, id); if (!p.alive) { p.alive = true; p.deathNote = null; E.log(S, `Рассказчик воскрешает ${p.name}`, 'effect'); } }),
+  // «Убить игрока» на экранах дня и ночи; причину запоминаем при уходе из поля, чтобы перерисовка её не стёрла
+  killWhy: (a, el) => { UI.killWhy = el.value; },
+  killPick: arg => { const id = arg.split('|')[1], el = document.getElementById('killWhy'); if (el) UI.killWhy = el.value; UI.killPid = UI.killPid === id ? null : id; render(); },
+  killDo: () => {
+    const el = document.getElementById('killWhy'), why = el ? el.value : UI.killWhy, id = UI.killPid;
+    if (!id) return;
+    UI.killPid = null; UI.killWhy = '';
+    act(S => E.storytellerKill(S, id, null, why), 'смерть: ' + E.nm(S, id));
+  },
   edAlign: id => act(S => { const p = E.P(S, id); p.align = p.align === 'good' ? 'evil' : 'good'; E.log(S, `${p.name} теперь ${p.align === 'good' ? 'добрый' : 'злой'}`, 'effect'); }),
   edGhost: id => act(S => { const p = E.P(S, id); p.ghost = !p.ghost; }, 'голос призрака'),
   edTok: id => { const k = document.getElementById('tokKind-' + id).value; act(S => E.addTok(S, E.P(S, id), k, null, null), 'жетон «' + E.TOK_RU[k] + '»'); },
