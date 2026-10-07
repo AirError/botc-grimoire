@@ -6,3 +6,25 @@ out/
 app/dist/
 art/cut/
 art/*.jpg
+# печатные листы сценария — только локально (на GitHub — только приложение)
+sheets/
+four_demons_script.json
+ПЕРЕНОС_сценарий.md
+tools/build_sheets.py
+tools/sheet_data.py
+tools/render.py
+tools/probe_sizes.py
+tools/zoom_pdf.py
+tools/peek.py
+tools/roles_one_page.py
+tools/patch_roles.py
+tools/patch_sheet_fonts.py
+tools/make_sheets_kit.py
+tools/check_cut.py
+art/src/title_*.png
+art/src/sec_townsfolk.png
+art/src/sec_outsider.png
+art/src/sec_minion.png
+art/src/sec_demon.png
+art/src/bg_front.png
+art/src/bg_back.png
