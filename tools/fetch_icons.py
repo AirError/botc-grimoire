@@ -1,4 +1,4 @@
-"""Скачивает официальные иконки ролей базовой коробки из botc-release и готовит их к встраиванию.
+"""Скачивает официальные иконки всех ролей приложения из botc-release и готовит их к встраиванию.
 
 raw:   app/icons/raw/<id>_<g|e>.webp — как скачано
 small: app/icons/<id>_<g|e>.webp     — 192 px, для приложения и листов
@@ -22,7 +22,7 @@ SIZE = 192
 # все роли, которые есть в данных приложения (базовая коробка + Странники + Сказочники + роли со свойствами)
 _data = (ROOT / "app" / "src" / "data.js").read_text(encoding="utf-8")
 roles = json.loads(_data[len("const DATA = "):_data.rindex(";")])["roles"]
-FABLED = "https://raw.githubusercontent.com/ThePandemoniumInstitute/botc-release/main/resources/characters/fabled/{id}.webp"
+SINGLE = "https://raw.githubusercontent.com/ThePandemoniumInstitute/botc-release/main/resources/characters/{ed}/{id}.webp"
 
 
 def fetch(job):
@@ -30,8 +30,10 @@ def fetch(job):
     dst = RAW / f"{rid}_{v}.webp"
     if dst.exists() and dst.stat().st_size > 0:
         return rid, v, dst.stat().st_size, None
-    # у Сказочников одна иконка без деления на добрых и злых — кладём её в оба варианта
-    url = FABLED.format(id=rid) if roles[rid]["team"] == "fabled" else BASE.format(ed=roles[rid]["edition"], id=rid, v=v)
+    # у Сказочников и Лориков одна иконка без деления на добрых и злых (в папке своего издания) — кладём её в оба варианта
+    r = roles[rid]
+    url = (SINGLE.format(ed=r["edition"], id=rid) if r["team"] in ("fabled", "loric")
+           else BASE.format(ed=r["edition"], id=rid, v=v))
     for attempt in range(3):
         try:
             with urllib.request.urlopen(url, timeout=30) as r:

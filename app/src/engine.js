@@ -237,7 +237,9 @@ function twinsBlockGood(S) {
 function checkWin(S) {
   if (S.result || S.phase === 'setup') return S.result;
   const demonsLeft = S.players.some(demonAlive);
-  if (!demonsLeft) {
+  // игра без Демона в начале (Атеист, Призыватель, Монстрёнок): «Демон мёртв» не считается, пока Демон не появится
+  if (S.flags.demonless && S.players.some(isDemon)) S.flags.demonless = false;
+  if (!demonsLeft && !S.flags.demonless) {
     if (S.flags.mastermindDay) return null;
     if (twinsBlockGood(S)) { log(S, 'Демон мёртв, но добро не может победить, пока живы оба близнеца', 'warn'); return null; }
     endGame(S, 'good', 'Демон мёртв'); return S.result;
@@ -276,7 +278,8 @@ function distribution(nPlayers, roles, mods, maxOut) {
   if (o < 0) { t += o; o = 0; } // убирать Изгоя некого — число Горожан не меняется
   for (const [id, c] of Object.entries(OUT_CHOICES)) {
     if (!roles.includes(id)) continue;
-    const opts = c.opts.filter(x => o + x >= 0 && t - x >= 0 && (x <= 0 || o + x <= maxOut));
+    // Аэронавт сам Горожанин: хотя бы один Горожанин должен остаться
+    const opts = c.opts.filter(x => o + x >= 0 && t - x >= (id === 'balloonist' ? 1 : 0) && (x <= 0 || o + x <= maxOut));
     let v = mods[id] ?? c.def;
     if (!opts.includes(v)) v = opts.length === 1 ? opts[0] : opts.includes(c.def) ? c.def : null;
     choices.push({ id, opts, value: v });
@@ -284,6 +287,11 @@ function distribution(nPlayers, roles, mods, maxOut) {
   }
   return { townsfolk: t, outsider: o, minion: m, demon: d, notes, choices, pending: choices.filter(c => c.value === null).map(c => c.id) };
 }
+
+// роли и Сказочники, раскладку которых приложение умеет считать; с остальными (экспериментальные: Легион, Атеист,
+// Казали и т. п.) раскладку проверяет рассказчик, и приложение не мешает начать игру
+const KNOWN_SETUP = new Set(['drunk', 'baron', 'godfather', 'fanggu', 'vigormortis', 'balloonist', 'sentinel']);
+const unknownSetup = S => [...new Set(S.players.map(p => p.role).concat(S.fabled || []))].filter(r => r && R(r) && R(r).setup && !KNOWN_SETUP.has(r));
 
 // сверка раскладки с таблицей: строки «есть / нужно» по типам ролей («?» — пока не выбран сдвиг Изгоев)
 function distCheck(d, c) {
@@ -370,12 +378,12 @@ function setupProblems(S) {
   if (core.length < 5) out.push('Нужно хотя бы 5 игроков (не считая Странников)');
   if (S.players.some(p => !p.role)) out.push('Не всем игрокам выданы роли');
   if (core.length >= 5 && S.players.every(p => p.role)) {
-    const d = setupDistribution(S);
+    const d = setupDistribution(S), odd = unknownSetup(S).length > 0;
     for (const id of d.pending) out.push(`${rname(id)}: выберите, сколько Изгоев — −1 или +1`);
     const diff = distCheck(d, countTeams(S)).filter(x => x.bad && x.want !== '?');
-    if (diff.length) out.push('Раскладка не совпадает с таблицей: ' + diff.map(x => `${TEAM_RU[x.t]}: ${x.have} из ${x.want}`).join(', '));
+    if (diff.length && !odd) out.push('Раскладка не совпадает с таблицей: ' + diff.map(x => `${TEAM_RU[x.t]}: ${x.have} из ${x.want}`).join(', '));
     const c = countTeams(S);
-    if (c.demon !== 1) out.push('В игре должен быть ровно 1 Демон');
+    if (c.demon !== 1 && !odd) out.push('В игре должен быть ровно 1 Демон');
     const roles = S.players.map(p => p.role);
     if (new Set(roles).size !== roles.length) out.push('Одна роль выдана дважды');
     for (const b of S.bluffs) if (b && S.players.some(p => p.role === b || p.believes === b)) out.push(`Блеф «${rname(b)}» есть в игре — выберите другой`);
@@ -398,6 +406,7 @@ function jinxesInPlay(S) {
 function startGame(S) {
   finishRoles(S);
   for (const p of S.players) { p.alive = true; p.ghost = true; p.tokens = []; }
+  S.flags.demonless = !S.players.some(isDemon);
   if (S.flags.grandchild) addTok(S, P(S, S.flags.grandchild), 'grandchild', 'grandmother');
   if (S.flags.ftHerring) addTok(S, P(S, S.flags.ftHerring), 'herring', 'fortuneteller');
   if (S.flags.goodTwin) addTok(S, P(S, S.flags.goodTwin), 'twin', 'eviltwin');
@@ -1538,7 +1547,7 @@ function klutzChoose(S, pid) {
 }
 
 
-const ENGINE = { newGame, newPlayer, P, nm, rname, realTeam, actsAs, aliveCount, aliveAll, coreCount, isTraveller, exile, exileThreshold, addTraveller, meetingBlocker, isDemon, distribution, setupDistribution, distCheck, countTeams, randomDeal,
+const ENGINE = { newGame, newPlayer, P, nm, rname, realTeam, actsAs, aliveCount, aliveAll, coreCount, isTraveller, exile, exileThreshold, addTraveller, meetingBlocker, isDemon, distribution, setupDistribution, distCheck, unknownSetup, countTeams, randomDeal,
   amnesiacGuess, AMNESIAC_ANSWERS, storytellerKill, voteCount, voteWeight, voudonActive, bishopActive, travellerWorks, executeNow,
   judgeRuling, gunslingerShot, tinkerDies, doomsayerKill, fiddlerEnd, swapSeats, goonWarn,
   finishRoles, autoSetup, setupProblems, jinxesInPlay, startGame, startNight, currentStep, stepSpec, applyStep, skipStep,

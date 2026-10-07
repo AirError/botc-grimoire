@@ -232,7 +232,9 @@ function viewSetup() {
     const MOD_RU = { '-1': '−1 Изгой', 0: 'без изменений', 1: '+1 Изгой' };
     const choices = d.choices.map(c => `<div class="field ${c.value === null ? 'ask' : ''}"><label>${esc(E.rname(c.id))}: ${c.value === null ? 'выберите, сколько Изгоев' : 'Изгоев'}</label>
       <div class="seg">${c.opts.map(v => `<button class="${c.value === v ? 'on' : ''}" data-act="outMod" data-arg="${c.id}|${v}">${MOD_RU[v]}</button>`).join('')}</div></div>`).join('');
+    const odd = E.unknownSetup(S);
     roles = `<div class="card"><h3>Роли</h3><table class="dist">${rowsD}</table>${choices}${d.notes.length ? `<div class="small muted">${d.notes.map(esc).join('<br>')}</div>` : ''}
+      ${odd.length ? `<div class="warn">Раскладку с ролями ${odd.map(E.rname).map(esc).join(', ')} проверьте сами: в приложении нет её правил, поэтому начать игру оно не мешает. Механику этих ролей ведёте вы — в справочнике есть подсказки.</div>` : ''}
       <button class="btn" data-act="deal">Раздать роли случайно</button>
       ${S.players.map(p => {
         const side = !p.role ? 'none' : (E.isTraveller(p) ? p.align : (isGoodRole(p.role) ? 'good' : 'evil'));
@@ -493,8 +495,10 @@ function viewLog() {
   return `<div class="card"><h3>Журнал</h3><div class="log">${groups.slice().reverse().map(g => `<div class="ph">${esc(phaseName(g.p))}</div>${g.items.map(e => `<div class="e ${e.k}">${esc(e.t)}</div>`).join('')}`).join('') || '<div class="muted">Пока пусто</div>'}</div></div>`;
 }
 /* ------------------------------------------------------------ справочник ролей */
-const EDITION_RU = { tb: 'Trouble Brewing', bmr: 'Bad Moon Rising', snv: 'Sects & Violets', carousel: 'Carousel — не из базовой коробки', fabled: 'Сказочники' };
-const REF_TEAMS = [['townsfolk', 'Горожане'], ['outsider', 'Изгои'], ['minion', 'Приспешники'], ['demon', 'Демоны'], ['traveller', 'Странники'], ['fabled', 'Сказочники']];
+const EDITION_RU = { tb: 'Trouble Brewing', bmr: 'Bad Moon Rising', snv: 'Sects & Violets', carousel: 'экспериментальная (Carousel), не из базовой коробки',
+  fabled: 'Сказочники', loric: 'Лорики, не из базовой коробки' };
+const REF_TEAMS = [['townsfolk', 'Горожане'], ['outsider', 'Изгои'], ['minion', 'Приспешники'], ['demon', 'Демоны'], ['traveller', 'Странники'], ['fabled', 'Сказочники'], ['loric', 'Лорики']];
+const TYPE_RU = { fabled: 'Сказочник', loric: 'Лорик' };
 function refPool() {
   if (UI.refAll) return Object.keys(DATA.roles);
   const tr = S.script.travellers && S.script.travellers.length ? S.script.travellers : DATA.travellers;
@@ -509,9 +513,10 @@ function refCard(rid) {
   return `<div class="refcard">
     <div class="refability">${esc(r.ability)}</div>
     <div class="refprops small">
-      <div><b>Тип:</b> ${esc(r.team === 'fabled' ? 'Сказочник' : E.TEAM_RU[r.team])} · ${esc(EDITION_RU[r.edition] || r.edition)}</div>
+      <div><b>Тип:</b> ${esc(TYPE_RU[r.team] || E.TEAM_RU[r.team])} · ${esc(EDITION_RU[r.edition] || r.edition)}</div>
+      ${r.unofficial ? `<div class="muted">Официального перевода нет: название и способность переведены в приложении (англ. ${esc(r.en)}).</div>` : ''}
       ${setup ? `<div><b>Раскладка:</b> ${esc(setup)}</div>` : ''}
-      ${r.team !== 'fabled' ? night('Первая ночь', r.first) + night('Остальные ночи', r.other) : (r.first || r.other ? night('Ночью', r.first || r.other) : '')}
+      ${r.team !== 'fabled' && r.team !== 'loric' ? night('Первая ночь', r.first) + night('Остальные ночи', r.other) : (r.first || r.other ? night('Ночью', r.first || r.other) : '')}
       ${r.reminders.length ? `<div><b>Жетоны-напоминания:</b> ${r.reminders.map(esc).join(', ')}</div>` : ''}
       ${who.length ? `<div><b>В этой игре:</b> ${who.map(esc).join(', ')}</div>` : ''}
     </div>
@@ -527,7 +532,7 @@ function viewRoles() {
     const rs = pool.filter(r => DATA.roles[r].team === t).sort((a, b) => E.rname(a).localeCompare(E.rname(b), 'ru'));
     if (!rs.length) return '';
     return `<div class="refgroup"><h3 class="t-${t}">${label}</h3>${rs.map(rid => `<div class="refitem" data-name="${esc((E.rname(rid) + ' ' + DATA.roles[rid].en).toLowerCase())}">
-      <button class="refrow ${UI.refOpen === rid ? 'open' : ''}" data-act="refOpen" data-arg="${rid}" aria-expanded="${UI.refOpen === rid}">${ico(rid, t === 'fabled' ? 'good' : null, 'ri')}<span class="rname t-${t}">${esc(E.rname(rid))}</span><span class="pc" aria-hidden="true">${UI.refOpen === rid ? '▴' : '▾'}</span></button>
+      <button class="refrow ${UI.refOpen === rid ? 'open' : ''}" data-act="refOpen" data-arg="${rid}" aria-expanded="${UI.refOpen === rid}">${ico(rid, t === 'fabled' || t === 'loric' ? 'good' : null, 'ri')}<span class="rname t-${t}">${esc(E.rname(rid))}</span>${DATA.roles[rid].box ? '' : '<span class="rbadge">эксп.</span>'}<span class="pc" aria-hidden="true">${UI.refOpen === rid ? '▴' : '▾'}</span></button>
       ${UI.refOpen === rid ? refCard(rid) : ''}</div>`).join('')}</div>`;
   }).join('');
   return `<div class="card"><h3>Справочник ролей</h3>

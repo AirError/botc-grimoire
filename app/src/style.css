@@ -162,6 +162,7 @@ details > .tale { margin-top: 10px; }
 .refrow .ri { width: 36px; height: 36px; object-fit: contain; flex: none; }
 .refrow .rname { font-weight: 700; font-size: 16.5px; }
 .refrow .pc { margin-left: auto; color: var(--gold); }
+.refrow .rbadge { font-size: 11px; color: var(--muted); border: 1px solid var(--line); border-radius: 6px; padding: 1px 5px; }
 .refrow.open { border-bottom-color: transparent; }
 .refcard { padding: 4px 4px 16px; display: flex; flex-direction: column; gap: 12px; border-bottom: 1px solid var(--line); }
 .refability { font-size: 16px; font-weight: 600; line-height: 1.4; }

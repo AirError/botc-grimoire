@@ -411,6 +411,18 @@ try {
   // Ведьма, Крёстный Отец, Девственница, близнецы — уже проверены выше; Девственница + Странник-Судья не мешают
   ok('Ведьма убивает проклятого номинатора (тест выше)', results.some(r => r.startsWith('PASS Ведьма: номинировавший проклятый умер')));
 
+  // 29. справочник: все роли, включая экспериментальные и Лориков, со справкой
+  const allIds = Object.keys(DATA.roles);
+  ok('справочник: 181 роль, у каждой есть «Как вести»', allIds.length === 181 && allIds.every(r => DATA.guide[r] && DATA.guide[r].how), String(allIds.length));
+  ok('справочник: экспериментальные роли на месте', ['steward', 'legion', 'atheist', 'lleech', 'tor', 'ferryman'].every(r => DATA.roles[r]));
+  // свой сценарий с экспериментальной ролью без Демона (Атеист): начать можно, игра не кончается «смертью Демона»
+  S = E.newGame('tb'); S.script = { key: 'custom', name: 'Атеист', roles: ['atheist', 'chef', 'empath', 'monk', 'soldier', 'recluse'] };
+  ['atheist', 'chef', 'empath', 'monk', 'soldier', 'recluse'].forEach((r, i) => { const p = E.newPlayer('A' + i); p.role = r; S.players.push(p); });
+  E.finishRoles(S); E.autoSetup(S, true);
+  ok('Атеист: раскладку проверяет рассказчик — начать можно', E.setupProblems(S).length === 0, E.setupProblems(S).join('; '));
+  E.startGame(S); runNight(S, {});
+  ok('Атеист: игра без Демона не заканчивается сама', !S.result && S.phase === 'day');
+
   // 27. слова для утра
   const placeholders = [];
   for (let n = 0; n <= 6; n++) for (const first of [true, false]) for (let k = 0; k < 8; k++) {

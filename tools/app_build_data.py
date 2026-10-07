@@ -1,7 +1,7 @@
 """Собирает app/src/data.js из официальных данных (botc-release + botc-translations/ru).
 
-Берём роли базовой коробки: Trouble Brewing, Bad Moon Rising, Sects & Violets — и отдельные роли
-не из коробки, которые нужны сценариям или свойствам (EXTRA).
+Берём все роли из официальных данных: базовая коробка (Trouble Brewing, Bad Moon Rising, Sects & Violets),
+экспериментальные (Carousel), Странники, Сказочники и Лорики. Встроенные сценарии — из коробки и Catfishing.
 """
 import json
 import re
@@ -29,9 +29,6 @@ def ru_reminder(label):
 # prevents_evil_meeting — пока роль в игре и её способность работает, Приспешники и Демон не знакомятся;
 #   Демон в 1-ю ночь получает только блефы; после смерти (трезвым) злые знакомятся в ту же ночь.
 PROPS = {"poppygrower": {"prevents_evil_meeting": True}}
-# роли не из базовой коробки, которые нужны сценариям (Catfishing — по просьбе пользователя, роли из Carousel)
-CATFISHING_EXTRA = {"balloonist", "amnesiac", "cannibal", "widow"}
-EXTRA = set(PROPS) | CATFISHING_EXTRA  # такие роли берём в данные, даже если они не из базовой коробки
 # опечатки официального перевода
 TEXT_FIX = {
     ("widow", "first"): "Показывайте Вдове Гримуар столько, сколько ей нужно. Вдова выбирает игрока. :reminder: "
@@ -39,31 +36,29 @@ TEXT_FIX = {
 }
 
 
-def wanted(r):
-    if r["id"] in EXTRA:
-        return True
-    if r["team"] == "fabled":
-        return r.get("edition") == "fabled"
-    if r["team"] == "traveller":
-        return r.get("edition") in EDITIONS
-    return r.get("edition") in EDITIONS and r["team"] in ("townsfolk", "outsider", "minion", "demon")
+# справочник: «как вести», «важно», «советы» — пересказ вики своими словами (app/data/guide/*.json);
+# для ролей без официального перевода там же неофициальные name/ability
+guide = {}
+for f in sorted((D / "guide").glob("*.json")):
+    guide.update(json.loads(f.read_text(encoding="utf-8")))
 
-
+# В данные идут все роли: базовая коробка, экспериментальные (Carousel), Странники, Сказочники и Лорики —
+# справочник и свои сценарии. Встроенные сценарии — только из коробки (+ Catfishing). box — роль из базовой коробки.
 roles = {}
 for r in roles_en:
-    if not wanted(r):
-        continue
     t = ru["roles"].get(r["id"], {})
-    rid = r["id"]
+    rid, g = r["id"], guide.get(r["id"], {})
     roles[rid] = {
         "id": rid,
-        "name": t.get("name", r["name"]),
+        "name": t.get("name") or g.get("name") or r["name"],
         "en": r["name"],
         "team": r["team"],
         "edition": r["edition"],
-        "ability": t.get("ability", r["ability"]),
-        "first": t.get("first") if r.get("firstNightReminder") else None,
-        "other": t.get("other") if r.get("otherNightReminder") else None,
+        "box": r["edition"] in EDITIONS or r["team"] == "fabled" and r["edition"] == "fabled",
+        "ability": t.get("ability") or g.get("ability") or r["ability"],
+        "unofficial": not t.get("name"),  # нет официального перевода — название и способность переведены нами
+        "first": (t.get("first") or r.get("firstNightReminder")) if r.get("firstNightReminder") else None,
+        "other": (t.get("other") or r.get("otherNightReminder")) if r.get("otherNightReminder") else None,
         "reminders": [ru_reminder(x) for x in r.get("reminders", [])],
         "setup": bool(r.get("setup")),
         "props": PROPS.get(rid, {}),
@@ -120,13 +115,9 @@ for s in scripts.values():
     missing = [x for x in s["roles"] + s.get("travellers", []) if x not in roles]
     assert not missing, missing
 
-# справочник: «как вести», «важно», «советы» — пересказ вики своими словами (app/data/guide/*.json)
-guide = {}
-for f in sorted((D / "guide").glob("*.json")):
-    guide.update(json.loads(f.read_text(encoding="utf-8")))
 no_guide = [rid for rid in roles if rid not in guide]
 assert not no_guide, f"нет справки для ролей: {no_guide}"
-guide = {rid: g for rid, g in guide.items() if rid in roles}
+guide = {rid: {k: g[k] for k in ("how", "rules", "tips") if k in g} for rid, g in guide.items() if rid in roles}
 
 data = {"roles": roles, "special": special, "order": order, "jinxes": jinxes, "scripts": scripts,
         "travellers": travellers, "fabled": fabled, "guide": guide}
