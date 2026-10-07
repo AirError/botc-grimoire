@@ -7,7 +7,7 @@ let S = null;
 // История для отмены: массив снимков состояния до каждого действия (паттерн History)
 let HISTORY = [];
 const HIST_MAX = 40;
-const UI = { tab: 'game', open: null, notes: [], hideInactive: true, confirm: null, importText: '', customText: '', save: 'local', copied: '', killPid: null, killWhy: '', pickOpen: null, refQ: '', refAll: false, refOpen: null };
+const UI = { tab: 'game', open: null, notes: [], hideInactive: true, confirm: null, importText: '', customText: '', save: 'local', copied: '', killPid: null, killWhy: '', pickOpen: null, refQ: '', refScript: null, refOpen: null };
 
 const esc = s => String(s ?? '').replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
 const team = rid => rid && DATA.roles[rid] ? DATA.roles[rid].team : '';
@@ -499,10 +499,26 @@ const EDITION_RU = { tb: 'Trouble Brewing', bmr: 'Bad Moon Rising', snv: 'Sects 
   fabled: 'Сказочники', loric: 'Лорики, не из базовой коробки' };
 const REF_TEAMS = [['townsfolk', 'Горожане'], ['outsider', 'Изгои'], ['minion', 'Приспешники'], ['demon', 'Демоны'], ['traveller', 'Странники'], ['fabled', 'Сказочники'], ['loric', 'Лорики']];
 const TYPE_RU = { fabled: 'Сказочник', loric: 'Лорик' };
+// выбранный в справочнике сценарий: 'all', ключ встроенного сценария или 'custom' (свой сценарий текущей игры)
+const refKey = () => {
+  const k = UI.refScript;
+  if (k && (k === 'all' || DATA.scripts[k] || (k === 'custom' && S.script.key === 'custom'))) return k;
+  return S.script.key === 'custom' || DATA.scripts[S.script.key] ? S.script.key : 'all';
+};
 function refPool() {
-  if (UI.refAll) return Object.keys(DATA.roles);
-  const tr = S.script.travellers && S.script.travellers.length ? S.script.travellers : DATA.travellers;
-  return [...new Set([...S.script.roles, ...tr, ...S.players.filter(E.isTraveller).map(p => p.role), ...(S.fabled || [])])].filter(r => DATA.roles[r]);
+  const key = refKey();
+  if (key === 'all') return Object.keys(DATA.roles);
+  // роли сценария + его Странники (рекомендованные сценарием; у изданий коробки — Странники этого издания)
+  const sc = key === 'custom' ? S.script : DATA.scripts[key];
+  if (!sc) return Object.keys(DATA.roles);
+  const tr = sc.travellers && sc.travellers.length ? sc.travellers : Object.keys(DATA.roles).filter(r => DATA.roles[r].team === 'traveller' && DATA.roles[r].edition === key);
+  return [...new Set([...sc.roles, ...tr])].filter(r => DATA.roles[r]);
+}
+function refScriptSelect() {
+  const key = refKey();
+  const opts = [['all', `Все роли (${Object.keys(DATA.roles).length})`], ...Object.entries(DATA.scripts).map(([k, s]) => [k, s.name])];
+  if (S.script.key === 'custom') opts.push(['custom', 'Свой: ' + S.script.name]);
+  return `<div class="field"><label for="refScript">Сценарий</label><select id="refScript" data-act="refScript">${opts.map(([k, l]) => `<option value="${k}" ${k === key ? 'selected' : ''}>${esc(l)}</option>`).join('')}</select></div>`;
 }
 function refCard(rid) {
   const r = DATA.roles[rid], g = DATA.guide[rid] || {}, li = a => (a || []).map(t => `<li>${esc(t)}</li>`).join('');
@@ -537,7 +553,7 @@ function viewRoles() {
   }).join('');
   return `<div class="card"><h3>Справочник ролей</h3>
     <input type="search" id="refQ" data-act="refQ" data-live="1" value="${esc(UI.refQ)}" placeholder="Поиск по названию (рус. или англ.)" aria-label="Поиск роли">
-    <div class="seg"><button class="${UI.refAll ? '' : 'on'}" data-act="refScope" data-arg="script">${esc(S.script.name)}</button><button class="${UI.refAll ? 'on' : ''}" data-act="refScope" data-arg="all">Все роли</button></div>
+    ${refScriptSelect()}
     <div class="small muted">Способности и ночные тексты — официальные. «Как вести», «Важно» и «Советы» — пересказ вики wiki.bloodontheclocktower.com.</div></div>
     <div class="card">${groups || '<div class="muted">Нет ролей</div>'}<div class="muted small refnone" hidden>Ничего не найдено</div></div>`;
 }
@@ -687,7 +703,7 @@ const A = {
   pickOpen: key => { UI.pickOpen = UI.pickOpen === key ? null : key; render(); },
   // справочник ролей
   refOpen: id => { UI.refOpen = UI.refOpen === id ? null : id; render(); },
-  refScope: v => { UI.refAll = v === 'all'; render(); },
+  refScript: (a, el) => { UI.refScript = el.value; UI.refOpen = null; render(); },
   refQ: (a, el) => { UI.refQ = el.value; filterRefs(); },
   nomClear: () => { UI.pickOpen = null; draft(S => { S.day.draft = { by: null, on: null, voters: [], stage: 'pick', spy: false }; }); },
   exClear: () => { UI.pickOpen = null; draft(S => { S.day.picks.exile = null; S.day.picks.exFunny = false; }); },
