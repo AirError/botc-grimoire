@@ -120,8 +120,16 @@ for s in scripts.values():
     missing = [x for x in s["roles"] + s.get("travellers", []) if x not in roles]
     assert not missing, missing
 
+# справочник: «как вести», «важно», «советы» — пересказ вики своими словами (app/data/guide/*.json)
+guide = {}
+for f in sorted((D / "guide").glob("*.json")):
+    guide.update(json.loads(f.read_text(encoding="utf-8")))
+no_guide = [rid for rid in roles if rid not in guide]
+assert not no_guide, f"нет справки для ролей: {no_guide}"
+guide = {rid: g for rid, g in guide.items() if rid in roles}
+
 data = {"roles": roles, "special": special, "order": order, "jinxes": jinxes, "scripts": scripts,
-        "travellers": travellers, "fabled": fabled}
+        "travellers": travellers, "fabled": fabled, "guide": guide}
 out = ROOT / "app" / "src" / "data.js"
 out.parent.mkdir(parents=True, exist_ok=True)
 out.write_text("const DATA = " + json.dumps(data, ensure_ascii=False, separators=(",", ":")) + ";\n",

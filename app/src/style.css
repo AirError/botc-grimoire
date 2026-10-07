@@ -65,7 +65,7 @@ h3 { font-family: var(--f-sc); font-weight: 700; font-size: 15px; letter-spacing
 .seg { display: flex; gap: 6px; flex-wrap: wrap; }
 .seg button { min-height: 42px; padding: 6px 14px; border-radius: 9px; border: 1px solid var(--line); background: var(--paper); cursor: pointer; }
 .seg button.on { border-color: var(--gold); background: var(--goldbg); font-weight: 700; }
-select, input[type=text], textarea { width: 100%; min-height: 46px; border: 1px solid var(--line); border-radius: 9px; background: var(--paper); padding: 8px 10px; }
+select, input[type=text], input[type=search], textarea { width: 100%; min-height: 46px; border: 1px solid var(--line); border-radius: 9px; background: var(--paper); padding: 8px 10px; }
 textarea { min-height: 96px; resize: vertical; }
 .stepper { display: flex; align-items: center; gap: 10px; } .stepper b { font-size: 24px; min-width: 2ch; text-align: center; font-variant-numeric: tabular-nums; }
 
@@ -82,6 +82,10 @@ textarea { min-height: 96px; resize: vertical; }
 .reveal .lab { font-family: var(--f-sc); font-size: 13px; letter-spacing: .1em; color: var(--gold); }
 .reveal .big { font-size: 24px; font-weight: 700; line-height: 1.2; overflow-wrap: anywhere; }
 .reveal .ln { font-size: 14.5px; }
+/* только для рассказчика — не показывать игроку */
+.reveal.secret { border-style: dashed; border-color: var(--muted); background: transparent; }
+.reveal.secret .lab { color: var(--muted); }
+:root[data-theme="light"] { color-scheme: light; }
 /* слова рассказчика на рассвет: читать вслух */
 .tale { border-left: 3px solid var(--gold); padding: 2px 0 2px 14px; display: flex; flex-direction: column; gap: 6px; }
 .tale .lab { font-family: var(--f-sc); font-size: 13px; letter-spacing: .1em; color: var(--gold); }
@@ -129,13 +133,51 @@ details > .tale { margin-top: 10px; }
 .dist { width: 100%; border-collapse: collapse; font-variant-numeric: tabular-nums; font-size: 15px; }
 .dist td { padding: 4px 0; } .dist td:last-child { text-align: right; font-weight: 700; }
 .dist .bad { color: var(--evil); }
+
+/* квадратики с именами: номинация, голосование, изгнание */
+.tiles { display: grid; grid-template-columns: repeat(auto-fill, minmax(66px, 1fr)); gap: 6px; }
+.tile { position: relative; aspect-ratio: 1 / 1; min-width: 0; border: 1px solid var(--line); border-radius: 10px; background: var(--paper);
+  display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 2px; padding: 14px 4px 6px; text-align: center; cursor: pointer; }
+.tile .tn { position: absolute; top: 4px; left: 7px; font-size: 11px; color: var(--muted); font-variant-numeric: tabular-nums; }
+.tile .tname { font-weight: 800; font-size: 15px; line-height: 1.15; overflow-wrap: anywhere; }
+.tile .tsub { font-size: 11px; line-height: 1.2; color: var(--muted); }
+.tile .tck { position: absolute; top: 2px; right: 7px; color: var(--gold); font-weight: 800; font-size: 16px; }
+.tile.on { border: 2px solid var(--gold); background: var(--goldbg); }
+.tile.dead .tname { text-decoration: line-through; opacity: .7; }
+.tile:disabled { opacity: .25; cursor: default; }
+.pick { display: flex; flex-direction: column; gap: 8px; }
+.pickhead { display: flex; align-items: center; gap: 10px; width: 100%; min-height: 52px; padding: 8px 14px; border: 1px solid var(--line); border-radius: 10px;
+  background: var(--paper); cursor: pointer; text-align: left; }
+.pickhead .pl { color: var(--muted); font-size: 14px; }
+.pickhead .pv { margin-left: auto; font-weight: 800; font-size: 17px; }
+.pickhead .pc { color: var(--gold); font-size: 14px; }
+.pickhead.open { border-color: var(--gold); }
+/* справочник ролей */
+[hidden] { display: none !important; }
+.refgroup { display: flex; flex-direction: column; }
+.refgroup + .refgroup { margin-top: 14px; }
+.refgroup h3 { margin-bottom: 4px; }
+.refrow { display: flex; align-items: center; gap: 10px; width: 100%; min-height: 50px; padding: 6px 4px; border: none; border-bottom: 1px solid var(--line);
+  background: none; cursor: pointer; text-align: left; }
+.refrow .ri { width: 36px; height: 36px; object-fit: contain; flex: none; }
+.refrow .rname { font-weight: 700; font-size: 16.5px; }
+.refrow .pc { margin-left: auto; color: var(--gold); }
+.refrow.open { border-bottom-color: transparent; }
+.refcard { padding: 4px 4px 16px; display: flex; flex-direction: column; gap: 12px; border-bottom: 1px solid var(--line); }
+.refability { font-size: 16px; font-weight: 600; line-height: 1.4; }
+.refprops { display: flex; flex-direction: column; gap: 5px; }
+.refsec .lab { font-family: var(--f-sc); font-size: 13px; letter-spacing: .1em; color: var(--gold); text-transform: uppercase; margin-bottom: 3px; }
+.refsec ul { margin: 0; padding-left: 18px; display: flex; flex-direction: column; gap: 4px; font-size: 15px; }
+.confirm { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+.btn.ok { background: var(--ok); border-color: var(--ok); color: #FFFFFF; font-weight: 700; }
+.btn.no { background: var(--evil); border-color: var(--evil); color: #FFFFFF; font-weight: 700; }
 .field.ask { background: var(--warnbg); border-radius: 9px; padding: 9px 11px; }
 .field.ask > label { color: var(--warn); font-weight: 700; }
 
 /* панель вкладок */
 .tabs { position: fixed; left: 0; right: 0; bottom: 0; z-index: 6; background: var(--card); border-top: 1px solid var(--line);
-  display: grid; grid-template-columns: repeat(4, 1fr); padding-bottom: env(safe-area-inset-bottom, 0px); }
-.tabs button { min-height: 58px; border: none; background: none; cursor: pointer; font-family: var(--f-sc); font-weight: 700; font-size: 14px; letter-spacing: .05em; color: var(--muted); }
+  display: grid; grid-template-columns: repeat(5, 1fr); padding-bottom: env(safe-area-inset-bottom, 0px); }
+.tabs button { min-height: 58px; border: none; background: none; cursor: pointer; font-family: var(--f-sc); font-weight: 700; font-size: 13px; letter-spacing: .03em; color: var(--muted); padding: 0 2px; }
 .tabs button.on { color: var(--gold); box-shadow: inset 0 3px 0 var(--gold); }
 .banner { text-align: center; padding: 22px 14px; border-radius: 12px; border: 2px solid var(--gold); background: var(--goldbg); }
 .banner .w { font-family: var(--f-sc); font-weight: 700; font-size: 28px; letter-spacing: .04em; }
@@ -170,12 +212,13 @@ h3.hi { display: flex; align-items: center; gap: 8px; }
 .top { gap: 8px; }
 .hundo { min-width: 48px; min-height: 40px; border-radius: 10px; border: 1px solid var(--line); background: var(--card); font-size: 20px; font-weight: 800; cursor: pointer; color: var(--ink); }
 .hundo:disabled { opacity: .3; cursor: default; }
-#toast { position: fixed; left: 12px; right: 12px; bottom: calc(70px + env(safe-area-inset-bottom, 0px)); z-index: 7; max-width: 616px; margin: 0 auto;
-  display: flex; gap: 10px; align-items: center; background: var(--ink); color: var(--paper); border-radius: 12px; padding: 8px 8px 8px 14px;
-  transform: translateY(160%); opacity: 0; pointer-events: none; transition: transform .2s ease-out, opacity .2s ease-out; }
-#toast.show { transform: none; opacity: 1; pointer-events: auto; }
-#toast .tt { flex: 1; min-width: 0; font-size: 15px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-#toast .tu { flex: none; min-height: 44px; padding: 0 14px; border-radius: 10px; border: 1px solid currentColor; background: transparent; color: inherit; font-weight: 800; cursor: pointer; }
+/* подсказка с отменой: сверху под шапкой, компактная, исчезает через 3 секунды */
+#toast { position: fixed; left: 50%; top: calc(54px + env(safe-area-inset-top, 0px)); z-index: 7; max-width: min(420px, calc(100% - 32px));
+  display: flex; gap: 8px; align-items: center; background: var(--ink); color: var(--paper); border-radius: 999px; padding: 4px 4px 4px 12px;
+  transform: translate(-50%, -12px); opacity: 0; pointer-events: none; transition: transform .2s ease-out, opacity .2s ease-out; }
+#toast.show { transform: translate(-50%, 0); opacity: 1; pointer-events: auto; }
+#toast .tt { flex: 1; min-width: 0; font-size: 13px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+#toast .tu { flex: none; width: 32px; height: 32px; border-radius: 50%; border: 1px solid currentColor; background: transparent; color: inherit; font-size: 16px; font-weight: 800; cursor: pointer; padding: 0; }
 @media (prefers-reduced-motion: reduce) { #toast { transition: none; } }
 .rolepick { border-radius: 10px; padding: 8px 10px; border-left: 6px solid var(--line); background: var(--paper); }
 .rolepick.side-good { border-left-color: var(--good); background: var(--goodbg); }

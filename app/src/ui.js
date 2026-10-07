@@ -7,7 +7,7 @@ let S = null;
 // История для отмены: массив снимков состояния до каждого действия (паттерн History)
 let HISTORY = [];
 const HIST_MAX = 40;
-const UI = { tab: 'game', open: null, notes: [], hideInactive: true, confirm: null, importText: '', customText: '', save: 'local', copied: '', killPid: null, killWhy: '' };
+const UI = { tab: 'game', open: null, notes: [], hideInactive: true, confirm: null, importText: '', customText: '', save: 'local', copied: '', killPid: null, killWhy: '', pickOpen: null, refQ: '', refAll: false, refOpen: null };
 
 const esc = s => String(s ?? '').replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
 const team = rid => rid && DATA.roles[rid] ? DATA.roles[rid].team : '';
@@ -96,9 +96,9 @@ let toastTimer = null;
 function toast(text, withUndo) {
   let el = document.getElementById('toast');
   if (!el) { el = document.createElement('div'); el.id = 'toast'; el.setAttribute('role', 'status'); document.body.appendChild(el); }
-  el.innerHTML = `<span class="tt">${esc(text)}</span>${withUndo ? '<button class="tu" data-act="undo">↶ Отменить</button>' : ''}`;
+  el.innerHTML = `<span class="tt">${esc(text)}</span>${withUndo ? '<button class="tu" data-act="undo" aria-label="Отменить">↶</button>' : ''}`;
   el.className = 'show';
-  clearTimeout(toastTimer); toastTimer = setTimeout(() => { el.className = ''; }, withUndo ? 6000 : 2500);
+  clearTimeout(toastTimer); toastTimer = setTimeout(() => { el.className = ''; }, 3000);
 }
 
 /* ------------------------------------------------------------ общие куски разметки */
@@ -123,6 +123,24 @@ function chipsPlayers(key, n, filter, selected, opts) {
       <span class="ci-wrap">${icon}</span><span class="ct"><span class="cn">${esc(p.name)}</span>${sub}</span><span class="ck" aria-hidden="true">${on ? '✓' : ''}</span></button>`;
   }).join('') + '</div>';
 }
+
+// квадратики с именами (номинация, голосование, изгнание): одно нажатие выбирает, второе снимает выбор
+function tiles(key, n, filter, selected, act, opts) {
+  opts = opts || {};
+  return '<div class="tiles">' + S.players.map((p, i) => {
+    const ok = filter(p), on = selected.includes(p.id);
+    const sub = !p.alive ? (opts.ghost ? (p.ghost ? 'мёртв · голос' : 'мёртв · без голоса') : 'мёртв') : E.isTraveller(p) ? 'Странник' : '';
+    return `<button class="tile ${on ? 'on' : ''} ${p.alive ? '' : 'dead'}" data-act="${act}" data-arg="${key}|${p.id}|${n}" ${ok ? '' : 'disabled'} aria-pressed="${on}">
+      <span class="tn">${i + 1}</span><span class="tname">${esc(p.name)}</span>${sub ? `<span class="tsub">${sub}</span>` : ''}${on ? '<span class="tck" aria-hidden="true">✓</span>' : ''}</button>`;
+  }).join('') + '</div>';
+}
+// свёрнутый выбор: заголовок с текущим значением, по нажатию раскрывается список квадратиков
+function pickRow(key, label, value, body) {
+  const open = UI.pickOpen === key;
+  return `<div class="pick"><button class="pickhead ${open ? 'open' : ''}" data-act="pickOpen" data-arg="${key}" aria-expanded="${open}">
+    <span class="pl">${esc(label)}</span><span class="pv ${value ? '' : 'muted'}">${value ? esc(value) : 'выбрать'}</span><span class="pc" aria-hidden="true">${open ? '▴' : '▾'}</span></button>${open ? body : ''}</div>`;
+}
+const confirmRow = (okAct, okLabel, okOn, noAct, noLabel) => `<div class="confirm"><button class="btn ok" data-act="${okAct}" ${okOn ? '' : 'disabled'}>${okLabel}</button><button class="btn no" data-act="${noAct}">${noLabel}</button></div>`;
 
 function roleOptions(filter, selected, opts) {
   opts = opts || {};
@@ -278,7 +296,7 @@ function viewNight() {
       ${(spec.warn || []).map(w => `<div class="warn">${esc(w)}</div>`).join('')}
       ${fields.map(f => fieldHtml(f, inp)).join('')}
       ${goon ? `<div class="warn">${esc(goon)}</div>` : ''}
-      ${info && (info.show || (info.lines || []).filter(Boolean).length) ? `<div class="reveal"><div class="lab">Покажите / объявите</div>${info.show ? `<div class="big">${esc(info.show)}</div>` : ''}${(info.lines || []).filter(Boolean).map(l => `<div class="ln">${esc(l)}</div>`).join('')}</div>` : ''}
+      ${info && (info.show || (info.lines || []).filter(Boolean).length) ? `<div class="reveal ${info.secret ? 'secret' : ''}"><div class="lab">${info.secret ? 'Только для вас — не показывайте' : 'Покажите / объявите'}</div>${info.show ? `<div class="big">${esc(info.show)}</div>` : ''}${(info.lines || []).filter(Boolean).map(l => `<div class="ln">${esc(l)}</div>`).join('')}</div>` : ''}
       ${st.id === 'dawn' ? morningHtml(true) : ''}
       ${missing.length ? `<div class="small muted">Осталось выбрать: ${missing.map(esc).join('; ')}</div>` : ''}
       <div class="actions"><button class="btn primary" data-act="stepDone" ${missing.length ? 'disabled' : ''}>${spec.active ? 'Готово' : 'Дальше'}</button>
@@ -361,20 +379,6 @@ function viewDay() {
     parts.push(`<div class="card"><h3>Догадки Жонглёра (до 5)</h3>${g.map((x, i) => `<div class="small">${esc(E.nm(S, x.pid))} — ${esc(E.rname(x.role))} <button class="linkish" data-act="jugDel" data-arg="${i}">убрать</button></div>`).join('')}
       ${g.length < 5 ? `<div class="row" style="flex-wrap:nowrap"><select id="jugP">${S.players.map(p => `<option value="${p.id}">${esc(p.name)}</option>`).join('')}</select><select id="jugR">${roleOptions(() => true, null)}</select><button class="btn" data-act="jugAdd">+</button></div>` : ''}</div>`);
   }
-  // изгнание Странников
-  const trAlive = S.players.filter(p => E.isTraveller(p) && p.alive);
-  if (trAlive.length) {
-    const ex = picks.exile || { pid: null, voters: [] }, eth = E.exileThreshold(S), pass = ex.voters.length >= eth;
-    parts.push(`<div class="card"><h3 class="hi">${art('traveller', 'hg')}Изгнание Странника</h3>
-      ${boundsHtml([{ w: 'Кого', t: 'только Странника; изгнание — не казнь, за день их может быть сколько угодно' },
-        { w: 'Голосуют', t: 'все игроки, живые и мёртвые; голос призрака при этом не тратится' },
-        { w: 'Изгнан', t: `если голосов не меньше половины всех игроков: ${eth} из ${S.players.length}` }])}
-      ${chipsPlayers('exPid', 1, p => E.isTraveller(p) && p.alive, ex.pid ? [ex.pid] : [], { act: 'exPick' })}
-      ${ex.pid ? `<div class="flabel"><span>Кто голосует за изгнание</span><span>${ex.voters.length}</span></div>${chipsPlayers('exV', 99, () => true, ex.voters, { act: 'exVote', noRole: true })}
-      <div class="reveal"><div class="lab">Голосов</div><div class="big">${ex.voters.length} из ${eth} — ${pass ? 'изгнан' : 'не изгнан'}</div></div>
-      ${pass && E.P(S, ex.pid).role === 'deviant' ? `<div class="seg"><button class="${picks.exFunny ? 'on' : ''}" data-act="exFunny">Девиант сегодня был забавным — не умирает</button></div>` : ''}
-      <button class="btn ${pass ? 'danger' : ''} wide" data-act="exile">Записать: ${pass ? 'Странник изгнан' : 'Странник остаётся'}</button>` : ''}</div>`);
-  }
   // Судья: раз за игру решает исход номинации, сделанной другим игроком (во время голосования или сразу после)
   const judge = S.players.find(p => p.role === 'judge' && p.alive && !S.flags['judge_' + p.id]);
   const judgeHtml = (onId, byId) => judge && byId !== judge.id && !d.executed ? `<div class="field"><label>Судья (${esc(judge.name)}), раз за игру: исход номинации ${esc(E.nm(S, onId))}</label>
@@ -391,10 +395,10 @@ function viewDay() {
     if (S.players.some(p => p.role === 'beggar' && p.alive)) rules.push({ w: 'Нищий', t: 'голосует, только если у него есть жетон голоса (мёртвые могут отдать ему свой — он узнаёт их сторону)' });
     parts.push(`<div class="card"><h3 class="hi">${art('vote', 'hg')}Голосование: ${esc(on.name)}</h3><div class="small muted">Номинировал ${esc(by ? by.name : 'рассказчик')}${d.lastNom && d.lastNom.butcher ? ' (Мясник, после казни: порог тот же, превышать первую не нужно)' : ''}. Отметьте всех, кто поднял руку.</div>
       ${boundsHtml(rules)}
-      ${chipsPlayers('voters', 99, canVote, nm.voters, { act: 'vote', noRole: true, ghost: !vd })}
+      ${tiles('voters', 99, canVote, nm.voters, 'vote', { ghost: !vd })}
       <div class="reveal"><div class="lab">Голосов</div><div class="big">${cnt} из ${th}</div>${weighted.map(t => `<div class="ln">${esc(t)}</div>`).join('')}</div>
       ${judgeHtml(nm.on, nm.by)}
-      <div class="actions"><button class="btn primary" data-act="voteDone">Записать голоса</button><button class="btn" data-act="voteCancel">Отменить номинацию</button></div></div>`);
+      ${confirmRow('voteDone', 'Подтвердить голоса', true, 'voteCancel', 'Отменить номинацию')}</div>`);
   } else if (!d.executed || butcherTurn) {
     const byOk = butcherTurn ? (p => p.role === 'butcher' && p.alive) : (p => p.alive && !d.nominators.includes(p.id));
     const onOk = p => !E.isTraveller(p) && (butcherTurn || !d.nominated.includes(p.id));
@@ -404,11 +408,11 @@ function viewDay() {
         : [{ w: 'Номинирует', t: 'живой игрок, не больше 1 раза за день' }, { w: 'Номинировать', t: 'любого, кроме Странников (их изгоняют), каждого — не больше 1 раза за день' }];
     parts.push(`<div class="card"><h3 class="hi">${art('nominate', 'hg')}${butcherTurn ? 'Номинация Мясника' : 'Номинация'}</h3>
       ${boundsHtml(rules)}
-      ${bishop ? '' : `<div class="field"><div class="flabel"><span>Кто номинирует</span></div>${chipsPlayers('by', 1, byOk, nm.by ? [nm.by] : [], { act: 'nomPick', noRole: true })}</div>`}
-      <div class="field"><div class="flabel"><span>Кого</span></div>${chipsPlayers('on', 1, onOk, nm.on ? [nm.on] : [], { act: 'nomPick', noRole: true })}</div>
+      ${bishop ? '' : pickRow('by', 'Кто номинирует', nm.by && E.nm(S, nm.by), tiles('by', 1, byOk, nm.by ? [nm.by] : [], 'nomPick'))}
+      ${pickRow('on', 'Кого номинируют', nm.on && E.nm(S, nm.on), tiles('on', 1, onOk, nm.on ? [nm.on] : [], 'nomPick'))}
       ${pv.notes.map(t => `<div class="warn">${esc(t)}</div>`).join('')}
       ${pv.askSpy ? `<div class="field"><label>Ваше решение: Шпион определяется Горожанином?</label><div class="seg"><button class="${nm.spy ? '' : 'on'}" data-act="nomSpy" data-arg="0">Нет</button><button class="${nm.spy ? 'on' : ''}" data-act="nomSpy" data-arg="1">Да — его казнят</button></div></div>` : ''}
-      <button class="btn primary" data-act="nominate" ${(bishop || nm.by) && nm.on ? '' : 'disabled'}>Номинировать</button></div>`);
+      ${confirmRow('nominate', 'Подтвердить', (bishop || nm.by) && nm.on, 'nomClear', 'Отменить')}</div>`);
     // Судья может решить исход последней номинации и после подсчёта, пока не номинировали следующего
     const last = d.lastNom && d.noms.some(x => x.on === d.lastNom.on && !x.pardoned) ? d.lastNom : null;
     if (last && judge && !nm.on) parts.push(`<div class="card">${judgeHtml(last.on, last.by)}</div>`);
@@ -424,7 +428,23 @@ function viewDay() {
     <details><summary class="small">Казнить другого игрока (решение рассказчика)</summary><div style="margin-top:8px">${chipsPlayers('manualExe', 1, p => p.alive && !E.isTraveller(p), picks.manualExe || [], { act: 'dayPick', noRole: true })}
     <button class="btn danger" data-act="manualExe" ${(picks.manualExe || []).length ? '' : 'disabled'}>Казнить и завершить день</button></div></details></div>`);
   parts.push(killFormHtml());
+  parts.push(exileHtml(picks)); // изгнание Странников — в самом низу
   return parts.join('');
+}
+
+// изгнание Странника: выбор Странника и голосующих — квадратиками
+function exileHtml(picks) {
+  if (!S.players.some(p => E.isTraveller(p) && p.alive)) return '';
+  const ex = picks.exile || { pid: null, voters: [] }, eth = E.exileThreshold(S), pass = ex.voters.length >= eth;
+  return `<div class="card"><h3 class="hi">${art('traveller', 'hg')}Изгнание Странника</h3>
+    ${boundsHtml([{ w: 'Кого', t: 'только Странника; изгнание — не казнь, за день их может быть сколько угодно' },
+      { w: 'Голосуют', t: 'все игроки, живые и мёртвые; голос призрака при этом не тратится' },
+      { w: 'Изгнан', t: `если голосов не меньше половины всех игроков: ${eth} из ${S.players.length}` }])}
+    ${pickRow('exPid', 'Кого изгоняют', ex.pid && E.nm(S, ex.pid), tiles('exPid', 1, p => E.isTraveller(p) && p.alive, ex.pid ? [ex.pid] : [], 'exPick'))}
+    ${ex.pid ? `<div class="flabel"><span>Кто голосует за изгнание</span><span>${ex.voters.length}</span></div>${tiles('exV', 99, () => true, ex.voters, 'exVote')}
+    <div class="reveal"><div class="lab">Голосов</div><div class="big">${ex.voters.length} из ${eth} — ${pass ? 'изгнан' : 'не изгнан'}</div></div>
+    ${pass && E.P(S, ex.pid).role === 'deviant' ? `<div class="seg"><button class="${picks.exFunny ? 'on' : ''}" data-act="exFunny">Девиант сегодня был забавным — не умирает</button></div>` : ''}
+    ${confirmRow('exile', pass ? 'Подтвердить: изгнан' : 'Подтвердить: остаётся', true, 'exClear', 'Отменить')}` : ''}</div>`;
 }
 
 // убить игрока по решению рассказчика, с причиной-примечанием (днём и ночью)
@@ -472,6 +492,58 @@ function viewLog() {
   for (const e of S.log) { const g = groups[groups.length - 1]; if (!g || g.p !== e.p) groups.push({ p: e.p, items: [e] }); else g.items.push(e); }
   return `<div class="card"><h3>Журнал</h3><div class="log">${groups.slice().reverse().map(g => `<div class="ph">${esc(phaseName(g.p))}</div>${g.items.map(e => `<div class="e ${e.k}">${esc(e.t)}</div>`).join('')}`).join('') || '<div class="muted">Пока пусто</div>'}</div></div>`;
 }
+/* ------------------------------------------------------------ справочник ролей */
+const EDITION_RU = { tb: 'Trouble Brewing', bmr: 'Bad Moon Rising', snv: 'Sects & Violets', carousel: 'Carousel — не из базовой коробки', fabled: 'Сказочники' };
+const REF_TEAMS = [['townsfolk', 'Горожане'], ['outsider', 'Изгои'], ['minion', 'Приспешники'], ['demon', 'Демоны'], ['traveller', 'Странники'], ['fabled', 'Сказочники']];
+function refPool() {
+  if (UI.refAll) return Object.keys(DATA.roles);
+  const tr = S.script.travellers && S.script.travellers.length ? S.script.travellers : DATA.travellers;
+  return [...new Set([...S.script.roles, ...tr, ...S.players.filter(E.isTraveller).map(p => p.role), ...(S.fabled || [])])].filter(r => DATA.roles[r]);
+}
+function refCard(rid) {
+  const r = DATA.roles[rid], g = DATA.guide[rid] || {}, li = a => (a || []).map(t => `<li>${esc(t)}</li>`).join('');
+  const setup = (r.ability.match(/\[[^\]]+\]/) || [])[0];
+  const who = S.players.filter(p => p.role === rid || p.gained === rid || p.believes === rid).map(p => p.name + (p.role !== rid ? ` (${p.gained === rid ? 'способность' : 'считает себя'})` : ''));
+  const jx = Object.entries(DATA.jinxes).filter(([k]) => k.split('|').includes(rid)).map(([k, t]) => `<li><b>${esc(E.rname(k.split('|').find(x => x !== rid) || rid))}:</b> ${esc(t)}</li>`).join('');
+  const night = (lab, txt) => `<div><b>${lab}:</b> ${txt ? fmtInstr(txt) : '<span class="muted">не просыпается</span>'}</div>`;
+  return `<div class="refcard">
+    <div class="refability">${esc(r.ability)}</div>
+    <div class="refprops small">
+      <div><b>Тип:</b> ${esc(r.team === 'fabled' ? 'Сказочник' : E.TEAM_RU[r.team])} · ${esc(EDITION_RU[r.edition] || r.edition)}</div>
+      ${setup ? `<div><b>Раскладка:</b> ${esc(setup)}</div>` : ''}
+      ${r.team !== 'fabled' ? night('Первая ночь', r.first) + night('Остальные ночи', r.other) : (r.first || r.other ? night('Ночью', r.first || r.other) : '')}
+      ${r.reminders.length ? `<div><b>Жетоны-напоминания:</b> ${r.reminders.map(esc).join(', ')}</div>` : ''}
+      ${who.length ? `<div><b>В этой игре:</b> ${who.map(esc).join(', ')}</div>` : ''}
+    </div>
+    ${g.how ? `<div class="refsec"><div class="lab">Как вести</div><div>${esc(g.how)}</div></div>` : ''}
+    ${(g.rules || []).length ? `<div class="refsec"><div class="lab">Важно</div><ul>${li(g.rules)}</ul></div>` : ''}
+    ${(g.tips || []).length ? `<div class="refsec"><div class="lab">Советы рассказчику</div><ul>${li(g.tips)}</ul></div>` : ''}
+    ${jx ? `<div class="refsec"><div class="lab">Джинксы</div><ul>${jx}</ul></div>` : ''}
+  </div>`;
+}
+function viewRoles() {
+  const pool = refPool();
+  const groups = REF_TEAMS.map(([t, label]) => {
+    const rs = pool.filter(r => DATA.roles[r].team === t).sort((a, b) => E.rname(a).localeCompare(E.rname(b), 'ru'));
+    if (!rs.length) return '';
+    return `<div class="refgroup"><h3 class="t-${t}">${label}</h3>${rs.map(rid => `<div class="refitem" data-name="${esc((E.rname(rid) + ' ' + DATA.roles[rid].en).toLowerCase())}">
+      <button class="refrow ${UI.refOpen === rid ? 'open' : ''}" data-act="refOpen" data-arg="${rid}" aria-expanded="${UI.refOpen === rid}">${ico(rid, t === 'fabled' ? 'good' : null, 'ri')}<span class="rname t-${t}">${esc(E.rname(rid))}</span><span class="pc" aria-hidden="true">${UI.refOpen === rid ? '▴' : '▾'}</span></button>
+      ${UI.refOpen === rid ? refCard(rid) : ''}</div>`).join('')}</div>`;
+  }).join('');
+  return `<div class="card"><h3>Справочник ролей</h3>
+    <input type="search" id="refQ" data-act="refQ" data-live="1" value="${esc(UI.refQ)}" placeholder="Поиск по названию (рус. или англ.)" aria-label="Поиск роли">
+    <div class="seg"><button class="${UI.refAll ? '' : 'on'}" data-act="refScope" data-arg="script">${esc(S.script.name)}</button><button class="${UI.refAll ? 'on' : ''}" data-act="refScope" data-arg="all">Все роли</button></div>
+    <div class="small muted">Способности и ночные тексты — официальные. «Как вести», «Важно» и «Советы» — пересказ вики wiki.bloodontheclocktower.com.</div></div>
+    <div class="card">${groups || '<div class="muted">Нет ролей</div>'}<div class="muted small refnone" hidden>Ничего не найдено</div></div>`;
+}
+// поиск без перерисовки — чтобы поле не теряло фокус
+function filterRefs() {
+  const q = (UI.refQ || '').trim().toLowerCase(); let any = false;
+  document.querySelectorAll('.refitem').forEach(el => { const ok = !q || el.dataset.name.includes(q); el.hidden = !ok; any = any || ok; });
+  document.querySelectorAll('.refgroup').forEach(g => { g.hidden = ![...g.querySelectorAll('.refitem')].some(el => !el.hidden); });
+  const none = document.querySelector('.refnone'); if (none) none.hidden = any;
+}
+
 const phaseName = t => t.startsWith('Н') ? 'Ночь ' + t.slice(1) : t.startsWith('Д') ? 'День ' + t.slice(1) : t === 'Подг.' ? 'Подготовка' : t;
 
 function viewMenu() {
@@ -499,11 +571,14 @@ function render() {
   if (!S) { app.innerHTML = '<main><div class="card">Загрузка…</div></main>'; return; }
   // ночью — принудительный OLED: чистый чёрный фон, светятся только текст и иконки
   document.documentElement.classList.toggle('oled', S.phase === 'night');
+  // днём и на остальных экранах — всегда светлая тема, даже если телефон переключился на тёмную
+  document.documentElement.dataset.theme = 'light';
   const ph = S.phase === 'setup' ? 'Подготовка' : S.phase === 'night' ? `Ночь ${S.n} · ${S.night.i + 1}/${S.night.steps.length}` : S.phase === 'day' ? `День ${S.n}` : 'Игра окончена';
   let body = '';
   if (UI.tab === 'game') body = S.phase === 'setup' ? viewSetup() : S.phase === 'night' ? viewNight() : S.phase === 'day' ? viewDay() : viewOver();
   if (UI.tab === 'table') body = viewTable();
   if (UI.tab === 'log') body = viewLog();
+  if (UI.tab === 'roles') body = viewRoles();
   if (UI.tab === 'menu') body = viewMenu();
   const last = HISTORY[HISTORY.length - 1];
   const scrollY = window.scrollY;
@@ -512,8 +587,9 @@ function render() {
   app.innerHTML = `<header class="top"><span class="brand">${art('icon', 'logo')}Гримуар</span><span class="phase">${esc(ph)}</span>
       <button class="hundo" data-act="undo" ${last ? '' : 'disabled'} aria-label="${last ? esc('Отменить: ' + last.label) : 'Нечего отменять'}" title="${last ? esc('Отменить: ' + last.label) : ''}">↶</button><span class="save"></span></header>
     <main>${body}</main>
-    <nav class="tabs">${[['game', S.phase === 'night' ? 'Ночь' : S.phase === 'day' ? 'День' : 'Игра'], ['table', 'Стол'], ['log', 'Журнал'], ['menu', 'Ещё']].map(([k, l]) => `<button class="${UI.tab === k ? 'on' : ''}" data-act="tab" data-arg="${k}">${l}</button>`).join('')}</nav>`;
+    <nav class="tabs">${[['game', S.phase === 'night' ? 'Ночь' : S.phase === 'day' ? 'День' : 'Игра'], ['table', 'Стол'], ['log', 'Журнал'], ['roles', 'Роли'], ['menu', 'Ещё']].map(([k, l]) => `<button class="${UI.tab === k ? 'on' : ''}" data-act="tab" data-arg="${k}">${l}</button>`).join('')}</nav>`;
   app.querySelectorAll('details > summary').forEach(s => { if (opened.has(s.textContent)) s.parentElement.open = true; });
+  if (UI.tab === 'roles') filterRefs();
   paintSave();
   window.scrollTo(0, scrollY);
 }
@@ -586,7 +662,7 @@ const A = {
   slay: id => act(S => { E.slayerShot(S, id, S.day.picks['slay_' + id][0], S.day.picks.slayReg); S.day.picks = {}; }),
   jugAdd: () => { const pid = document.getElementById('jugP').value, role = document.getElementById('jugR').value; if (role) act(S => { (S.flags.jugglerGuesses = S.flags.jugglerGuesses || []).push({ pid, role }); }, 'догадка Жонглёра'); },
   jugDel: i => act(S => S.flags.jugglerGuesses.splice(+i, 1), 'убрана догадка'),
-  exPick: arg => { const id = arg.split('|')[1]; draft(S => { const ex = S.day.picks.exile || { pid: null, voters: [] }; ex.pid = ex.pid === id ? null : id; ex.voters = []; S.day.picks.exile = ex; }); },
+  exPick: arg => { const id = arg.split('|')[1]; draft(S => { const ex = S.day.picks.exile || { pid: null, voters: [] }; ex.pid = ex.pid === id ? null : id; ex.voters = []; S.day.picks.exile = ex; UI.pickOpen = ex.pid ? null : 'exPid'; }); },
   exVote: arg => { const id = arg.split('|')[1]; draft(S => { const v = S.day.picks.exile.voters; if (v.includes(id)) v.splice(v.indexOf(id), 1); else v.push(id); }); },
   exile: () => { const ex = clone(S.day.picks.exile), funny = !!S.day.picks.exFunny; act(S => { E.exile(S, ex.pid, ex.voters.length, null, { funny }); S.day.picks.exile = null; S.day.picks.exFunny = false; }); },
   exFunny: () => draft(S => { S.day.picks.exFunny = !S.day.picks.exFunny; }),
@@ -600,10 +676,20 @@ const A = {
   judge: arg => { const [j, on, pass] = arg.split('|'); act(S => { const r = E.judgeRuling(S, j, on, pass === '1'); S.day.draft = { by: null, on: null, voters: [], stage: 'pick', spy: false }; if (r.ended && !S.result) E.endDay(S); }); window.scrollTo(0, 0); },
   executeNow: () => { const o = { pacifist: S.day.picks.pacifist, scapegoat: S.day.picks.scapegoat }; act(S => { E.executeNow(S, o); S.day.picks.scapegoat = null; S.day.draft = { by: null, on: null, voters: [], stage: 'pick', spy: false }; }); },
   scapegoat: id => draft(S => { S.day.picks.scapegoat = S.day.picks.scapegoat ? null : id; }),
-  nomPick: arg => { const [key, id] = arg.split('|'); draft(S => { const d = S.day.draft; d[key] = d[key] === id ? null : id; d.spy = false; }); },
+  // выбор в свёрнутом списке: после «кто» сразу раскрывается «кого», после «кого» список сворачивается
+  nomPick: arg => { const [key, id] = arg.split('|'); draft(S => { const d = S.day.draft; d[key] = d[key] === id ? null : id; d.spy = false;
+    if (key === 'by' && d.by) UI.pickOpen = d.on ? null : 'on'; if (key === 'on' && d.on) UI.pickOpen = null; }); },
+  pickOpen: key => { UI.pickOpen = UI.pickOpen === key ? null : key; render(); },
+  // справочник ролей
+  refOpen: id => { UI.refOpen = UI.refOpen === id ? null : id; render(); },
+  refScope: v => { UI.refAll = v === 'all'; render(); },
+  refQ: (a, el) => { UI.refQ = el.value; filterRefs(); },
+  nomClear: () => { UI.pickOpen = null; draft(S => { S.day.draft = { by: null, on: null, voters: [], stage: 'pick', spy: false }; }); },
+  exClear: () => { UI.pickOpen = null; draft(S => { S.day.picks.exile = null; S.day.picks.exFunny = false; }); },
   nomSpy: v => draft(S => { S.day.draft.spy = v === '1'; }),
   nominate: () => {
     let res = null; const d0 = clone(S.day.draft), by = E.bishopActive(S) ? 'st' : d0.by;
+    UI.pickOpen = null;
     act(S => {
       res = E.nominate(S, by, d0.on, { spyTownsfolk: !!d0.spy });
       if (res.ended) E.endDay(S);
@@ -664,7 +750,8 @@ document.addEventListener('change', ev => {
   if (el.tagName === 'SELECT' || el.tagName === 'INPUT') { const f = A[el.dataset.act]; if (f) f(el.dataset.arg, el); }
 });
 document.addEventListener('input', ev => {
-  const el = ev.target; if (el.tagName !== 'TEXTAREA' || !el.dataset.act) return;
+  // текстовые поля и «живые» поля ввода (поиск) — без перерисовки на каждую букву
+  const el = ev.target; if (!el.dataset || !el.dataset.act || (el.tagName !== 'TEXTAREA' && !el.dataset.live)) return;
   const f = A[el.dataset.act]; if (f) f(el.dataset.arg, el);
 });
 document.addEventListener('keydown', ev => { if (ev.key === 'Enter' && ev.target.id === 'newName') A.addP(); });

@@ -300,6 +300,19 @@ try {
   S = tbGame([['Кур', 'harlot']]); E.startGame(S); runNight(S, { poisoner: { t: ids(S, 'chef') } }); E.endDay(S);
   runNight(S, { harlot: { t: ids(S, 'empath'), yes: 'no' }, imp: { t: ids(S, 'chef') }, monk: { t: ids(S, 'washerwoman') }, poisoner: { t: ids(S, 'chef') } });
   ok('Куртизанка: отказ — никто не умирает', trv(S, 'harlot').alive && byRole(S, 'empath').alive);
+  S = tbGame([['Кур', 'harlot']]); E.startGame(S); runNight(S, { poisoner: { t: ids(S, 'chef') } }); E.endDay(S);
+  runNight(S, { harlot: { t: ids(S, 'empath'), yes: 'yes', die: 'harlot' }, imp: { t: ids(S, 'chef') }, monk: { t: ids(S, 'washerwoman') }, poisoner: { t: ids(S, 'chef') } });
+  ok('Куртизанка: «только Куртизанка» — умирает она одна', !trv(S, 'harlot').alive && byRole(S, 'empath').alive);
+  S = tbGame([['Кур', 'harlot']]); E.startGame(S); runNight(S, { poisoner: { t: ids(S, 'chef') } }); E.endDay(S);
+  runNight(S, { harlot: { t: ids(S, 'empath'), yes: 'yes', die: 'target' }, imp: { t: ids(S, 'chef') }, monk: { t: ids(S, 'washerwoman') }, poisoner: { t: ids(S, 'chef') } });
+  ok('Куртизанка: «только выбранный» — умирает выбранный', trv(S, 'harlot').alive && !byRole(S, 'empath').alive);
+  // Азартный игрок: ничего не объявляется; не угадал — умирает, пьяный/отравленный — нет
+  S = game(['grandmother', 'gambler', 'soldier', 'chef', 'empath', 'monk', 'poisoner', 'imp'].map(r => r === 'chef' ? 'courtier' : r === 'empath' ? 'tealady' : r === 'soldier' ? 'sailor' : r === 'monk' ? 'innkeeper' : r === 'poisoner' ? 'assassin' : r === 'imp' ? 'zombuul' : r), 'bmr');
+  E.autoSetup(S, true); E.startGame(S); runNight(S, { grandmother: { t: ids(S, 'sailor') }, sailor: { t: ids(S, 'grandmother'), who: 'target' }, courtier: {} }); E.endDay(S);
+  const gst = S.night.steps.find(s => s.id === 'gambler'), gsp = E.stepSpec(S, gst), gi = gsp.info({ t: ids(S, 'sailor'), r: 'monk' });
+  ok('Азартный игрок: подсказка только для рассказчика', gi.secret === true && /умирает/.test(gi.show));
+  runNight(S, { gambler: { t: ids(S, 'sailor'), r: 'monk' }, sailor: { t: ids(S, 'grandmother'), who: 'target' }, innkeeper: { t: ids(S, 'courtier', 'tealady'), drunk: '0' }, zombuul: { t: [] }, courtier: {} });
+  ok('Азартный игрок не угадал — умер', !byRole(S, 'gambler').alive);
   // смерть по решению рассказчика ночью — в объявлении на рассвете, Смотритель просыпается
   S = game(['washerwoman', 'librarian', 'ravenkeeper', 'chef', 'empath', 'monk', 'poisoner', 'imp'], 'tb');
   E.autoSetup(S, true); E.startGame(S); runNight(S, { poisoner: { t: ids(S, 'chef') } }); E.endDay(S);
