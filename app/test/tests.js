@@ -493,6 +493,31 @@ try {
   const ceSt = S.night.steps.find(s => s.id === 'cerenovus'), ceInfo = E.stepSpec(S, ceSt).info({ t: ids(S, 'clockmaker'), r: 'savant' });
   ok('Цереновус: роль безумия на том же экране, что и его жетон', ceInfo.tokens.length === 2 && ceInfo.tokens[1].join && ceInfo.tokens[1].role === 'savant', JSON.stringify(ceInfo.tokens));
 
+  // 33. сценарии сообщества: раздача, подготовка и две ночи без ошибок; Сказочники сценария — в игре
+  const commErr = [];
+  for (const key of ['reptiles2', 'oasis', 'pies', 'uncertain']) for (const n of [5, 7, 9, 11, 13, 15]) {
+    try {
+      const g = E.newGame(key);
+      for (let i = 0; i < n; i++) g.players.push(E.newPlayer(key + i));
+      E.randomDeal(g); E.finishRoles(g); E.autoSetup(g, true);
+      const probs = E.setupProblems(g).filter(t => !/выберите, сколько Изгоев/.test(t));
+      if (probs.length && !E.unknownSetup(g).length) commErr.push(`${key}/${n}: ${probs.join('; ')}`);
+      if (E.setupProblems(g).some(t => /выберите, сколько Изгоев/.test(t))) continue;
+      E.startGame(g);
+      for (let night = 0; night < 2 && !g.result; night++) {
+        let guard = 0;
+        while (g.phase === 'night' && guard++ < 200) {
+          const st = E.currentStep(g), sp = E.stepSpec(g, st);
+          if (!sp.active) { E.skipStep(g); continue; }
+          if (!E.applyStep(g, st, Object.assign({}, sp.defaults)).ok) E.skipStep(g);
+        }
+        if (g.phase === 'day') E.endDay(g);
+      }
+    } catch (e) { commErr.push(`${key}/${n}: ${e.message}`); }
+  }
+  ok('сценарии сообщества: раздача и две ночи без ошибок', !commErr.length, commErr.slice(0, 3).join(' | '));
+  ok('сценарий со Сказочниками: Джинн и Ловец Бури в игре', E.newGame('reptiles2').fabled.join() === 'stormcatcher,djinn');
+
   // 31. жребий: каменная стена
   S = game(['washerwoman', 'librarian', 'investigator', 'chef', 'empath', 'drunk', 'poisoner', 'imp'], 'tb'); E.autoSetup(S, true);
   const before = S.players.map(p => p.role).sort().join(), drunkSees = byRole(S, 'drunk').believes;

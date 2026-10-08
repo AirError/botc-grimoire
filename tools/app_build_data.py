@@ -111,6 +111,38 @@ scripts = {
     "bmr": {"name": "Bad Moon Rising", "roles": edition_script("bmr")},
     "snv": {"name": "Sects & Violets", "roles": edition_script("snv")},
 }
+
+# сценарии сообщества с botcscripts.com (просьба пользователя, 2026-10-08); в составе — и экспериментальные роли.
+# Сказочники из сценария отделяются в "fabled" и добавляются в игру при выборе сценария.
+COMMUNITY = {
+    # botcscripts.com/script/739 — Aero, v1.2.0
+    "reptiles2": ("Reptiles II: Lizard in the City", [
+        "chef", "washerwoman", "librarian", "sailor", "general", "chambermaid", "snakecharmer", "flowergirl", "undertaker",
+        "innkeeper", "philosopher", "fool", "tealady", "virgin", "saint", "sweetheart", "klutz", "drunk", "barber", "poisoner",
+        "devilsadvocate", "spy", "psychopath", "baron", "alhadikhia", "stormcatcher", "djinn"]),
+    # botcscripts.com/script/148 — Zets, v3.8.0
+    "oasis": ("The Midnight Oasis", [
+        "noble", "balloonist", "snakecharmer", "savant", "amnesiac", "engineer", "huntsman", "professor", "fisherman", "farmer",
+        "poppygrower", "cannibal", "atheist", "damsel", "drunk", "golem", "barber", "mezepheles", "poisoner", "pithag",
+        "psychopath", "alhadikhia", "vigormortis", "sentinel", "spiritofivory"]),
+    # botcscripts.com/script/3076 — Ryback, v0.1.0
+    "pies": ("Pies Baking", [
+        "noble", "chef", "washerwoman", "librarian", "empath", "fortuneteller", "monk", "slayer", "soldier", "ravenkeeper",
+        "virgin", "mayor", "cannibal", "butler", "saint", "recluse", "drunk", "poisoner", "spy", "baron", "scarletwoman",
+        "marionette", "imp"]),
+    # botcscripts.com/script/344 — Matt, v1.0.1
+    "uncertain": ("Uncertain Death", [
+        "clockmaker", "grandmother", "librarian", "empath", "fortuneteller", "exorcist", "flowergirl", "oracle", "undertaker",
+        "artist", "slayer", "seamstress", "monk", "lunatic", "mutant", "sweetheart", "recluse", "godfather", "assassin",
+        "scarletwoman", "marionette", "nodashii", "pukka"]),
+}
+for key, (name, ids) in COMMUNITY.items():
+    missing = [x for x in ids if x not in roles]
+    assert not missing, (key, missing)
+    scripts[key] = {"name": name, "roles": [x for x in ids if roles[x]["team"] in ("townsfolk", "outsider", "minion", "demon")],
+                    "fabled": [x for x in ids if roles[x]["team"] in ("fabled", "loric")],
+                    "travellers": [x for x in ids if roles[x]["team"] == "traveller"]}
+
 for s in scripts.values():
     missing = [x for x in s["roles"] + s.get("travellers", []) if x not in roles]
     assert not missing, missing

@@ -420,7 +420,10 @@ function viewSetup() {
         <textarea id="amn-${p.id}" data-act="amnText" data-arg="${p.id}" placeholder="Например: каждую ночь узнаёт, сколько живых Горожан среди его соседей">${esc(S.flags['amnesiac_' + p.id] || '')}</textarea></div>`).join('')}
       <button class="btn" data-act="autoPrep">Заполнить случайно</button></div>` : '';
   const probs = E.setupProblems(S), jinx = E.jinxesInPlay(S);
+  const exp = sc.roles.filter(r => DATA.roles[r] && !DATA.roles[r].box);
   return `${notesHtml()}<div class="card"><h3>Сценарий</h3><div class="seg">${presets}</div><div class="small muted">«${esc(sc.name)}» — ${counts}</div>
+      ${exp.length ? `<div class="small muted">Не из базовой коробки (жетонов нет, механику ведёте вы): ${exp.map(E.rname).map(esc).join(', ')}</div>` : ''}
+      ${(S.fabled || []).length ? `<div class="small muted">Сказочники сценария: ${S.fabled.map(E.rname).map(esc).join(', ')}</div>` : ''}
       <details><summary class="small">Загрузить свой сценарий (JSON из конструктора)</summary>
       <div class="field" style="margin-top:8px"><textarea id="customJson" data-act="customText" placeholder='[{"id":"_meta","name":"Мой сценарий"},"washerwoman","imp"]'>${esc(UI.customText)}</textarea>
       <button class="btn" data-act="customLoad">Загрузить</button></div></details></div>
@@ -757,7 +760,7 @@ function refPool() {
   const sc = key === 'custom' ? S.script : DATA.scripts[key];
   if (!sc) return Object.keys(DATA.roles);
   const tr = sc.travellers && sc.travellers.length ? sc.travellers : Object.keys(DATA.roles).filter(r => DATA.roles[r].team === 'traveller' && DATA.roles[r].edition === key);
-  return [...new Set([...sc.roles, ...tr])].filter(r => DATA.roles[r]);
+  return [...new Set([...sc.roles, ...tr, ...(sc.fabled || [])])].filter(r => DATA.roles[r]);
 }
 function refScriptSelect() {
   const key = refKey();
@@ -870,7 +873,8 @@ const A = {
   tab: k => { UI.tab = k; render(); window.scrollTo(0, 0); },
   undo: () => undo(),
   // подготовка
-  script: k => act(S => { const sc = DATA.scripts[k]; S.script = { key: k, name: sc.name, roles: sc.roles.slice(), travellers: (sc.travellers || []).slice() }; S.players.forEach(p => { if (p.role && !E.isTraveller(p) && !S.script.roles.includes(p.role)) p.role = null; }); }, 'сценарий «' + DATA.scripts[k].name + '»'),
+  // Сказочники сценария (Джинн, Привратник, Ловец Бури…) входят в игру вместе с ним
+  script: k => act(S => { const sc = DATA.scripts[k]; S.script = { key: k, name: sc.name, roles: sc.roles.slice(), travellers: (sc.travellers || []).slice() }; S.fabled = (sc.fabled || []).slice(); S.players.forEach(p => { if (p.role && !E.isTraveller(p) && !S.script.roles.includes(p.role)) p.role = null; }); }, 'сценарий «' + DATA.scripts[k].name + '»'),
   customText: (a, el) => { UI.customText = el.value; },
   customLoad: () => {
     try {

@@ -22,7 +22,7 @@ function newGame(scriptKey) {
   return {
     v: 1, id: uid(), created: Date.now(), updated: Date.now(),
     script: { key: scriptKey || 'ecbe', name: sc.name, roles: sc.roles.slice(), travellers: (sc.travellers || []).slice() },
-    players: [], fabled: [], bluffs: [], phase: 'setup', n: 0,
+    players: [], fabled: (sc.fabled || []).slice(), bluffs: [], phase: 'setup', n: 0,
     night: null, day: null, lastDay: null, flags: {}, log: [], result: null,
   };
 }
