@@ -253,3 +253,184 @@ html.oled, html.oled body { background: #000000; }
 
 .addbox summary .hg { width: 28px; height: 28px; vertical-align: -8px; margin-right: 6px; }
 
+/* ---------- v12: компактные квадратики выбора, яд, Гримуар, стена жребия, показ на весь экран ---------- */
+:root { --poison: #2E7D32; --poisonbg: #E5F3E2; --poisonink: #1F5A23; }
+html:root.oled { --poison: #6BE37A; --poisonbg: #000000; --poisonink: #8BF097; }
+html.locked, html.locked body { overflow: hidden; }
+
+/* выбор игроков: 4 квадратика в ряд на телефоне — иконка роли, имя, роль мелко */
+.ptiles { display: grid; grid-template-columns: repeat(auto-fill, minmax(70px, 1fr)); gap: 6px; }
+.ptile { position: relative; min-width: 0; min-height: 86px; border: 1px solid var(--line); border-radius: 10px; background: var(--paper);
+  display: flex; flex-direction: column; align-items: center; justify-content: flex-start; gap: 1px; padding: 8px 3px 6px; text-align: center; cursor: pointer; }
+.ptile .pic { width: 36px; height: 36px; display: flex; align-items: center; justify-content: center; }
+.ptile .pti { width: 36px; height: 36px; object-fit: contain; }
+.ptile .seatno { width: 32px; height: 32px; border-radius: 50%; border: 1px solid var(--line); display: flex; align-items: center; justify-content: center; font-weight: 800; font-size: 15px; color: var(--muted); }
+.ptile .pname { font-weight: 800; font-size: 13.5px; line-height: 1.15; overflow-wrap: anywhere; max-width: 100%;
+  display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+.ptile .prole { font-size: 10.5px; line-height: 1.2; color: var(--muted); max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.ptile .pno { position: absolute; top: 3px; left: 5px; font-size: 10px; color: var(--muted); font-variant-numeric: tabular-nums; }
+.ptile .pck { position: absolute; top: 1px; right: 5px; color: var(--gold); font-weight: 800; font-size: 15px; }
+.ptile .pdead { position: absolute; bottom: 3px; right: 3px; width: 16px; height: 16px; font-size: 12px; line-height: 16px; color: var(--muted); }
+.ptile .pdi { width: 16px; height: 16px; display: block; }
+.ptile .ppois { position: absolute; top: 3px; right: 4px; width: 14px; height: 14px; }
+.ptile .ppois .drop1 { width: 14px; height: 14px; }
+.ptile.on .ppois { right: 18px; }
+.ptile.on { border: 2px solid var(--gold); background: var(--goldbg); padding: 7px 2px 5px; }
+.ptile.dead { border-style: dashed; }
+.ptile.dead .pname { text-decoration: line-through; }
+.ptile.dead .pti { filter: grayscale(.85); opacity: .75; }
+.ptile:disabled { opacity: .22; filter: grayscale(1); cursor: default; }
+.tile.mark { border-style: dashed; border-color: var(--gold); }
+
+/* капли яда */
+.drop1, .drops { display: inline-block; flex: none; }
+.drop1 path, .drops path { fill: var(--poison); }
+.drop1 .gl { fill: #FFFFFF; opacity: .55; }
+.ppill { display: inline-flex; align-items: center; gap: 5px; align-self: center; font-size: 13px; font-weight: 800; letter-spacing: .06em;
+  color: var(--poisonink); background: var(--poisonbg); border: 1.5px solid var(--poison); border-radius: 999px; padding: 2px 10px 2px 6px; }
+.ppill .drop1 { width: 15px; height: 15px; }
+.badge.poisonb { background: var(--poisonbg); color: var(--poisonink); border-color: var(--poison); display: inline-flex; align-items: center; gap: 3px; }
+.badge.poisonb .drop1 { width: 12px; height: 12px; }
+.badges.left { justify-content: flex-start; }
+
+/* «ядовитая» рамка ответа: зелёная, с потёками сверху и каплями */
+.reveal { position: relative; }
+.reveal.poison { border-color: var(--poison); background: var(--poisonbg); padding-top: 16px; overflow: hidden; }
+.reveal.poison.secret { border-style: dashed; }
+.reveal.poison .lab { color: var(--poisonink); }
+.reveal .drip { position: absolute; left: 0; top: 0; width: 100%; height: 12px; }
+.reveal .drip path { fill: var(--poison); }
+.ptag { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; color: var(--poisonink); }
+.ptag .drops { width: 38px; height: 22px; }
+.ptag b { font-size: 19px; font-weight: 800; letter-spacing: .08em; }
+.ptag span { font-size: 14.5px; font-weight: 600; }
+.oled .reveal.poison { box-shadow: 0 0 18px rgba(107, 227, 122, .25), inset 0 0 14px rgba(107, 227, 122, .12); }
+.oled .ptag .drops, .oled .ppill .drop1 { filter: drop-shadow(0 0 4px rgba(107, 227, 122, .7)); }
+
+/* кнопки «Показать игроку» */
+.showbtns { display: flex; flex-direction: column; gap: 6px; margin-top: 6px; }
+.btn.showbtn { border: 2px solid var(--gold); color: var(--gold); font-weight: 700; background: transparent; }
+
+/* полноэкранные слои */
+.ov { position: fixed; inset: 0; z-index: 30; }
+.showov { background: #000000; color: #F2EAD8; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 18px; padding: calc(24px + env(safe-area-inset-top, 0px)) 18px calc(24px + env(safe-area-inset-bottom, 0px)); text-align: center; cursor: pointer; overflow-y: auto; animation: ovIn .25s ease-out; }
+.shcap { font-size: 22px; font-weight: 800; letter-spacing: .12em; text-transform: uppercase; color: #E3C27A; }
+.shroles { display: flex; gap: 18px; justify-content: center; flex-wrap: wrap; width: 100%; }
+.shrole { display: flex; flex-direction: column; align-items: center; gap: 6px; max-width: 420px; }
+.shroles.n2 .shrole, .shroles.n3 .shrole { width: calc(33% - 12px); min-width: 96px; }
+.shic { width: min(56vw, 240px); height: min(56vw, 240px); object-fit: contain; }
+.shroles.n2 .shic, .shroles.n3 .shic { width: min(26vw, 140px); height: min(26vw, 140px); }
+.shname { font-size: 30px; font-weight: 800; line-height: 1.15; }
+.shroles.n2 .shname, .shroles.n3 .shname { font-size: 18px; }
+.shrole.side-good .shname { color: #A9C4F5; } .shrole.side-evil .shname { color: #F59A9A; }
+.shab { font-size: 18px; line-height: 1.45; max-width: 32ch; color: #D8D0BF; }
+.shthumb { display: flex; align-items: center; gap: 10px; font-size: 22px; font-weight: 800; letter-spacing: .08em; text-transform: uppercase; }
+.shthumb span { font-size: 40px; }
+.shthumb.side-good { color: #A9C4F5; } .shthumb.side-evil { color: #F59A9A; }
+.shhint { font-size: 13px; color: #6E685E; margin-top: 8px; }
+@keyframes ovIn { from { opacity: 0; } to { opacity: 1; } }
+
+/* карточка игрока поверх Гримуара */
+.sheetov { display: flex; align-items: flex-end; justify-content: center; }
+.sheetbg { position: absolute; inset: 0; background: rgba(20, 16, 10, .55); }
+.sheet { position: relative; width: 100%; max-width: 640px; max-height: 88vh; overflow-y: auto; background: var(--card); border-radius: 16px 16px 0 0;
+  padding: 14px 16px calc(18px + env(safe-area-inset-bottom, 0px)); display: flex; flex-direction: column; gap: 10px; animation: sheetUp .22s ease-out; }
+.sheethead { display: grid; grid-template-columns: auto minmax(0, 1fr) auto; gap: 10px; align-items: center; }
+.sheethead .si { width: 52px; height: 52px; object-fit: contain; }
+.sheethead .shp { font-weight: 800; font-size: 19px; }
+.sheet .editor { border-bottom: none; padding-bottom: 0; }
+@keyframes sheetUp { from { transform: translateY(40px); opacity: 0; } to { transform: none; opacity: 1; } }
+
+/* Гримуар: большие квадраты, 3 в ряд */
+.grim { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px 10px; }
+.gcell { display: flex; flex-direction: column; align-items: stretch; gap: 5px; background: none; border: none; padding: 0; cursor: pointer; min-width: 0; text-align: center; }
+.gsq { position: relative; aspect-ratio: 1 / 1; border-radius: 14px; border: 2px solid var(--line); background: var(--paper);
+  display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 2px; padding: 8px 4px; overflow: hidden; }
+.gcell.side-good .gsq { border-color: var(--good); background: var(--goodbg); }
+.gcell.side-evil .gsq { border-color: var(--evil); background: var(--evilbg); }
+.gic { width: 58%; height: 58%; object-fit: contain; }
+.gq { font-size: 34px; font-weight: 800; color: var(--muted); }
+.grn { font-size: 12.5px; font-weight: 800; line-height: 1.1; max-width: 100%; overflow-wrap: anywhere; }
+.gcell.side-good .grn { color: var(--good); } .gcell.side-evil .grn { color: var(--evil); }
+.gbel { font-size: 10.5px; color: var(--muted); line-height: 1.1; }
+.gno { position: absolute; top: 4px; left: 7px; font-size: 11px; color: var(--muted); font-variant-numeric: tabular-nums; }
+.gpois { position: absolute; top: 4px; right: 6px; width: 18px; height: 18px; }
+.gpois .drop1 { width: 18px; height: 18px; }
+.gtok { position: absolute; bottom: 5px; right: 6px; min-width: 18px; height: 18px; border-radius: 9px; background: var(--gold); color: var(--card); font-size: 11px; font-weight: 800; line-height: 18px; padding: 0 4px; }
+.gshroud { position: absolute; left: 0; right: 0; bottom: 0; background: rgba(20, 18, 16, .78); color: #EDE6D6; font-size: 11px; font-weight: 700; padding: 3px 2px; display: flex; align-items: center; justify-content: center; gap: 3px; }
+.gcell.dead .gic { filter: grayscale(1); opacity: .55; }
+.gpn { font-weight: 800; font-size: 15px; line-height: 1.15; overflow-wrap: anywhere; }
+.gcell.dead .gpn { text-decoration: line-through; color: var(--muted); }
+.gbluffs { display: flex; flex-direction: column; gap: 4px; }
+.gbluffs > div { display: flex; flex-wrap: wrap; gap: 6px; }
+.gbl { display: inline-flex; align-items: center; gap: 4px; font-size: 14px; font-weight: 700; border: 1px solid var(--line); border-radius: 8px; padding: 2px 8px 2px 3px; }
+.gbi { width: 24px; height: 24px; object-fit: contain; }
+
+/* ---------- стена жребия: древний камень, руны светятся магическими цветами ---------- */
+.wallov { background: #050404; display: flex; justify-content: center; overflow: hidden; }
+.wall { position: relative; width: 100%; max-width: 560px; height: 100%; display: flex; flex-direction: column; gap: 12px;
+  padding: calc(12px + env(safe-area-inset-top, 0px)) 14px calc(16px + env(safe-area-inset-bottom, 0px));
+  background:
+    radial-gradient(ellipse 60% 40% at 20% 8%, rgba(255, 240, 210, .07), transparent 70%),
+    radial-gradient(ellipse 50% 35% at 85% 92%, rgba(0, 0, 0, .55), transparent 70%),
+    repeating-linear-gradient(0deg, transparent 0 46px, rgba(0, 0, 0, .35) 46px 48px),
+    repeating-linear-gradient(90deg, transparent 0 63px, rgba(0, 0, 0, .25) 63px 65px),
+    radial-gradient(circle at 30% 40%, #4A453D 0, #37332D 55%, #24211D 100%);
+  box-shadow: inset 0 -30px 40px rgba(0, 0, 0, .6), inset 0 20px 30px rgba(0, 0, 0, .5); overflow-y: auto; }
+.wall.roll { animation: wallRoll 1.05s cubic-bezier(.2, .85, .25, 1) both; }
+@keyframes wallRoll { 0% { transform: translateY(-104%); } 72% { transform: translateY(2.5%); } 82% { transform: translateY(-1%); } 90% { transform: translateY(.6%) rotate(.2deg); } 100% { transform: none; } }
+.wtop { display: grid; grid-template-columns: 44px 1fr 44px; align-items: center; gap: 8px; }
+.wbtn { width: 44px; height: 44px; border-radius: 50%; border: 1px solid rgba(255, 255, 255, .16); background: rgba(0, 0, 0, .35); color: #CFC6B4; font-size: 20px; font-weight: 800; cursor: pointer; }
+.wbtn:disabled { opacity: .3; }
+.wturn { text-align: center; color: #CFC6B4; display: flex; flex-direction: column; line-height: 1.2; }
+.wturn span { font-size: 12px; letter-spacing: .14em; text-transform: uppercase; color: #9A917F; }
+.wturn b { font-size: 24px; font-weight: 800; color: #F3E3BC; text-shadow: 0 0 12px rgba(243, 210, 140, .45); }
+.wwho { display: flex; gap: 6px; overflow-x: auto; padding-bottom: 2px; scrollbar-width: none; }
+.wwho button { flex: none; border: 1px solid rgba(255, 255, 255, .15); background: rgba(0, 0, 0, .3); color: #BDB3A0; border-radius: 999px; padding: 5px 12px; font-size: 14px; cursor: pointer; }
+.wwho button.on { border-color: #E3C27A; color: #F3E3BC; }
+.wgrid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px; align-content: start; flex: 1; }
+.wcell { --glow: #6BFF8E; position: relative; aspect-ratio: 1 / 1; border-radius: 6px; border: 1px solid rgba(0, 0, 0, .7); cursor: pointer; padding: 0; overflow: hidden;
+  background: radial-gradient(circle at 35% 30%, #5E584E, #3C3832 60%, #2A2723);
+  box-shadow: inset 3px 3px 0 rgba(255, 255, 255, .07), inset -4px -4px 0 rgba(0, 0, 0, .45), 0 0 16px -2px var(--glow), 0 4px 10px rgba(0, 0, 0, .6);
+  animation: cellGlow 2.6s ease-in-out infinite; animation-delay: calc(var(--d) * -1); }
+.wcell.c-green { --glow: #63F58B; } .wcell.c-violet { --glow: #B783FF; } .wcell.c-red { --glow: #FF5E5E; } .wcell.c-gold { --glow: #FFD45E; }
+.wcell .rune { position: absolute; inset: 16%; width: 68%; height: 68%; }
+.wcell .rune path { fill: none; stroke: var(--glow); stroke-width: 2.6; stroke-linecap: round; stroke-linejoin: round; }
+.wcell .rune { filter: drop-shadow(0 0 3px var(--glow)) drop-shadow(0 0 9px var(--glow)); animation: runePulse 2.6s ease-in-out infinite; animation-delay: calc(var(--d) * -1); }
+@keyframes runePulse { 0%, 100% { opacity: .78; } 50% { opacity: 1; } }
+@keyframes cellGlow { 0%, 100% { box-shadow: inset 3px 3px 0 rgba(255, 255, 255, .07), inset -4px -4px 0 rgba(0, 0, 0, .45), 0 0 12px -4px var(--glow), 0 4px 10px rgba(0, 0, 0, .6); }
+  50% { box-shadow: inset 3px 3px 0 rgba(255, 255, 255, .07), inset -4px -4px 0 rgba(0, 0, 0, .45), 0 0 22px 0 var(--glow), 0 4px 10px rgba(0, 0, 0, .6); } }
+.wcell.opened { background: radial-gradient(circle, #0B0A09, #000); }
+.wcell.opened .rune { opacity: 0; }
+/* открытая ячейка: руны погасли, камень треснул */
+.wcell.done { animation: none; cursor: default; box-shadow: inset 3px 3px 0 rgba(255, 255, 255, .04), inset -4px -4px 0 rgba(0, 0, 0, .55), 0 4px 10px rgba(0, 0, 0, .6);
+  background: radial-gradient(circle at 35% 30%, #46423B, #2E2B27 60%, #1F1D1A); }
+.wcell.done .rune { animation: none; filter: none; opacity: .5; }
+.wcell.done .rune path { stroke: #1A1816; }
+.wcell .crack { position: absolute; inset: 0; width: 100%; height: 100%; }
+.wcell .crack path { fill: none; stroke: #0D0C0B; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; filter: drop-shadow(1px 1px 0 rgba(255, 255, 255, .12)); }
+.wcell.cracking .crack path { stroke-dasharray: 140; stroke-dashoffset: 140; animation: crackDraw .7s .15s ease-out forwards; }
+.wcell.cracking .rune { animation: runeDie 1s ease-out forwards; }
+.wcell.cracking { animation: cellShake .35s ease-in-out 2; }
+@keyframes crackDraw { to { stroke-dashoffset: 0; } }
+@keyframes runeDie { 0% { opacity: 1; filter: drop-shadow(0 0 3px var(--glow)) drop-shadow(0 0 14px var(--glow)); } 100% { opacity: .5; filter: none; } }
+@keyframes runeDieStroke { to { stroke: #1A1816; } }
+.wcell.cracking .rune path { stroke: var(--glow); animation: runeDieStroke 1s ease-out forwards; }
+@keyframes cellShake { 0%, 100% { transform: none; } 25% { transform: translate(-1.5px, 1px) rotate(-.6deg); } 75% { transform: translate(1.5px, -1px) rotate(.6deg); } }
+.whint { text-align: center; color: #8E8574; font-size: 14px; }
+/* роль игрока: ячейка распахивается на весь экран */
+.wreveal { position: absolute; inset: 0; z-index: 2; background: radial-gradient(circle at 50% 40%, #16120C, #000 70%); color: #F2EAD8;
+  display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 10px; text-align: center; cursor: pointer;
+  padding: calc(24px + env(safe-area-inset-top, 0px)) 22px calc(24px + env(safe-area-inset-bottom, 0px)); animation: cellOpen .5s cubic-bezier(.2, .9, .3, 1.1); overflow-y: auto; }
+@keyframes cellOpen { from { transform: scale(.2) rotateX(70deg); opacity: 0; } to { transform: none; opacity: 1; } }
+.wrfor { font-size: 15px; letter-spacing: .12em; text-transform: uppercase; color: #9A917F; }
+.wric { width: min(58vw, 250px); height: min(58vw, 250px); object-fit: contain; filter: drop-shadow(0 0 22px rgba(243, 210, 140, .25)); }
+.wrname { font-size: 34px; font-weight: 800; line-height: 1.1; }
+.wreveal.side-good .wrname { color: #A9C4F5; } .wreveal.side-evil .wrname { color: #F59A9A; }
+.wrteam { font-size: 14px; letter-spacing: .12em; text-transform: uppercase; color: #BDB3A0; }
+.wrab { font-size: 18px; line-height: 1.45; max-width: 32ch; color: #D8D0BF; }
+@media (prefers-reduced-motion: reduce) {
+  .wall.roll, .wcell, .wcell .rune, .wreveal, .showov, .sheet, .wcell.cracking, .wcell.cracking .rune, .wcell.cracking .rune path { animation: none !important; }
+  .wcell.cracking .crack path { stroke-dashoffset: 0; animation: none; }
+}
+

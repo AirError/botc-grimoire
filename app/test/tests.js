@@ -423,6 +423,67 @@ try {
   E.startGame(S); runNight(S, {});
   ok('Атеист: игра без Демона не заканчивается сама', !S.result && S.phase === 'day');
 
+  // 30. искажённая информация, учёт для Математика, пьяный Пукка, Заклинатель змей
+  const custom = roles => { const g = E.newGame('tb'); g.script = { key: 'custom', name: 'T', roles: roles.slice() };
+    roles.forEach((r, i) => { const p = E.newPlayer('C' + i + ':' + r); p.role = r; g.players.push(p); }); E.finishRoles(g); E.autoSetup(g, true); return g; };
+  const runUntil = (S, id, inputs) => { let g = 0; while (S.phase === 'night' && g++ < 200) { const st = E.currentStep(S); if (st.id === id) return st;
+    const spec = E.stepSpec(S, st); if (!spec.active) { E.skipStep(S); continue; } if (!E.applyStep(S, st, Object.assign({}, spec.defaults, (inputs || {})[st.id] || {})).ok) E.skipStep(S); } return null; };
+  S = custom(['empath', 'mathematician', 'clockmaker', 'monk', 'oracle', 'recluse', 'poisoner', 'imp']); E.startGame(S);
+  const emp = byRole(S, 'empath');
+  let st = runUntil(S, 'empath', { poisoner: { t: [emp.id] } }), sp = E.stepSpec(S, st);
+  ok('отравленный Эмпат: рамка «ОТРАВЛЕН», рекомендация ложная', sp.dist && sp.dist.label === 'ОТРАВЛЕН' && sp.defaults.n !== Number(sp.info({}).show), JSON.stringify(sp.dist));
+  E.applyStep(S, st, sp.defaults);
+  ok('Математик: ложное число Эмпата учтено', (S.flags.abn || []).length === 1, JSON.stringify(S.flags.abn));
+  st = runUntil(S, 'mathematician', {}); sp = E.stepSpec(S, st);
+  ok('Математик: по умолчанию показывает 1', st && sp.defaults.c === 1, st ? String(sp.defaults.c) : 'нет шага');
+  runNight(S, {});
+  ok('Математик: учёт сброшен на рассвете', !(S.flags.abn || []).length);
+  E.endDay(S);
+  st = runUntil(S, 'imp', { poisoner: { t: ids(S, 'imp') }, monk: { t: ids(S, 'clockmaker') } }); sp = E.stepSpec(S, st);
+  E.applyStep(S, st, { t: ids(S, 'oracle') });
+  ok('отравленный Чёрт: нападение не сработало — учтено для Математика', byRole(S, 'oracle').alive && (S.flags.abn || []).length === 1, JSON.stringify(S.flags.abn));
+
+  S = game(['clockmaker', 'grandmother', 'fortuneteller', 'monk', 'tealady', 'pukka', 'witch', 'recluse']);
+  E.autoSetup(S, true); E.startGame(S);
+  const pft = byRole(S, 'fortuneteller'), pk = byRole(S, 'pukka'), ck = byRole(S, 'clockmaker');
+  const pukkaNight = () => ({ pukka: { t: [ck.id] }, monk: { t: ids(S, 'tealady') }, witch: { t: ids(S, 'recluse') } });
+  runNight(S, { pukka: { t: [pft.id] }, witch: { t: ids(S, 'recluse') } }); E.endDay(S);
+  E.addTok(S, pk, 'drunk', 'sweetheart');
+  st = runUntil(S, 'pukka', pukkaNight()); sp = E.stepSpec(S, st);
+  const pinf = sp.info({ t: [ck.id] });
+  ok('пьяный Пукка: «НЕ умирает», только для рассказчика', pinf && pinf.secret && /НЕ умирает/.test(pinf.show), pinf && pinf.show);
+  runNight(S, pukkaNight());
+  ok('пьяный Пукка: прежний отравленный жив, новый не отравлен', pft.alive && !E.hasTok(ck, 'poisoned', 'pukka'));
+  E.endDay(S); E.rmTok(pk, 'drunk');
+  runNight(S, pukkaNight());
+  ok('Пукка протрезвел: прежний отравленный умирает', !pft.alive);
+
+  S = game(['snakecharmer', 'clockmaker', 'dreamer', 'seamstress', 'mathematician', 'mutant', 'witch', 'fanggu'], 'snv');
+  E.autoSetup(S, true); E.startGame(S);
+  const sc = byRole(S, 'snakecharmer'), fg = byRole(S, 'fanggu');
+  const scNight = { witch: { t: ids(S, 'mutant') }, dreamer: { t: ids(S, 'clockmaker') } };
+  runNight(S, Object.assign({ snakecharmer: { t: ids(S, 'clockmaker') } }, scNight)); E.endDay(S);
+  st = runUntil(S, 'snakecharmer', scNight); sp = E.stepSpec(S, st);
+  const sinf = sp.info({ t: [fg.id] });
+  ok('Заклинатель выбрал Демона: две плашки «ТЕПЕРЬ ВЫ»', sinf && sinf.tokens && sinf.tokens.length === 2 && sinf.tokens[0].role === 'fanggu' && sinf.tokens[1].role === 'snakecharmer');
+  E.applyStep(S, st, { t: [fg.id] });
+  const rest = S.night.steps.slice(S.night.i);
+  ok('обмен: дальше этой ночью Демоном ходит новый Демон', sc.role === 'fanggu' && fg.role === 'snakecharmer' && sc.align === 'evil'
+    && rest.some(x => x.id === 'fanggu' && x.pid === sc.id) && !rest.some(x => x.id === 'fanggu' && x.pid === fg.id), rest.map(x => x.id + ':' + x.pid).join(','));
+  ok('Церенов, Ведьма-Яга, Азартный игрок, Философ выбирают роли только из сценария',
+    ['cerenovus', 'pithag', 'gambler', 'philosopher'].every(id => !E.stepSpec(S, { id, pid: byRole(S, 'witch').id, key: 'chk:' + id }).inputs.some(f => f.all)));
+  ok('Библиотекарь без Изгоев не застревает', !results.some(x => /пропущен шаг librarian/.test(x)));
+
+  // 31. жребий: каменная стена
+  S = game(['washerwoman', 'librarian', 'investigator', 'chef', 'empath', 'drunk', 'poisoner', 'imp'], 'tb'); E.autoSetup(S, true);
+  const before = S.players.map(p => p.role).sort().join(), drunkSees = byRole(S, 'drunk').believes;
+  E.drawStart(S);
+  ok('жребий: до открытия ячеек ролей у игроков нет', S.players.every(p => !p.role) && S.draw.cells.length === 8 && E.setupProblems(S).some(t => /Жребий не закончен/.test(t)));
+  let guardDraw = 0; while (S.draw.turn && guardDraw++ < 20) { const k = S.draw.cells.findIndex(c => !c.pid); E.drawOpen(S, k); E.drawClose(S); }
+  ok('жребий: все вытянули, набор ролей тот же', S.draw.finished && S.players.map(p => p.role).sort().join() === before && E.setupProblems(S).length === 0, E.setupProblems(S).join('; '));
+  ok('жребий: Пьяница видит роль, которой себя считает', E.drawShown(S.draw.cells.find(c => c.role === 'drunk')) === drunkSees && byRole(S, 'drunk').believes === drunkSees);
+  ok('жребий: злые стали злыми', byRole(S, 'imp').align === 'evil' && byRole(S, 'poisoner').align === 'evil' && byRole(S, 'chef').align === 'good');
+
   // 27. слова для утра
   const placeholders = [];
   for (let n = 0; n <= 6; n++) for (const first of [true, false]) for (let k = 0; k < 8; k++) {
