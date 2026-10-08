@@ -80,7 +80,7 @@
 - Печать: A4, поля «Нет», масштаб 100%.
 
 ## Приложение «Гримуар рассказчика» (`app/`)
-- Опубликовано как закрытый артефакт claude.ai: https://claude.ai/artifact/Y13UR68ar1MGUMRmiZfk5N (версия 11;
+- Опубликовано как закрытый артефакт claude.ai: https://claude.ai/artifact/Y13UR68ar1MGUMRmiZfk5N (версия 12, 2026-10-08;
   возможности db+user — игра сохраняется в аккаунте). Обновлять: публиковать `app/dist/grimoire.html` на тот же URL.
 - Исходники: `app/src/data.js` (генерируется), `icons.js` (генерируется), `engine.js` (правила, без DOM), `morning.js`
   (слова для утра), `ui.js`, `style.css`. Сценарии: Everyone Can Be Evil, Catfishing, TB, BMR, S&V, Reptiles II, The Midnight Oasis, Pies Baking, Uncertain Death + загрузка своего JSON.
