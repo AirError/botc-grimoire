@@ -42,8 +42,9 @@ for size in (180, 192, 512):
     src.resize((size, size), Image.LANCZOS).save(SITE / f"icon-{size}.png", optimize=True)
 
 manifest = {
-    "name": "Гримуар рассказчика", "short_name": "Гримуар", "lang": "ru",
-    "start_url": "./", "scope": "./", "display": "standalone", "orientation": "any",
+    # id и явный start_url — чтобы iOS не путала Гримуар с другими веб-приложениями на экране «Домой»
+    "id": "/botc-grimoire/", "name": "Гримуар рассказчика", "short_name": "Гримуар", "lang": "ru",
+    "start_url": "./?app=grimoire", "scope": "./", "display": "standalone", "orientation": "any",
     "background_color": "#0F121B", "theme_color": "#0F121B",
     "icons": [{"src": "icon-192.png", "sizes": "192x192", "type": "image/png"},
               {"src": "icon-512.png", "sizes": "512x512", "type": "image/png"},

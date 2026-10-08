@@ -324,6 +324,11 @@ html.locked, html.locked body { overflow: hidden; }
 .shroles.n2 .shname, .shroles.n3 .shname { font-size: 18px; }
 .shrole.side-good .shname { color: #A9C4F5; } .shrole.side-evil .shname { color: #F59A9A; }
 .shab { font-size: 18px; line-height: 1.45; max-width: 32ch; color: #D8D0BF; }
+.shpl { display: flex; flex-direction: column; align-items: center; gap: 4px; margin-top: 6px; }
+.shpl span { font-size: 30px; font-weight: 800; line-height: 1.15; color: #F3E3BC; }
+.shpl i { font-style: normal; font-size: 15px; color: #8E8574; margin-right: 8px; vertical-align: 4px; }
+.shtext { font-size: 72px; font-weight: 800; line-height: 1; color: #F3E3BC; margin-top: 6px; }
+.shsub { font-size: 17px; color: #BDB3A0; max-width: 30ch; }
 .shthumb { display: flex; align-items: center; gap: 10px; font-size: 22px; font-weight: 800; letter-spacing: .08em; text-transform: uppercase; }
 .shthumb span { font-size: 40px; }
 .shthumb.side-good { color: #A9C4F5; } .shthumb.side-evil { color: #F59A9A; }
@@ -385,6 +390,13 @@ html.locked, html.locked body { overflow: hidden; }
 .wturn { text-align: center; color: #CFC6B4; display: flex; flex-direction: column; line-height: 1.2; }
 .wturn span { font-size: 12px; letter-spacing: .14em; text-transform: uppercase; color: #9A917F; }
 .wturn b { font-size: 24px; font-weight: 800; color: #F3E3BC; text-shadow: 0 0 12px rgba(243, 210, 140, .45); }
+.wturn label { font-size: 12px; letter-spacing: .14em; text-transform: uppercase; color: #9A917F; }
+.wsel { position: relative; display: inline-flex; align-items: center; justify-content: center; align-self: center; max-width: 100%; }
+.wsel select { appearance: none; -webkit-appearance: none; width: auto; min-height: 40px; border: 1px solid rgba(227, 194, 122, .35); border-radius: 999px;
+  background: rgba(0, 0, 0, .35); color: #F3E3BC; font-size: 22px; font-weight: 800; padding: 2px 34px 2px 16px; text-align: center; text-align-last: center;
+  text-shadow: 0 0 12px rgba(243, 210, 140, .45); cursor: pointer; }
+.wsel select option { color: #1E1B18; background: #FFFCF5; font-size: 16px; }
+.wsel > span { position: absolute; right: 14px; color: #E3C27A; font-size: 14px; pointer-events: none; }
 .wwho { display: flex; gap: 6px; overflow-x: auto; padding-bottom: 2px; scrollbar-width: none; }
 .wwho button { flex: none; border: 1px solid rgba(255, 255, 255, .15); background: rgba(0, 0, 0, .3); color: #BDB3A0; border-radius: 999px; padding: 5px 12px; font-size: 14px; cursor: pointer; }
 .wwho button.on { border-color: #E3C27A; color: #F3E3BC; }

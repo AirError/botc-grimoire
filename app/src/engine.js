@@ -5,6 +5,10 @@
 const R = id => DATA.roles[id];
 const isGoodTeam = t => t === 'townsfolk' || t === 'outsider';
 const TEAM_RU = { townsfolk: 'Горожанин', outsider: 'Изгой', minion: 'Приспешник', demon: 'Демон', traveller: 'Странник' };
+// официальные жетоны информации (как в ночных текстах ru.json) — для показа игроку на весь экран
+const CARD = { youAre: 'ТЕПЕРЬ ВЫ', selected: 'ОБЛАДАТЕЛЬ ЭТОЙ РОЛИ ВЫБРАЛ ВАС', thisPlayer: 'ЭТОТ ИГРОК', demon: 'ЭТО ДЕМОН',
+  minions: 'ЭТО ВАШИ ПРИСПЕШНИКИ', notInPlay: 'ЭТИХ РОЛЕЙ В ИГРЕ НЕТ' };
+const bluffCards = (S, label) => S.bluffs.filter(Boolean).map(role => ({ label, caption: CARD.notInPlay, role }));
 
 function uid() { return Math.random().toString(36).slice(2, 10); }
 function shuffle(a) { a = a.slice(); for (let i = a.length - 1; i > 0; i--) { const j = Math.floor(Math.random() * (i + 1)); [a[i], a[j]] = [a[j], a[i]]; } return a; }
@@ -98,7 +102,7 @@ const alwaysSober = p => p.role === 'beggar' || p.tokens.some(t => t.k === 'sobe
 
 function abilityOff(S, p) { // способность не работает (пьян/отравлен/роль-обманка)
   if (p.role === 'drunk' && !p.gained) return 'Пьяница';
-  if (p.role === 'lunatic') return 'Лунатик';
+  if (p.role === 'lunatic') return 'Безумец';
   if (alwaysSober(p)) return null;
   const t = p.tokens.find(t => tokOff(S, t));
   if (t) return (t.k === 'drunk' ? 'пьян' : 'отравлен') + (t.src && R(t.src) ? ` (${R(t.src).name})` : '');
@@ -389,7 +393,7 @@ function finishRoles(S) {
   }
 }
 
-// значения по умолчанию для подготовки: Пьяница, Лунатик, блефы, внук, ложная цель, близнец
+// значения по умолчанию для подготовки: Пьяница, Безумец, блефы, внук, ложная цель, близнец
 function autoSetup(S, force) {
   const roles = S.script.roles, used = new Set(S.players.map(p => p.role));
   const notInPlay = t => shuffle(roles.filter(r => R(r) && R(r).team === t && !used.has(r)));
@@ -412,7 +416,7 @@ function autoSetup(S, force) {
 }
 
 /* «Стена жребия» — как мешочек с жетонами: роли лежат в ячейках вперемешку, игроки по очереди открывают ячейку.
-   Пьяница видит роль, которой себя считает, Лунатик — своего «Демона». */
+   Пьяница видит роль, которой себя считает, Безумец — своего «Демона». */
 const RUNE_COLORS = ['green', 'violet', 'red', 'gold'];
 function drawStart(S) {
   const core = S.players.filter(p => !isTraveller(p));
@@ -474,7 +478,7 @@ function setupProblems(S) {
     for (const b of S.bluffs) if (b && S.players.some(p => p.role === b || p.believes === b)) out.push(`Блеф «${rname(b)}» есть в игре — выберите другой`);
     for (const p of S.players) {
       if (p.role === 'drunk' && !p.believes) out.push(`${p.name}: Пьяница — выберите, кем он себя считает`);
-      if (p.role === 'lunatic' && !p.believes) out.push(`${p.name}: Лунатик — выберите, каким Демоном он себя считает`);
+      if (p.role === 'lunatic' && !p.believes) out.push(`${p.name}: Безумец — выберите, каким Демоном он себя считает`);
     }
   }
   return out;
@@ -857,7 +861,9 @@ function fabledSpec(S, step, first) {
     info: inp => {
       const vs = (inp.t || []).map(id => P(S, id)); if (vs.length !== 3) return { show: 'Посетителей не 3 — Герцогиня не действует', lines: [] };
       const n = vs.filter(q => q.align === 'evil').length, f = inp.f && P(S, inp.f[0]);
-      return { show: `Злых посетителей: ${n}`, lines: [`Покажите это число двоим, ${f ? f.name : 'третьему'} — любое другое`, ...regNote(S, inp.t)] };
+      const fake = stable(S, 'duchessFake', () => pick([0, 1, 2, 3].filter(x => x !== n)));
+      return { show: `Злых посетителей: ${n}`, lines: [`Покажите это число двоим, ${f ? f.name : 'третьему'} — любое другое (подсказка: ${fake})`, ...regNote(S, inp.t)],
+        tokens: vs.map(q => ({ label: q.name, caption: CARD.selected, role: 'duchess', text: String(f && q.id === f.id ? fake : n) })) };
     },
     apply: inp => log(S, (inp.t || []).length === 3 ? `Герцогиня: посетители ${inp.t.map(id => nm(S, id)).join(', ')}; ложное число — ${nm(S, (inp.f || [])[0])}` : 'Герцогиня: посетителей не 3 — никто не просыпается', 'info'),
     bounds: [{ w: 'Способность', t: role.ability }, Y('Каждому посетителю — число злых среди троих (себя тоже); одному — любое другое число')],
@@ -886,7 +892,7 @@ function stepSpec(S, step) {
   if (p.role === 'cannibal') base.warn.push(`${p.name} — Каннибал со способностью съеденного игрока (${nm(S, (S.flags['cannibal_' + p.id] || {}).pid)}). Не говорите, какая это способность.`);
   if (vortoxActive(S) && role.team === 'townsfolk') base.warn.push('Вортокс в игре: информация Горожан должна быть ложной.');
   if (role.team === 'demon' && S.night.data.lunatic && p.role !== 'lunatic')
-    base.warn.push(`Лунатик «атаковал»: ${S.night.data.lunatic.map(id => nm(S, id)).join(', ') || 'никого'} — покажите это Демону.`);
+    base.warn.push(`Безумец «атаковал»: ${S.night.data.lunatic.map(id => nm(S, id)).join(', ') || 'никого'} — покажите это Демону.`);
   const logic = LOGIC[step.id];
   const spec = logic ? Object.assign(base, logic(S, p, first, !!off, base) || {}) : Object.assign(base, genericLogic(S, p, first, !!off, base));
   // мёртвый просыпается, если способность сохранена (Вигормортис) или возвращена (Собиратель Костей)
@@ -903,6 +909,16 @@ function stepSpec(S, step) {
     if (!S.flags.toyNoAttack) spec.warn.push('Кукольник: Демон ещё ни разу не отказывался от нападения. Если его нападение может закончить игру — он этой ночью не нападает (не выбирайте никого).');
   }
   spec.dist = distortion(S, p); // для «ядовитой» рамки ответа: пьян/отравлен/Вортокс
+  // ответ «да/нет» или число — тоже можно показать на весь экран
+  const info0 = spec.info;
+  spec.info = inp => {
+    const r = info0(inp);
+    if (r && !r.secret && !r.tokens && typeof r.show === 'string') {
+      const yn = r.show.match(/^(ДА|НЕТ)\b/);
+      if (yn) r.tokens = [{ text: yn[1] }]; else if (/^\d+$/.test(r.show)) r.tokens = [{ text: r.show }];
+    }
+    return r;
+  };
   spec.bounds = boundsFor(step.id, first).slice();
   if (!spec.bounds.length) spec.bounds.push({ w: 'Способность', t: role.ability });
   if (off) spec.bounds.push(Y('Способность не работает: можно показать любую информацию, эффекты не применяются'));
@@ -914,29 +930,31 @@ function specialSpec(S, step, first) {
   const sp = DATA.special[step.id];
   const spec = { title: sp.name, who: '', text: (first ? sp.first : sp.other) || '', active: true, reason: '', inputs: [], defaults: {}, warn: [], info: () => null, apply: () => {}, bounds: boundsFor(step.id, first) };
   const minions = S.players.filter(p => realTeam(p) === 'minion'), demon = S.players.find(isDemon);
-  if (step.id === 'minioninfo') spec.info = () => ({ show: `Демон: ${demon ? demon.name : '—'}`, lines: [`Приспешники: ${minions.map(m => m.name).join(', ') || '—'}`] });
+  // Приспешникам: «ЭТО ДЕМОН» и «ЭТО ВАШИ ПРИСПЕШНИКИ» (они видят друг друга); Демону: Приспешники и блефы
+  const minionCards = () => [{ label: 'Приспешникам', caption: CARD.demon, players: demon ? [demon.id] : [] }, { label: 'Приспешникам', caption: CARD.minions, players: minions.map(m => m.id) }];
+  const demonCards = () => [{ label: 'Демону', caption: CARD.minions, players: minions.map(m => m.id) }];
+  if (step.id === 'minioninfo') spec.info = () => ({ show: `Демон: ${demon ? demon.name : '—'}`, lines: [`Приспешники: ${minions.map(m => m.name).join(', ') || '—'}`], tokens: minionCards() });
   const blocker = meetingBlocker(S);
   if (step.meet) {
     spec.title = step.id === 'minioninfo' ? 'Злые знакомятся: Приспешники' : 'Злые знакомятся: Демон';
     spec.text = step.id === 'minioninfo' ? 'Разбудите Приспешников, пусть посмотрят друг на друга. Покажите жетон *ЭТО ДЕМОН* и укажите на Демона.'
       : 'Разбудите Демона. Покажите жетон *ЭТО ВАШИ ПРИСПЕШНИКИ* и укажите на Приспешников.';
     spec.bounds = [Y('Носитель свойства «злые не знакомятся» умер трезвым — злые узнают друг друга этой ночью')];
-    if (step.id === 'demoninfo') spec.info = () => ({ show: `Приспешники: ${minions.map(m => m.name).join(', ') || '—'}`, lines: [] });
+    if (step.id === 'demoninfo') spec.info = () => ({ show: `Приспешники: ${minions.map(m => m.name).join(', ') || '—'}`, lines: [], tokens: demonCards() });
     return spec;
   }
   if (first && blocker && step.id === 'minioninfo') { spec.active = false; spec.reason = `в игре ${rname(blocker.role)} — Приспешники и Демон не знакомятся`; }
   if (first && blocker && step.id === 'demoninfo') {
     spec.text = 'Разбудите Демона. Покажите жетон *ЭТИХ РОЛЕЙ В ИГРЕ НЕТ* и 3 жетона добрых ролей, которых нет в игре. Приспешников не показывайте.';
     spec.bounds = [Y(`В игре ${rname(blocker.role)}: Демон получает только блефы, без знакомства с Приспешниками`)];
-    spec.info = () => ({ show: `Блефы: ${S.bluffs.map(rname).join(', ')}`, lines: [],
-      tokens: S.bluffs.length ? S.bluffs.map(role => ({ caption: 'ЭТИХ РОЛЕЙ В ИГРЕ НЕТ', role })) : undefined });
+    spec.info = () => ({ show: `Блефы: ${S.bluffs.map(rname).join(', ')}`, lines: [], tokens: bluffCards(S, 'Демону') });
     return spec;
   }
   if (step.id === 'demoninfo') {
     spec.info = () => ({ show: `Блефы: ${S.bluffs.map(rname).join(', ')}`, lines: [`Приспешники: ${minions.map(m => m.name).join(', ') || '—'}`],
-      tokens: S.bluffs.length ? S.bluffs.map(role => ({ caption: 'ЭТИХ РОЛЕЙ В ИГРЕ НЕТ', role })) : undefined });
+      tokens: demonCards().concat(bluffCards(S, 'Демону')) });
     const lun = S.players.find(p => p.role === 'lunatic');
-    if (lun) spec.warn.push(`Лунатик ${lun.name} считает себя Демоном (${rname(lun.believes)}): покажите Демону, кто Лунатик.`);
+    if (lun) spec.warn.push(`${rname('lunatic')} ${lun.name} считает себя Демоном (${rname(lun.believes)}): на его шаге Демону показывают, кто ${rname('lunatic')}.`);
   }
   if (step.id === 'dawn') {
     const pend = [];
@@ -1016,10 +1034,10 @@ function infoPair(team) {
       inputs, more: inp => team === 'outsider' && inp.none !== 'yes' ? pair : [], defaults: def,
       info: inp => {
         const ok = correct(inp), mustLie = dist && dist.must && ok ? 'Вортокс: нужна ЛОЖНАЯ информация' : '';
-        if (inp.none === 'yes') return { show: '0 — Изгоев в игре нет', lines: [ok ? 'Верно' : 'Изгои в игре есть — это ложь', mustLie] };
+        if (inp.none === 'yes') return { show: '0 — Изгоев в игре нет', lines: [ok ? 'Верно' : 'Изгои в игре есть — это ложь', mustLie], tokens: [{ text: '0', sub: 'Изгоев в игре нет' }] };
         const ps = (inp.t || []).map(id => P(S, id));
         return { show: `${rname(inp.r)}: ${ps.map(q => q && q.name).join(' и ')}`, lines: [ok ? 'Информация верная' : 'Информация ложная', mustLie, ...regNote(S, inp.t || [])],
-          tokens: inp.r ? [{ role: inp.r }] : [] };
+          tokens: inp.r ? [{ role: inp.r, players: inp.t || [], sub: 'Один из этих игроков — эта роль' }] : [] };
       },
       apply: inp => {
         log(S, `${rname(p.role === 'drunk' ? p.believes : p.role)} (${p.name}): ${inp.none === 'yes' ? 'Изгоев нет' : `${rname(inp.r)} — ${(inp.t || []).map(id => nm(S, id)).join(' или ')}`}`, 'info');
@@ -1168,7 +1186,7 @@ const LOGIC = {
   grandmother: (S, p, first) => {
     if (!first) return { active: false, reason: 'Срабатывает сама: если Демон убьёт внука, Бабушка умрёт (приложение отметит)' };
     return { inputs: [PL('t', 1, 'Внук (добрый игрок)', q => q.id !== p.id)], defaults: { t: S.flags.grandchild ? [S.flags.grandchild] : [] },
-      info: inp => { const t = inp.t && P(S, inp.t[0]); return t ? { show: `${t.name} — ${rname(t.role)}`, lines: t.align === 'good' ? [] : ['Внимание: внук должен быть добрым'], tokens: [{ role: t.role }] } : null; },
+      info: inp => { const t = inp.t && P(S, inp.t[0]); return t ? { show: `${t.name} — ${rname(t.role)}`, lines: t.align === 'good' ? [] : ['Внимание: внук должен быть добрым'], tokens: [{ role: t.role, players: [t.id], sub: 'Ваш внук' }] } : null; },
       apply: inp => { S.players.forEach(q => rmTok(q, 'grandchild')); S.flags.grandchild = inp.t[0]; addTok(S, P(S, inp.t[0]), 'grandchild', 'grandmother'); log(S, `Бабушка (${p.name}) узнаёт внука: ${nm(S, inp.t[0])} — ${rname(P(S, inp.t[0]).role)}`, 'info'); } };
   },
   sailor: (S, p, first, off) => ({
@@ -1193,7 +1211,7 @@ const LOGIC = {
   exorcist: (S, p, first, off) => ({
     inputs: [PL('t', 1, 'Экзорцист выбирает игрока (не того же, что прошлой ночью)', q => q.id !== S.flags['exorcistLast_' + p.id])],
     info: inp => { const t = inp.t && P(S, inp.t[0]); return t && isDemon(t) && !off ? { show: 'Это Демон', lines: ['Разбудите Демона, покажите жетон Экзорциста и укажите на Экзорциста. Демон не просыпается этой ночью.'],
-      tokens: [{ label: `Демону (${t.name})`, caption: 'ВАС ВЫБРАЛ ЭТОТ ПЕРСОНАЖ', role: 'exorcist' }] } : t && isDemon(t) ? { secret: true, show: 'Это Демон, но Экзорцист пьян или отравлен — Демон просыпается как обычно', lines: [] } : null; },
+      tokens: [{ label: `Демону (${t.name})`, caption: CARD.selected, role: 'exorcist', players: [p.id] }] } : t && isDemon(t) ? { secret: true, show: 'Это Демон, но Экзорцист пьян или отравлен — Демон просыпается как обычно', lines: [] } : null; },
     apply: inp => { const t = P(S, inp.t[0]); S.flags['exorcistLast_' + p.id] = t.id; if (!off && isDemon(t)) S.night.data.exorcised = t.id; else if (off && isDemon(t)) recordAbn(S, p, 'Демон не остановлен', abnSource(S, p));
       log(S, `Экзорцист (${p.name}) выбирает ${t.name}`, 'action'); },
   }),
@@ -1395,16 +1413,19 @@ const LOGIC = {
     const correct = inp => !!d && (inp.t || []).includes(d.id);
     return { deadOk: true, inputs: [PL('t', 2, `Покажите 2 игроков, один — Демон${dist ? ' (рекомендация — ложная)' : ''}`)], defaults: { t: def },
       info: inp => (inp.t || []).length === 2 ? { show: inp.t.map(id => nm(S, id)).join(' или '), lines: [!correct(inp) ? `Демона среди них нет — информация ложная. Демон: ${d ? d.name : '—'}` : '',
-        dist && dist.must && correct(inp) ? 'Вортокс: нужна ЛОЖНАЯ информация' : ''] } : null,
+        dist && dist.must && correct(inp) ? 'Вортокс: нужна ЛОЖНАЯ информация' : ''], tokens: [{ players: inp.t, sub: 'Один из них — Демон' }] } : null,
       apply: inp => { S.flags.sageWake = null; log(S, `Мудрец (${p.name}) узнаёт: ${inp.t.map(id => nm(S, id)).join(' или ')}`, 'info'); if (dist && !correct(inp)) recordAbn(S, p, 'ложная информация', dist.src); } };
   },
   barber: (S, p) => {
     if (!S.flags.haircuts) return { active: false, reason: 'Цирюльник не умирал', deadOk: true };
     return { deadOk: true, text: (DATA.roles.barber.other || ''),
       inputs: [PL('t', 2, 'Демон выбирает 2 игроков для обмена ролями (можно отказаться)', q => !(isDemon(q) && S.players.filter(isDemon).length > 1 && q !== S.players.find(isDemon)), { min: 0 })],
-      info: inp => { if ((inp.t || []).length < 2) return null; const [a, b] = inp.t.map(id => P(S, id));
+      info: inp => {
+        const demon = S.players.find(isDemon), first = demon ? [{ label: `Демону (${demon.name})`, caption: CARD.selected, role: 'barber' }] : [];
+        if ((inp.t || []).length < 2) return { show: 'Покажите Демону жетон Цирюльника', lines: ['Демон может выбрать 2 игроков для обмена ролями или отказаться'], tokens: first };
+        const [a, b] = inp.t.map(id => P(S, id));
         return { show: `${a.name} ↔ ${b.name}`, lines: ['Разбудите каждого и покажите «ТЕПЕРЬ ВЫ» и новую роль'],
-          tokens: [{ label: a.name, caption: 'ТЕПЕРЬ ВЫ', role: b.role }, { label: b.name, caption: 'ТЕПЕРЬ ВЫ', role: a.role }] }; },
+          tokens: first.concat([{ label: a.name, caption: CARD.youAre, role: b.role, align: a.align }, { label: b.name, caption: CARD.youAre, role: a.role, align: b.align }]) }; },
       apply: inp => { S.flags.haircuts = false; if (!inp.t || inp.t.length < 2) { log(S, 'Цирюльник: Демон отказался менять роли', 'action'); return; } const [a, b] = inp.t.map(id => P(S, id)); [a.role, b.role] = [b.role, a.role]; log(S, `Цирюльник: ${a.name} и ${b.name} меняются ролями (${rname(a.role)} ↔ ${rname(b.role)}), стороны прежние`, 'effect'); } };
   },
   sweetheart: (S, p) => {
@@ -1415,7 +1436,7 @@ const LOGIC = {
   eviltwin: (S, p, first) => ({
     inputs: [PL('t', 1, 'Добрый близнец', q => q.align !== p.align)], defaults: { t: S.flags.goodTwin ? [S.flags.goodTwin] : [] },
     info: inp => { const t = inp.t && P(S, inp.t[0]); return t ? { show: `Близнецы: ${p.name} и ${t.name}`, lines: [`Покажите ${p.name} роль ${rname(t.role)}, а ${t.name} — роль Злого Близнеца`],
-      tokens: [{ label: `Злому Близнецу (${p.name})`, caption: 'ВАШ БЛИЗНЕЦ', role: t.role }, { label: `Доброму близнецу (${t.name})`, caption: 'ВАШ БЛИЗНЕЦ', role: 'eviltwin' }] } : null; },
+      tokens: [{ label: `Злому Близнецу (${p.name})`, caption: CARD.thisPlayer, role: t.role, align: t.align, players: [t.id] }, { label: `Доброму близнецу (${t.name})`, caption: CARD.thisPlayer, role: 'eviltwin', players: [p.id] }] } : null; },
     apply: inp => { S.players.forEach(q => rmTok(q, 'twin')); S.flags.goodTwin = inp.t[0]; addTok(S, P(S, inp.t[0]), 'twin', 'eviltwin'); log(S, `Близнецы узнают друг друга: ${p.name} и ${nm(S, inp.t[0])}`, 'info'); },
   }),
   witch: (S, p, first, off) => {
@@ -1426,25 +1447,25 @@ const LOGIC = {
         log(S, `Ведьма (${p.name}) проклинает ${t.name}`, 'action'); } };
   },
   cerenovus: (S, p, first, off) => ({
-    inputs: [PL('t', 1, 'Церенов выбирает игрока'), ROLE('r', 'и добрую роль из сценария', r => isGoodTeam(R(r).team))],
-    info: inp => inp.t && inp.t.length && inp.r ? { show: `Разбудите ${nm(S, inp.t[0])}: помешан на роли «${rname(inp.r)}»`, lines: [off ? 'Церенов пьян или отравлен: можно показать, но безумие не действует' : ''],
-      tokens: [{ caption: 'ВАС ВЫБРАЛ ЭТОТ ПЕРСОНАЖ', role: 'cerenovus' }, { caption: 'БУДЬТЕ ПОМЕШАНЫ НА ТОМ, ЧТО ВЫ —', role: inp.r }] } : null,
+    inputs: [PL('t', 1, 'Цереновус выбирает игрока'), ROLE('r', 'и добрую роль из сценария', r => isGoodTeam(R(r).team))],
+    info: inp => inp.t && inp.t.length && inp.r ? { show: `Разбудите ${nm(S, inp.t[0])}: помешан на роли «${rname(inp.r)}»`, lines: [off ? 'Цереновус пьян или отравлен: можно показать, но безумие не действует' : ''],
+      tokens: [{ label: nm(S, inp.t[0]), caption: CARD.selected, role: 'cerenovus' }, { label: nm(S, inp.t[0]), sub: 'Помешайтесь на том, что вы — эта роль', role: inp.r }] } : null,
     apply: inp => { const t = P(S, inp.t[0]); if (!off) addTok(S, t, 'mad', 'cerenovus', ['dusk', S.n + 1], { note: rname(inp.r) }); else recordAbn(S, p, 'безумие не наложено', abnSource(S, p));
-      log(S, `Церенов (${p.name}): ${t.name} должен быть помешан на роли «${rname(inp.r)}»`, 'action'); },
+      log(S, `Цереновус (${p.name}): ${t.name} должен быть помешан на роли «${rname(inp.r)}»`, 'action'); },
   }),
   pithag: (S, p, first, off) => ({
-    inputs: [PL('t', 1, 'Ведьма-Яга выбирает игрока'), ROLE('r', 'и роль из сценария, которой нет в игре', r => !inPlay(S, r))],
+    inputs: [PL('t', 1, 'Яга выбирает игрока'), ROLE('r', 'и роль из сценария, которой нет в игре', r => !inPlay(S, r))],
     more: inp => inp.r && R(inp.r).team === 'demon' && !off ? [PL('kill', 20, 'Создан Демон: кто умирает этой ночью (ваше решение, можно никого)', aliveOnly, { min: 0 })] : [],
     info: inp => {
       if (!inp.t || !inp.t.length || !inp.r || off || inPlay(S, inp.r)) return null;
       const demon = R(inp.r).team === 'demon';
       return { show: `Разбудите ${nm(S, inp.t[0])}: «ТЕПЕРЬ ВЫ» — ${rname(inp.r)}`, lines: [demon ? 'Создан Демон: смерти этой ночью — на ваше усмотрение' : ''],
-        tokens: [{ label: nm(S, inp.t[0]), caption: 'ТЕПЕРЬ ВЫ', role: inp.r }] };
+        tokens: [{ label: nm(S, inp.t[0]), caption: CARD.youAre, role: inp.r, align: P(S, inp.t[0]).align }] };
     },
     apply: inp => {
       const t = P(S, inp.t[0]);
-      if (off || inPlay(S, inp.r)) { log(S, `Ведьма-Яга (${p.name}) выбирает ${t.name} — ничего`, 'action'); if (off && !inPlay(S, inp.r)) recordAbn(S, p, 'превращение не сработало', abnSource(S, p)); return; }
-      const old = t.role; t.role = inp.r; log(S, `Ведьма-Яга превращает ${t.name}: ${rname(old)} → ${rname(inp.r)} (сторона прежняя)`, 'effect');
+      if (off || inPlay(S, inp.r)) { log(S, `Яга (${p.name}) выбирает ${t.name} — ничего`, 'action'); if (off && !inPlay(S, inp.r)) recordAbn(S, p, 'превращение не сработало', abnSource(S, p)); return; }
+      const old = t.role; t.role = inp.r; log(S, `Яга превращает ${t.name}: ${rname(old)} → ${rname(inp.r)} (сторона прежняя)`, 'effect');
       (inp.kill || []).forEach(id => attemptKill(S, P(S, id), 'ability', 'pithag'));
     },
   }),
@@ -1487,9 +1508,22 @@ const LOGIC = {
     return { inputs: [PL('t', 1, 'Кого убивает Вортокс')], more: inp => mayorInput(S, inp), apply: inp => demonKill(S, p, off, P(S, inp.t[0]), inp) };
   },
   lunatic: (S, p, first) => {
-    if (first) return { info: () => ({ show: 'Лунатик считает себя Демоном', lines: [`Его «блефы» и «приспешники» — на ваш выбор`] }), apply: () => log(S, `Лунатик (${p.name}) узнаёт, что он «Демон»`, 'info') };
-    return { inputs: [PL('t', 3, 'Кого «атакует» Лунатик', () => true, { min: 0 })],
-      apply: inp => { S.night.data.lunatic = inp.t || []; log(S, `Лунатик (${p.name}) «атакует»: ${(inp.t || []).map(id => nm(S, id)).join(', ') || 'никого'}`, 'action'); } };
+    if (first) {
+      // 7+ игроков: Безумцу — любые «приспешники» (столько, сколько Приспешников в игре) и 3 любые добрые роли; Демону — кто Безумец
+      const big = coreCount(S) >= 7, k = S.players.filter(q => realTeam(q) === 'minion').length, demon = S.players.find(isDemon);
+      const def = stable(S, 'lunatic:' + p.id, () => ({ m: shuffle(S.players.filter(q => q.id !== p.id && !isTraveller(q))).slice(0, k).map(q => q.id),
+        b: shuffle(scriptRoles(S, r => isGoodTeam(R(r).team) && !inPlay(S, r))).slice(0, 3) }));
+      return {
+        inputs: big ? [PL('m', k, `Кого показать Безумцу как «Приспешников» (${k})`, notSelf(p)), ROLE('b0', '«Блеф» 1', r => isGoodTeam(R(r).team)), ROLE('b1', '«Блеф» 2', r => isGoodTeam(R(r).team)), ROLE('b2', '«Блеф» 3', r => isGoodTeam(R(r).team))] : [],
+        defaults: big ? { m: def.m, b0: def.b[0], b1: def.b[1], b2: def.b[2] } : {},
+        info: inp => ({ show: `${p.name} считает себя Демоном (${rname(p.believes)})`, lines: [big ? 'Безумцу — «приспешники» и «блефы»; затем настоящему Демону — кто Безумец' : 'Меньше 7 игроков: Безумцу ничего не показывают; Демону — кто Безумец'],
+          tokens: (big ? [{ label: `Безумцу (${p.name})`, caption: CARD.minions, players: inp.m || [] }].concat(['b0', 'b1', 'b2'].filter(x => inp[x]).map(x => ({ label: `Безумцу (${p.name})`, caption: CARD.notInPlay, role: inp[x] }))) : [])
+            .concat(demon ? [{ label: `Демону (${demon.name})`, caption: CARD.thisPlayer, role: 'lunatic', players: [p.id] }] : []) }),
+        apply: () => log(S, `Безумец (${p.name}) узнаёт, что он «Демон»`, 'info'),
+      };
+    }
+    return { inputs: [PL('t', 3, 'Кого «атакует» Безумец', () => true, { min: 0 })],
+      apply: inp => { S.night.data.lunatic = inp.t || []; log(S, `Безумец (${p.name}) «атакует»: ${(inp.t || []).map(id => nm(S, id)).join(', ') || 'никого'}`, 'action'); } };
   },
 
   /* --- не из базовой коробки: роли сценария Catfishing (Carousel) */
@@ -1499,7 +1533,8 @@ const LOGIC = {
     return {
       inputs: [PL('t', 1, 'Кого отравляет Вдова (посмотрев Гримуар)'), PL('know', 1, 'Добрый игрок, который узнаёт, что Вдова в игре', goodOk)],
       defaults: stable(S, 'widowKnow:' + p.id, () => ({ know: good.length ? [pick(good).id] : [] })),
-      info: inp => { const k = inp.know && P(S, inp.know[0]); return { show: 'Покажите Вдове Гримуар', lines: [k ? `Затем разбудите ${k.name} и покажите жетон Вдовы` : ''] }; },
+      info: inp => { const k = inp.know && P(S, inp.know[0]); return { show: 'Покажите Вдове Гримуар', lines: [k ? `Затем разбудите ${k.name} и покажите жетон Вдовы` : ''],
+        tokens: k ? [{ label: k.name, role: 'widow', sub: 'Эта роль в игре' }] : [] }; },
       apply: inp => {
         markOnce(S, p, 'widow');
         const t = P(S, inp.t[0]), k = P(S, inp.know[0]);
@@ -1523,7 +1558,7 @@ const LOGIC = {
         const t = inp.t && P(S, inp.t[0]); if (!t) return null;
         const type = inp.reg || realTeam(t), same = last && type === last.type;
         return { show: t.name, lines: [`Тип роли: ${TEAM_RU[type] || type}`, last ? `Прошлой ночью: ${nm(S, last.pid)} — ${TEAM_RU[last.type] || last.type}` : '',
-          same ? (off ? 'Тип тот же — можно: Аэронавт не трезв или не здоров' : 'Тип тот же, что прошлой ночью: трезвому и здоровому Аэронавту так нельзя') : ''] };
+          same ? (off ? 'Тип тот же — можно: Аэронавт не трезв или не здоров' : 'Тип тот же, что прошлой ночью: трезвому и здоровому Аэронавту так нельзя') : ''], tokens: [{ players: [t.id] }] };
       },
       apply: inp => { const t = P(S, inp.t[0]); S.flags[key] = { pid: t.id, type: inp.reg || realTeam(t) }; log(S, `Аэронавт (${p.name}) узнаёт игрока: ${t.name}`, 'info'); },
     };
@@ -1543,8 +1578,10 @@ const LOGIC = {
       { v: 'harlot', l: 'Только Куртизанка' }, { v: 'target', l: 'Только выбранный' }])] : [],
     info: inp => {
       const t = inp.t && P(S, inp.t[0]); if (!t) return null;
-      if (inp.yes !== 'yes') return { show: 'Отказ — ничего не происходит', lines: [] };
-      return { show: `Покажите Куртизанке жетон: ${rname(t.role)}`, lines: [isDemon(t) ? 'Это Демон: не убивайте его, если это закончит игру' : '', inp.die && inp.die !== 'no' && off ? 'Куртизанка пьяна или отравлена — никто не умрёт' : ''] };
+      const asked = [{ label: `Выбранному (${t.name})`, caption: CARD.selected, role: 'harlot' }];
+      if (inp.yes !== 'yes') return { show: 'Отказ — ничего не происходит', lines: ['Сначала разбудите выбранного: жетон «ОБЛАДАТЕЛЬ ЭТОЙ РОЛИ ВЫБРАЛ ВАС» и жетон Куртизанки'], tokens: asked };
+      return { show: `Покажите Куртизанке жетон: ${rname(t.role)}`, lines: [isDemon(t) ? 'Это Демон: не убивайте его, если это закончит игру' : '', inp.die && inp.die !== 'no' && off ? 'Куртизанка пьяна или отравлена — никто не умрёт' : ''],
+        tokens: asked.concat([{ label: `Куртизанке (${p.name})`, role: t.role, align: t.align }]) };
     },
     apply: inp => {
       const t = P(S, inp.t[0]);
@@ -1565,7 +1602,8 @@ const LOGIC = {
   barista: (S, p, first, off) => ({
     inputs: [PL('t', 1, 'Кого выбираете вы'), CHOICE('mode', 'Что с ним до заката', [{ v: 'sober', l: 'Трезв, здоров, верная информация' }, { v: 'twice', l: 'Способность дважды' }])],
     defaults: { mode: 'sober' },
-    info: inp => { const t = inp.t && P(S, inp.t[0]); return t ? { show: inp.mode === 'twice' ? 'Два пальца' : 'Один палец', lines: [`Разбудите ${t.name}: жетон «ОБЛАДАТЕЛЬ ЭТОЙ РОЛИ ВЫБРАЛ ВАС», жетон Баристы, затем пальцы`] } : null; },
+    info: inp => { const t = inp.t && P(S, inp.t[0]); return t ? { show: inp.mode === 'twice' ? 'Два пальца' : 'Один палец', lines: [`Разбудите ${t.name}: жетон «ОБЛАДАТЕЛЬ ЭТОЙ РОЛИ ВЫБРАЛ ВАС», жетон Баристы, затем пальцы`],
+      tokens: [{ label: t.name, caption: CARD.selected, role: 'barista', text: inp.mode === 'twice' ? '2' : '1', sub: inp.mode === 'twice' ? 'Ваша способность сработает дважды' : 'Вы трезвы, здоровы и получаете верную информацию' }] } : null; },
     apply: inp => {
       const t = P(S, inp.t[0]);
       S.players.forEach(q => { rmTok(q, 'sober', 'barista'); rmTok(q, 'twice', 'barista'); });
@@ -1597,7 +1635,7 @@ const LOGIC = {
     const team = p.align === 'evil' ? 'minion' : 'townsfolk';
     return {
       inputs: [ROLE('r', `Способность ${team === 'minion' ? 'Приспешника (Ученик злой)' : 'Горожанина (Ученик добрый)'} — лучше роль не в игре`, r => R(r).team === team)],
-      info: inp => inp.r ? { show: `Покажите «ТЕПЕРЬ ВЫ» и жетон: ${rname(inp.r)}`, lines: [] } : null,
+      info: inp => inp.r ? { show: `Покажите «ТЕПЕРЬ ВЫ» и жетон: ${rname(inp.r)}`, lines: [], tokens: [{ caption: CARD.youAre, role: inp.r, align: p.align }] } : null,
       apply: inp => {
         markOnce(S, p, 'apprentice'); p.gained = inp.r; addFresh(S, p.id, inp.r);
         log(S, `Ученик (${p.name}) получает способность: ${rname(inp.r)}`, 'effect'); rebuildRest(S);
@@ -1657,7 +1695,7 @@ const BOUNDS = {
   pukka: { all: [I('любого игрока: он отравлен; отравленный прошлой ночью умирает')] },
   shabaloth: { other: [I('2 игроков'), Y('По желанию вернуть к жизни одного из убитых им прошлой ночью')] },
   po: { other: [I('1 игрока или никого; после «никого» в следующую ночь — 3 игроков')] },
-  lunatic: { all: [I('как будто он Демон — ничего не происходит'), Y('Что показать Лунатику; настоящий Демон узнаёт его выбор')] },
+  lunatic: { all: [I('как будто он Демон — ничего не происходит'), Y('Что показать Безумцу; настоящий Демон узнаёт его выбор')] },
   clockmaker: { first: [Y('Число шагов от Демона до ближайшего Приспешника')] },
   dreamer: { all: [I('1 игрока, не себя'), Y('1 добрую и 1 злую роль, одна из них — его')] },
   snakecharmer: { all: [I('1 живого игрока: если это Демон — они меняются ролями и сторонами')] },

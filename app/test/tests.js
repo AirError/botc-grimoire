@@ -144,7 +144,7 @@ try {
   ok('предпросмотр: спросить про Шпиона', E.nominationPreview(S, byRole(S, 'spy').id, byRole(S, 'virgin').id).askSpy);
   E.nominate(S, byRole(S, 'spy').id, byRole(S, 'virgin').id, { spyTownsfolk: true });
   ok('Шпион определился Горожанином — казнён', !byRole(S, 'spy').alive);
-  // 20. Ведьма-Яга создаёт Демона и вы решаете смерти
+  // 20. Яга создаёт Демона и вы решаете смерти
   S = game(['dreamer', 'clockmaker', 'seamstress', 'oracle', 'sage', 'vortox', 'pithag', 'mutant'], 'snv');
   E.autoSetup(S, true); E.startGame(S); runNight(S, { dreamer: { t: [byRole(S, 'sage').id] }, seamstress: { t: [] } });
   ok('Вортокс: без казни победило бы зло — казним Часовщика', true);
@@ -470,9 +470,20 @@ try {
   const rest = S.night.steps.slice(S.night.i);
   ok('обмен: дальше этой ночью Демоном ходит новый Демон', sc.role === 'fanggu' && fg.role === 'snakecharmer' && sc.align === 'evil'
     && rest.some(x => x.id === 'fanggu' && x.pid === sc.id) && !rest.some(x => x.id === 'fanggu' && x.pid === fg.id), rest.map(x => x.id + ':' + x.pid).join(','));
-  ok('Церенов, Ведьма-Яга, Азартный игрок, Философ выбирают роли только из сценария',
+  ok('Цереновус, Яга, Азартный игрок, Философ выбирают роли только из сценария',
     ['cerenovus', 'pithag', 'gambler', 'philosopher'].every(id => !E.stepSpec(S, { id, pid: byRole(S, 'witch').id, key: 'chk:' + id }).inputs.some(f => f.all)));
   ok('Библиотекарь без Изгоев не застревает', !results.some(x => /пропущен шаг librarian/.test(x)));
+
+  // 32. жетоны информации на весь экран: «ЭТО ДЕМОН», «ЭТО ВАШИ ПРИСПЕШНИКИ», блефы, Безумец
+  S = game(['washerwoman', 'librarian', 'investigator', 'chef', 'empath', 'lunatic', 'poisoner', 'imp'], 'bmr'); E.autoSetup(S, true); E.startGame(S);
+  const cardsOf = id => { const st = S.night.steps.find(s => s.id === id); const sp = E.stepSpec(S, st); return (sp.info(Object.assign({}, sp.defaults)) || {}).tokens || []; };
+  const cMi = cardsOf('minioninfo'), cDi = cardsOf('demoninfo'), cLu = cardsOf('lunatic');
+  ok('Приспешникам: «ЭТО ДЕМОН» — Демон, «ЭТО ВАШИ ПРИСПЕШНИКИ» — Приспешники',
+    cMi.some(t => t.caption === 'ЭТО ДЕМОН' && t.players[0] === byRole(S, 'imp').id) && cMi.some(t => t.caption === 'ЭТО ВАШИ ПРИСПЕШНИКИ' && t.players.includes(byRole(S, 'poisoner').id)));
+  ok('Демону: Приспешники и 3 блефа', cDi.some(t => t.caption === 'ЭТО ВАШИ ПРИСПЕШНИКИ') && cDi.filter(t => t.caption === 'ЭТИХ РОЛЕЙ В ИГРЕ НЕТ').length === 3);
+  ok('Безумцу: «приспешники» и «блефы», Демону — «ЭТОТ ИГРОК» Безумец',
+    cLu.some(t => t.caption === 'ЭТО ВАШИ ПРИСПЕШНИКИ' && t.players.length === 1) && cLu.filter(t => t.caption === 'ЭТИХ РОЛЕЙ В ИГРЕ НЕТ').length === 3
+    && cLu.some(t => t.caption === 'ЭТОТ ИГРОК' && t.role === 'lunatic' && t.players[0] === byRole(S, 'lunatic').id), JSON.stringify(cLu));
 
   // 31. жребий: каменная стена
   S = game(['washerwoman', 'librarian', 'investigator', 'chef', 'empath', 'drunk', 'poisoner', 'imp'], 'tb'); E.autoSetup(S, true);

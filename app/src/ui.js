@@ -151,14 +151,17 @@ function voteOrder(onId) {
 }
 
 /* показ игроку на весь экран: только жетоны, без остальной информации. screens: [{caption, items:[{role, align}], thumb}] */
+// жетон: {label — кому (только на кнопке), caption — жетон информации, role, align, players — имена вместо «укажите», text — число/ДА/НЕТ, sub, thumb}
+const plainRole = t => t.role && !t.players && !t.text && !t.sub && !t.thumb;
 function tokenGroups(tokens) {
   const groups = [];
   for (const t of tokens || []) {
-    if (!t || !t.role || !DATA.roles[t.role]) continue;
+    if (!t || (t.role && !DATA.roles[t.role]) || (!t.role && !t.players && !t.text)) continue;
     let g = groups.find(x => x.label === (t.label || ''));
     if (!g) groups.push(g = { label: t.label || '', screens: [] });
     const last = g.screens[g.screens.length - 1];
-    if (last && last.caption === (t.caption || '') && !t.thumb && !last.thumb) last.items.push(t);
+    // несколько ролей подряд под одним жетоном (блефы, Изгои, Сновидец) — на одном экране
+    if (last && last.caption === (t.caption || '') && plainRole(t) && last.items.every(plainRole)) last.items.push(t);
     else g.screens.push({ caption: t.caption || '', thumb: t.thumb || null, items: [t] });
   }
   return groups;
@@ -172,15 +175,21 @@ function showOverlay() {
   const sh = UI.show; if (!sh) return '';
   const sc = sh.screens[sh.i]; if (!sc) return '';
   const one = sc.items.length === 1;
-  const roleBox = t => { const r = DATA.roles[t.role], al = t.align || (sc.thumb === 'down' ? 'evil' : sc.thumb === 'up' ? 'good' : (isGoodRole(t.role) ? 'good' : 'evil'));
-    return `<div class="shrole side-${al}">${ico(t.role, al, 'shic')}<div class="shname">${esc(E.rname(t.role))}</div>${one ? `<div class="shab">${esc(r.ability)}</div>` : ''}</div>`; };
+  const names = ids => `<div class="shpl">${(ids || []).map(id => { const p = E.P(S, id); return p ? `<span><i>${S.players.indexOf(p) + 1}</i>${esc(p.name)}</span>` : ''; }).join('') || '<span>—</span>'}</div>`;
+  const roleBox = t => {
+    const r = t.role && DATA.roles[t.role], al = t.align || (sc.thumb === 'down' ? 'evil' : sc.thumb === 'up' ? 'good' : (r && isGoodRole(t.role) ? 'good' : 'evil'));
+    // способность — только когда игрок получает роль («ТЕПЕРЬ ВЫ», показ своей роли) или роль одна без имён и чисел
+    const ab = r && one && !t.players && !t.text && (sc.caption === 'ТЕПЕРЬ ВЫ' || sc.caption === 'Ваша роль' || !sc.caption);
+    return `<div class="shrole side-${al}">${r ? `${ico(t.role, al, 'shic')}<div class="shname">${esc(E.rname(t.role))}</div>` : ''}${t.players ? names(t.players) : ''}
+      ${t.text ? `<div class="shtext">${esc(t.text)}</div>` : ''}${t.sub ? `<div class="shsub">${esc(t.sub)}</div>` : ''}${ab ? `<div class="shab">${esc(r.ability)}</div>` : ''}</div>`;
+  };
   return `<div class="ov showov" data-act="showNext" role="dialog" aria-label="Показ игроку">
     ${sc.caption ? `<div class="shcap">${esc(sc.caption)}</div>` : ''}
     <div class="shroles n${Math.min(sc.items.length, 3)}">${sc.items.map(roleBox).join('')}</div>
     ${sc.thumb ? `<div class="shthumb side-${sc.thumb === 'down' ? 'evil' : 'good'}"><span aria-hidden="true">${sc.thumb === 'down' ? '👎' : '👍'}</span>${sc.thumb === 'down' ? 'Вы злой' : 'Вы добрый'}</div>` : ''}
     <div class="shhint">${sh.i + 1 < sh.screens.length ? `Нажмите — дальше (${sh.i + 1} из ${sh.screens.length})` : 'Нажмите, чтобы закрыть'}</div></div>`;
 }
-// роль игрока, которую он видит (Пьяница — кем себя считает, Лунатик — своего «Демона»)
+// роль игрока, которую он видит (Пьяница — кем себя считает, Безумец — своего «Демона»)
 const seenRole = p => (p.role === 'drunk' || p.role === 'lunatic') && p.believes ? p.believes : p.role;
 // свёрнутый выбор: заголовок с текущим значением, по нажатию раскрывается список квадратиков
 function pickRow(key, label, value, body) {
@@ -581,9 +590,11 @@ function wallOverlay() {
   return `<div class="ov wallov" role="dialog" aria-label="Каменная стена: выдача ролей">
     <div class="wall ${UI.wallAnim ? 'roll' : ''}">
       <div class="wtop"><button class="wbtn" data-act="wallHide" aria-label="Свернуть стену">×</button>
-        <div class="wturn">${turn ? `<span>Ячейку открывает</span><b>${esc(turn.name)}</b>` : '<b>Все роли выданы</b>'}</div>
+        <div class="wturn">${!turn ? '<b>Все роли выданы</b>' : others.length > 1
+          // очередь по кругу; другой игрок — выбором из списка (компактно, не занимает экран)
+          ? `<label for="wsel">Ячейку открывает</label><span class="wsel"><select id="wsel" data-act="drawTurn" aria-label="Кто открывает ячейку">${others.map(id => `<option value="${id}" ${id === d.turn ? 'selected' : ''}>${esc(E.nm(S, id))}</option>`).join('')}</select><span aria-hidden="true">▾</span></span>`
+          : `<span>Ячейку открывает</span><b>${esc(turn.name)}</b>`}</div>
         <button class="wbtn" data-act="undo" ${HISTORY.length ? '' : 'disabled'} aria-label="Отменить последнее">↶</button></div>
-      ${turn && others.length > 1 ? `<div class="wwho">${others.map(id => `<button class="${id === d.turn ? 'on' : ''}" data-act="drawTurn" data-arg="${id}">${esc(E.nm(S, id))}</button>`).join('')}</div>` : ''}
       <div class="wgrid">${cells}</div>
       <div class="whint">${turn ? 'Нажмите на светящуюся ячейку' : '<button class="btn primary" data-act="wallHide">Готово</button>'}</div>
     </div>
@@ -861,7 +872,7 @@ const A = {
   drawStart: () => { act(S => E.drawStart(S), 'жребий: стена'); wallIn(); },
   wallShow: () => wallIn(),
   wallHide: () => { UI.wall = false; render(); },
-  drawTurn: id => draft(S => { S.draw.turn = id; }),
+  drawTurn: (a, el) => { const id = el && el.value; if (id) draft(S => { S.draw.turn = id; }); },
   drawOpen: i => act(S => E.drawOpen(S, +i), 'жребий: ячейка открыта'),
   drawClose: () => { UI.cracking = S.draw.open; act(S => E.drawClose(S), 'жребий: ячейка закрыта'); setTimeout(() => { UI.cracking = null; }, 1600); },
   drawCancel: () => { UI.wall = false; act(S => E.drawCancel(S), 'жребий отменён'); },
