@@ -175,6 +175,8 @@ function tokenGroups(tokens) {
     let g = groups.find(x => x.label === (t.label || ''));
     if (!g) groups.push(g = { label: t.label || '', screens: [] });
     const last = g.screens[g.screens.length - 1];
+    // join — на тот же экран столбиком (Цереновус: его жетон и роль безумия сразу)
+    if (t.join && last) { last.items.push(t); last.stack = true; continue; }
     // несколько ролей подряд под одним жетоном (блефы, Изгои, Сновидец) — на одном экране
     if (last && last.caption === (t.caption || '') && plainRole(t) && last.items.every(plainRole)) last.items.push(t);
     else g.screens.push({ caption: t.caption || '', items: [t] });
@@ -211,12 +213,12 @@ function showOverlay() {
     const r = t.role && DATA.roles[t.role], al = t.align || (t.thumb === 'down' ? 'evil' : t.thumb === 'up' ? 'good' : (r && isGoodRole(t.role) ? 'good' : 'evil'));
     // способность — только когда игрок получает роль («ТЕПЕРЬ ВЫ», показ своей роли) или роль одна без имён и чисел
     const ab = r && one && !t.players && !t.text && (sc.caption === 'ТЕПЕРЬ ВЫ' || sc.caption === 'Ваша роль' || !sc.caption);
-    return `<div class="shrole side-${al}">${r ? `${ico(t.role, al, 'shic')}<div class="shname">${esc(E.rname(t.role))}</div>` : ''}${t.players ? names(t.players) : ''}
+    return `<div class="shrole side-${al} ${t.small ? 'small' : ''}">${t.pre ? `<div class="shpre">${esc(t.pre)}</div>` : ''}${r ? `${ico(t.role, al, 'shic')}<div class="shname">${esc(E.rname(t.role))}</div>` : ''}${t.players ? names(t.players) : ''}
       ${t.text ? `<div class="shtext">${esc(t.text)}</div>` : ''}${t.sub ? `<div class="shsub">${esc(t.sub)}</div>` : ''}${ab ? `<div class="shab">${esc(r.ability)}</div>` : ''}</div>`;
   };
   return `<div class="ov showov" data-act="showNext" role="dialog" aria-label="Показ игроку">
     ${sc.caption ? cardHtml(sc.caption, sc.thumb) : yn ? cardHtml(yn) : ''}
-    ${sc.items.length && !yn ? `<div class="shroles n${Math.min(sc.items.length, 3)}">${sc.items.map(roleBox).join('')}</div>` : ''}
+    ${sc.items.length && !yn ? `<div class="shroles ${sc.stack ? 'stack' : 'n' + Math.min(sc.items.length, 3)}">${sc.items.map(roleBox).join('')}</div>` : ''}
     <div class="shhint">${sh.i + 1 < sh.screens.length ? `Нажмите — дальше (${sh.i + 1} из ${sh.screens.length})` : 'Нажмите, чтобы закрыть'}</div></div>`;
 }
 // роль игрока, которую он видит (Пьяница — кем себя считает, Безумец — своего «Демона»)

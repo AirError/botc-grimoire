@@ -515,3 +515,11 @@ html.art-poison .reveal.poison { border: 18px solid transparent; border-image: v
 .shct.sz-xl span { font-size: 60px; font-size: 17cqw; letter-spacing: .08em; }
 .shct.sz-l span { font-size: 42px; font-size: 12cqw; }
 .shct.sz-m span { font-size: 26px; font-size: 7.4cqw; }
+
+/* экран из нескольких частей столбиком (Цереновус: его жетон и роль безумия) */
+.shroles.stack { flex-direction: column; align-items: center; gap: 4px; }
+.shroles.stack .shic { width: min(46vw, 200px); height: min(46vw, 200px); }
+.shrole.small { flex-direction: row; gap: 10px; }
+.shroles.stack .shrole.small .shic, .shrole.small .shic { width: 64px; height: 64px; }
+.shrole.small .shname { font-size: 20px; }
+.shpre { font-size: 19px; font-weight: 700; color: #E3C27A; letter-spacing: .02em; margin-top: 8px; }

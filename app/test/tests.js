@@ -489,6 +489,10 @@ try {
   const ftSt = S.night.steps.find(s => s.id === 'fortuneteller'), ftInfo = E.stepSpec(S, ftSt).info({ t: ids(S, 'monk', 'imp') });
   ok('ответ «ДА» Гадалки можно показать на весь экран', ftInfo.tokens && ftInfo.tokens[0].text === 'ДА', JSON.stringify(ftInfo.tokens));
 
+  S = game(['clockmaker', 'dreamer', 'seamstress', 'mathematician', 'snakecharmer', 'mutant', 'cerenovus', 'fanggu'], 'snv'); E.autoSetup(S, true); E.startGame(S);
+  const ceSt = S.night.steps.find(s => s.id === 'cerenovus'), ceInfo = E.stepSpec(S, ceSt).info({ t: ids(S, 'clockmaker'), r: 'savant' });
+  ok('Цереновус: роль безумия на том же экране, что и его жетон', ceInfo.tokens.length === 2 && ceInfo.tokens[1].join && ceInfo.tokens[1].role === 'savant', JSON.stringify(ceInfo.tokens));
+
   // 31. жребий: каменная стена
   S = game(['washerwoman', 'librarian', 'investigator', 'chef', 'empath', 'drunk', 'poisoner', 'imp'], 'tb'); E.autoSetup(S, true);
   const before = S.players.map(p => p.role).sort().join(), drunkSees = byRole(S, 'drunk').believes;
