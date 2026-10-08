@@ -90,7 +90,100 @@ def night_frame(front, back, fade=48):
     return Image.fromarray(out.round().astype(np.uint8))
 
 
+def white_alpha(src, edge_thr=240, inner_thr=250, min_area=8):
+    """То же, что clean, но без обрезки: RGBA во весь кадр (чтобы обрезать пару картинок одинаково)."""
+    im = Image.open(src).convert("RGB")
+    a = np.asarray(im).astype(int)
+    lab, _ = ndimage.label(a.min(axis=2) > edge_thr)
+    edge = set(lab[0, :]) | set(lab[-1, :]) | set(lab[:, 0]) | set(lab[:, -1]); edge.discard(0)
+    al = np.where(np.isin(lab, list(edge)), 0, 255).astype(np.uint8)
+    m = (al > 0) & (a.min(axis=2) > inner_thr)
+    lab2, n = ndimage.label(m)
+    if n:
+        sizes = ndimage.sum(m, lab2, range(1, n + 1))
+        al[np.isin(lab2, [i + 1 for i, s in enumerate(sizes) if s >= min_area])] = 0
+    al = np.asarray(Image.fromarray(al).filter(ImageFilter.GaussianBlur(0.7)))
+    out = im.convert("RGBA"); out.putalpha(Image.fromarray(al))
+    return out
+
+
+def light_mask(src, gamma=1.0, lift=0):
+    """«Свет» белым по чёрному → белый RGBA, где прозрачность = яркость; цвет задаёт приложение (CSS mask)."""
+    a = np.asarray(Image.open(src).convert("L")).astype(float) / 255
+    a = np.clip((a - lift / 255) / (1 - lift / 255), 0, 1) ** gamma
+    out = np.zeros(a.shape + (4,), np.uint8); out[..., :3] = 255; out[..., 3] = (a * 255).round()
+    return Image.fromarray(out, "RGBA")
+
+
+def seamless_x(im):
+    """Полоса для повтора по горизонтали без шва: картинка + её зеркальная копия."""
+    out = Image.new("RGBA", (im.width * 2, im.height)); out.paste(im, (0, 0)); out.paste(im.transpose(Image.FLIP_LEFT_RIGHT), (im.width, 0))
+    return out
+
+
+def beauty():
+    """Графика стены жребия и яда (раздел 8 промптов приложения) → art/cut + размеры для вёрстки (art/cut/meta.json)."""
+    import json
+    meta = {}
+    def have(*names): return all((SRC / f"{n}.png").exists() for n in names)
+    if have("wall_bg"):
+        Image.open(SRC / "wall_bg.png").convert("RGB").save(OUT / "wall_bg.jpg", quality=90)
+    if have("wall_edge"):  # край стены: только полоса камня, повторяется по горизонтали
+        e = white_alpha(SRC / "wall_edge.png"); e = e.crop(e.getbbox())
+        seamless_x(e).save(OUT / "wall_edge.png")
+    if have("wall_tablet", "wall_tablet_cracked"):  # целая и треснувшая — одинаковая обрезка, чтобы подменялись без сдвига
+        t1, t2 = white_alpha(SRC / "wall_tablet.png"), white_alpha(SRC / "wall_tablet_cracked.png")
+        b1, b2 = t1.getbbox(), t2.getbbox()
+        box = (min(b1[0], b2[0]), min(b1[1], b2[1]), max(b1[2], b2[2]), max(b1[3], b2[3]))
+        t1.crop(box).save(OUT / "tablet.png"); t2.crop(box).save(OUT / "tablet_cracked.png")
+    if have("runes"):  # 24 руны сеткой 4×6: строки и столбцы — по пустым промежуткам между символами
+        g = np.asarray(Image.open(SRC / "runes.png").convert("L")) > 90
+        def bands(proj, want):
+            on = proj > 0; runs, start = [], None
+            for i, v in enumerate(on):
+                if v and start is None: start = i
+                if not v and start is not None: runs.append([start, i]); start = None
+            if start is not None: runs.append([start, len(on)])
+            while len(runs) > want:  # склеиваем самые близкие куски одного символа (полумесяц с точкой)
+                k = min(range(len(runs) - 1), key=lambda j: runs[j + 1][0] - runs[j][1])
+                runs[k:k + 2] = [[runs[k][0], runs[k + 1][1]]]
+            return runs
+        rows, cols = bands(g.sum(axis=1), 6), bands(g.sum(axis=0), 4)
+        mask = light_mask(SRC / "runes.png", gamma=0.8, lift=40)
+        k = 0
+        for y0, y1 in rows:
+            for x0, x1 in cols:
+                sub = g[y0:y1, x0:x1]
+                if not sub.any(): continue
+                ys, xs = np.where(sub); by0, by1, bx0, bx1 = y0 + ys.min(), y0 + ys.max() + 1, x0 + xs.min(), x0 + xs.max() + 1
+                side = max(by1 - by0, bx1 - bx0) + 16; cy, cx = (by0 + by1) // 2, (bx0 + bx1) // 2
+                mask.crop((cx - side // 2, cy - side // 2, cx + side // 2, cy + side // 2)).resize((160, 160), Image.LANCZOS).save(OUT / f"rune{k}.png")
+                k += 1
+        meta["runes"] = k
+        print("рун:", k, "строк", len(rows), "столбцов", len(cols))
+    for name, gamma in (("wall_glow", 1.0), ("fx_open", 1.0), ("fx_circle", 0.9)):
+        if have(name): light_mask(SRC / f"{name}.png", gamma=gamma, lift=8).save(OUT / f"{name}.png")
+    if have("poison_drop"):
+        d = white_alpha(SRC / "poison_drop.png"); d.crop(d.getbbox()).save(OUT / "poison_drop.png")
+    if have("poison_drips"):
+        d = white_alpha(SRC / "poison_drips.png"); d = d.crop(d.getbbox())
+        seamless_x(d).save(OUT / "poison_drips.png")
+    if have("poison_frame"):  # рамка для border-image: толщина — по средней строке и столбцу
+        f = white_alpha(SRC / "poison_frame.png"); f = f.crop(f.getbbox())
+        f = f.resize((600, round(600 * f.height / f.width)), Image.LANCZOS)
+        al = np.asarray(f)[..., 3]
+        row, col = al[al.shape[0] // 2], al[:, al.shape[1] // 2]
+        def inner(line):  # от края: первый непрозрачный пиксель, потом первый прозрачный — это внутренний край рамки
+            a = int(np.argmax(line >= 128)); return a + int(np.argmax(line[a:] < 20))
+        tx, ty = inner(row), inner(col)
+        meta["frame_slice"] = max(tx, ty) + 2
+        f.save(OUT / "poison_frame.png")
+        print("рамка: толщина", tx, ty)
+    (OUT / "meta.json").write_text(json.dumps(meta), encoding="utf-8")
+
+
 if __name__ == "__main__":
+    beauty()
     for name in ["header_front", "header_back", "sec_townsfolk", "sec_outsider", "sec_minion",
                  "sec_demon", "night_center", "dusk", "dawn", "minioninfo", "demoninfo", "title_1",
                  "win_good", "win_evil", "ui_nominate", "ui_vote", "ui_execute", "ui_dead", "sec_traveller", "sec_fabled"]:

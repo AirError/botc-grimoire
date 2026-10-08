@@ -485,6 +485,10 @@ try {
     cLu.some(t => t.caption === 'ЭТО ВАШИ ПРИСПЕШНИКИ' && t.players.length === 1) && cLu.filter(t => t.caption === 'ЭТИХ РОЛЕЙ В ИГРЕ НЕТ').length === 3
     && cLu.some(t => t.caption === 'ЭТОТ ИГРОК' && t.role === 'lunatic' && t.players[0] === byRole(S, 'lunatic').id), JSON.stringify(cLu));
 
+  S = game(['clockmaker', 'grandmother', 'fortuneteller', 'monk', 'tealady', 'imp', 'witch', 'recluse']); E.autoSetup(S, true); E.startGame(S);
+  const ftSt = S.night.steps.find(s => s.id === 'fortuneteller'), ftInfo = E.stepSpec(S, ftSt).info({ t: ids(S, 'monk', 'imp') });
+  ok('ответ «ДА» Гадалки можно показать на весь экран', ftInfo.tokens && ftInfo.tokens[0].text === 'ДА', JSON.stringify(ftInfo.tokens));
+
   // 31. жребий: каменная стена
   S = game(['washerwoman', 'librarian', 'investigator', 'chef', 'empath', 'drunk', 'poisoner', 'imp'], 'tb'); E.autoSetup(S, true);
   const before = S.players.map(p => p.role).sort().join(), drunkSees = byRole(S, 'drunk').believes;

@@ -112,11 +112,26 @@ const art = (k, cls) => (typeof ART !== 'undefined' && ART[k]) ? `<img class="${
 const roleLine = p => p.role ? `<span class="cr t-${team(p.role)}">${esc(E.rname(p.role))}${p.believes ? ' → ' + esc(E.rname(p.believes)) : ''}${E.isTraveller(p) ? ' · Странник' : ''}</span>` : '<span class="cr muted">без роли</span>';
 
 // ядовитые капли: пьянство, отравление, Вортокс — информация может (или должна) быть ложной
+// рисованная графика (art/cut, раздел 8 промптов) — если её нет в сборке, рисуем SVG и CSS
+const HAS_ART = k => typeof ART !== 'undefined' && !!ART[k];
 const DROP_D = 'M12 2C12 2 5 10.5 5 15a7 7 0 0 0 14 0C19 10.5 12 2 12 2Z';
-const DROP_SVG = `<svg class="drop1" viewBox="0 0 24 24" aria-hidden="true"><path d="${DROP_D}"/><circle cx="9.6" cy="15.2" r="1.7" class="gl"/></svg>`;
-const DROPS_SVG = `<svg class="drops" viewBox="0 0 46 26" aria-hidden="true"><path transform="translate(0 3) scale(.9)" d="${DROP_D}"/><path transform="translate(13 0) scale(1.08)" d="${DROP_D}"/><path transform="translate(29 7) scale(.72)" d="${DROP_D}"/></svg>`;
+const DROP_SVG = HAS_ART('poison_drop') ? `<img class="drop1" src="${ART.poison_drop}" alt="">`
+  : `<svg class="drop1" viewBox="0 0 24 24" aria-hidden="true"><path d="${DROP_D}"/><circle cx="9.6" cy="15.2" r="1.7" class="gl"/></svg>`;
+const DROPS_SVG = HAS_ART('poison_drop') ? `<span class="drops">${[1, 2, 3].map(i => `<img class="d${i}" src="${ART.poison_drop}" alt="">`).join('')}</span>`
+  : `<svg class="drops" viewBox="0 0 46 26" aria-hidden="true"><path transform="translate(0 3) scale(.9)" d="${DROP_D}"/><path transform="translate(13 0) scale(1.08)" d="${DROP_D}"/><path transform="translate(29 7) scale(.72)" d="${DROP_D}"/></svg>`;
 // потёки по верхнему краю «ядовитой» рамки
-const DRIP_SVG = `<svg class="drip" viewBox="0 0 200 16" preserveAspectRatio="none" aria-hidden="true"><path d="M0 0H200V3C192 3 191 9 188 9S185 3 178 3H132C126 3 126 14 121 14S116 3 110 3H66C61 3 61 8 58 8S55 3 50 3H22C17 3 17 11 13 11S9 3 4 3H0Z"/></svg>`;
+const DRIP_SVG = HAS_ART('poison_drips') ? '<span class="drip2" aria-hidden="true"></span>'
+  : `<svg class="drip" viewBox="0 0 200 16" preserveAspectRatio="none" aria-hidden="true"><path d="M0 0H200V3C192 3 191 9 188 9S185 3 178 3H132C126 3 126 14 121 14S116 3 110 3H66C61 3 61 8 58 8S55 3 50 3H22C17 3 17 11 13 11S9 3 4 3H0Z"/></svg>`;
+// картинки для CSS — переменными (--a-…), чтобы не повторять data:-адреса в разметке; html.art-* включает рисованный вид
+function artVars() {
+  if (typeof ART === 'undefined') return;
+  const keys = ['wall_bg', 'wall_edge', 'tablet', 'tablet_cracked', 'wall_glow', 'fx_open', 'fx_circle', 'poison_drips', 'poison_frame'].concat([...Array(24).keys()].map(i => 'rune' + i));
+  const el = document.createElement('style'); el.id = 'artvars';
+  el.textContent = `:root{${keys.filter(HAS_ART).map(k => `--a-${k.replace(/_/g, '-')}:url("${ART[k]}");`).join('')}--frame-slice:${(typeof ART_META !== 'undefined' && ART_META.frame_slice) || 0};}`;
+  document.head.appendChild(el);
+  const cl = document.documentElement.classList;
+  cl.toggle('art-wall', HAS_ART('tablet') && HAS_ART('wall_bg')); cl.toggle('art-runes', HAS_ART('rune0')); cl.toggle('art-poison', HAS_ART('poison_frame'));
+}
 
 // выбор игроков — компактные квадратики: иконка роли (днём — номер места), имя; мёртвых тоже можно выбрать
 function chipsPlayers(key, n, filter, selected, opts) {
@@ -582,27 +597,31 @@ function wallOverlay() {
   const d = S.draw; if (!UI.wall || !d) return '';
   const turn = d.turn && E.P(S, d.turn), open = d.open !== null ? d.cells[d.open] : null;
   const cells = d.cells.map((c, i) => {
-    const used = !!c.pid, crack = c.done ? `<svg class="crack" viewBox="0 0 48 48" aria-hidden="true" style="transform:rotate(${(i * 67) % 360}deg)"><path d="${CRACKS[i % 3]}"/></svg>` : '';
+    const used = !!c.pid, crack = c.done && !HAS_ART('tablet_cracked') ? `<svg class="crack" viewBox="0 0 48 48" aria-hidden="true" style="transform:rotate(${(i * 67) % 360}deg)"><path d="${CRACKS[i % 3]}"/></svg>` : '';
+    // руна: рисованная маска (24 знака из runes.png) или запасной SVG
+    const rune = HAS_ART('rune0') ? `<span class="runeg" aria-hidden="true"><i class="runei" style="--rm:var(--a-rune${c.glyph % 24})"></i></span>`
+      : `<svg class="rune" viewBox="0 0 48 48" aria-hidden="true"><path d="${RUNES[c.glyph % RUNES.length]}"/></svg>`;
     return `<button class="wcell c-${c.color} ${c.done ? 'done' : ''} ${UI.cracking === i ? 'cracking' : ''} ${d.open === i ? 'opened' : ''}" data-act="drawOpen" data-arg="${i}" ${used || !turn ? 'disabled' : ''} aria-label="${used ? 'Открытая ячейка' : 'Ячейка ' + (i + 1)}" style="--d:${(i * 0.37) % 2.4}s">
-      <svg class="rune" viewBox="0 0 48 48" aria-hidden="true"><path d="${RUNES[c.glyph % RUNES.length]}"/></svg>${crack}</button>`;
+      ${rune}${crack}</button>`;
   }).join('');
-  const others = d.order.filter(id => !d.cells.some(c => c.pid === id) && E.P(S, id));
+  const others = d.order.filter(id => (id === d.turn || !d.cells.some(c => c.pid === id)) && E.P(S, id)); // кто ещё не открывал (и тот, чья ячейка открыта сейчас)
   return `<div class="ov wallov" role="dialog" aria-label="Каменная стена: выдача ролей">
-    <div class="wall ${UI.wallAnim ? 'roll' : ''}">
+    <div class="wall ${UI.wallAnim ? 'roll' : ''}"><div class="wscroll">
       <div class="wtop"><button class="wbtn" data-act="wallHide" aria-label="Свернуть стену">×</button>
         <div class="wturn">${!turn ? '<b>Все роли выданы</b>' : others.length > 1
           // очередь по кругу; другой игрок — выбором из списка (компактно, не занимает экран)
-          ? `<label for="wsel">Ячейку открывает</label><span class="wsel"><select id="wsel" data-act="drawTurn" aria-label="Кто открывает ячейку">${others.map(id => `<option value="${id}" ${id === d.turn ? 'selected' : ''}>${esc(E.nm(S, id))}</option>`).join('')}</select><span aria-hidden="true">▾</span></span>`
+          ? `<label for="wsel">Ячейку открывает</label><span class="wsel"><select id="wsel" data-act="drawTurn" aria-label="Кто открывает ячейку" ${d.open !== null ? 'disabled' : ''}>${others.map(id => `<option value="${id}" ${id === d.turn ? 'selected' : ''}>${esc(E.nm(S, id))}</option>`).join('')}</select><span aria-hidden="true">▾</span></span>`
           : `<span>Ячейку открывает</span><b>${esc(turn.name)}</b>`}</div>
         <button class="wbtn" data-act="undo" ${HISTORY.length ? '' : 'disabled'} aria-label="Отменить последнее">↶</button></div>
       <div class="wgrid">${cells}</div>
       <div class="whint">${turn ? 'Нажмите на светящуюся ячейку' : '<button class="btn primary" data-act="wallHide">Готово</button>'}</div>
-    </div>
+    </div></div>
     ${open ? (() => { const r = E.drawShown(open), al = isGoodRole(r) ? 'good' : 'evil';
-      // ячейка «распахивается»: роль вырастает из её места на стене
+      // ячейка «распахивается»: роль вырастает из её места на стене; за иконкой — вспышка и магический круг цвета её рун
       const col = d.open % 3, row = Math.floor(d.open / 3);
-      return `<div class="wreveal side-${al}" data-act="drawClose" role="dialog" aria-label="Ваша роль" style="transform-origin:${Math.round((col + 0.5) / 3 * 100)}% ${170 + row * 122}px">
-        <div class="wrfor">${esc(E.nm(S, open.pid))}, ваша роль</div>${ico(r, al, 'wric')}<div class="wrname">${esc(E.rname(r))}</div>
+      return `<div class="wreveal side-${al} c-${open.color}" data-act="drawClose" role="dialog" aria-label="Ваша роль" style="transform-origin:${Math.round((col + 0.5) / 3 * 100)}% ${170 + row * 122}px">
+        <div class="wrfor">${esc(E.nm(S, open.pid))}, ваша роль</div>
+        <div class="wrart">${HAS_ART('fx_circle') ? '<i class="fxc"></i>' : ''}${HAS_ART('fx_open') ? '<i class="fxo"></i>' : ''}${ico(r, al, 'wric')}</div><div class="wrname">${esc(E.rname(r))}</div>
         <div class="wrteam">${esc(E.TEAM_RU[team(r)] || '')} · ${al === 'good' ? 'добро' : 'зло'}</div><div class="wrab">${esc(DATA.roles[r].ability)}</div>
         <div class="shhint">Запомните роль и нажмите — ячейка закроется</div></div>`; })() : ''}</div>`;
 }
@@ -938,6 +957,7 @@ function boot(hotData) {
   }
   if (!S) S = sampleGame();
   S = upgrade(S);
+  if (!document.getElementById('artvars')) artVars();
   render();
   connectCloud();
 }

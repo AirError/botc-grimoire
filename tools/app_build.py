@@ -28,7 +28,13 @@ ART = {
     "execute": (CUT / "ui_execute.png", 160), "dead": (CUT / "ui_dead.png", 160),
     "icon": (ART_SRC / "app_icon.png", 128), "twoface": (CUT / "night_center.png", 160),
     "traveller": (CUT / "sec_traveller.png", 160), "fabled": (CUT / "sec_fabled.png", 160),
+    # стена жребия и яд (prep_art.beauty)
+    "wall_bg": (CUT / "wall_bg.jpg", 720), "wall_edge": (CUT / "wall_edge.png", 1200),
+    "tablet": (CUT / "tablet.png", 300), "tablet_cracked": (CUT / "tablet_cracked.png", 300),
+    "wall_glow": (CUT / "wall_glow.png", 360), "fx_open": (CUT / "fx_open.png", 640), "fx_circle": (CUT / "fx_circle.png", 640),
+    "poison_drop": (CUT / "poison_drop.png", 72), "poison_drips": (CUT / "poison_drips.png", 900), "poison_frame": (CUT / "poison_frame.png", 600),
 }
+ART.update({f"rune{i}": (CUT / f"rune{i}.png", 128) for i in range(24)})
 
 
 def webp_uri(path, width):
@@ -42,7 +48,9 @@ def webp_uri(path, width):
 
 
 art = {k: webp_uri(p, w) for k, (p, w) in ART.items() if p.exists()}
-art_js = "const ART = " + json.dumps(art, separators=(",", ":")) + ";\n"
+meta = json.loads((CUT / "meta.json").read_text(encoding="utf-8")) if (CUT / "meta.json").exists() else {}
+art_js = ("const ART = " + json.dumps(art, separators=(",", ":")) + ";\n"
+          + "const ART_META = " + json.dumps(meta) + ";\n")
 missing = [k for k, (p, _) in ART.items() if not p.exists()]
 if missing:
     print("нет графики:", ", ".join(missing))

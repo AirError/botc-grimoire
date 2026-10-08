@@ -914,7 +914,7 @@ function stepSpec(S, step) {
   spec.info = inp => {
     const r = info0(inp);
     if (r && !r.secret && !r.tokens && typeof r.show === 'string') {
-      const yn = r.show.match(/^(ДА|НЕТ)\b/);
+      const yn = r.show.match(/^(ДА|НЕТ)(?![А-ЯЁа-яё])/); // \b в JS не видит границу кириллических слов
       if (yn) r.tokens = [{ text: yn[1] }]; else if (/^\d+$/.test(r.show)) r.tokens = [{ text: r.show }];
     }
     return r;

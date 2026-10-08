@@ -9,6 +9,7 @@ art/*.jpg
 # печатные листы сценария — только локально (на GitHub — только приложение)
 sheets/
 four_demons_script.json
+prompts_sheets.md
 ПЕРЕНОС_сценарий.md
 tools/build_sheets.py
 tools/sheet_data.py

@@ -373,15 +373,16 @@ html.locked, html.locked body { overflow: hidden; }
 
 /* ---------- стена жребия: древний камень, руны светятся магическими цветами ---------- */
 .wallov { background: #050404; display: flex; justify-content: center; overflow: hidden; }
-.wall { position: relative; width: 100%; max-width: 560px; height: 100%; display: flex; flex-direction: column; gap: 12px;
-  padding: calc(12px + env(safe-area-inset-top, 0px)) 14px calc(16px + env(safe-area-inset-bottom, 0px));
+.wall { position: relative; width: 100%; max-width: 560px; height: 100%;
   background:
     radial-gradient(ellipse 60% 40% at 20% 8%, rgba(255, 240, 210, .07), transparent 70%),
     radial-gradient(ellipse 50% 35% at 85% 92%, rgba(0, 0, 0, .55), transparent 70%),
     repeating-linear-gradient(0deg, transparent 0 46px, rgba(0, 0, 0, .35) 46px 48px),
     repeating-linear-gradient(90deg, transparent 0 63px, rgba(0, 0, 0, .25) 63px 65px),
     radial-gradient(circle at 30% 40%, #4A453D 0, #37332D 55%, #24211D 100%);
-  box-shadow: inset 0 -30px 40px rgba(0, 0, 0, .6), inset 0 20px 30px rgba(0, 0, 0, .5); overflow-y: auto; }
+  box-shadow: inset 0 -30px 40px rgba(0, 0, 0, .6), inset 0 20px 30px rgba(0, 0, 0, .5); }
+.wscroll { height: 100%; overflow-y: auto; display: flex; flex-direction: column; gap: 12px;
+  padding: calc(12px + env(safe-area-inset-top, 0px)) 14px calc(16px + env(safe-area-inset-bottom, 0px)); }
 .wall.roll { animation: wallRoll 1.05s cubic-bezier(.2, .85, .25, 1) both; }
 @keyframes wallRoll { 0% { transform: translateY(-104%); } 72% { transform: translateY(2.5%); } 82% { transform: translateY(-1%); } 90% { transform: translateY(.6%) rotate(.2deg); } 100% { transform: none; } }
 .wtop { display: grid; grid-template-columns: 44px 1fr 44px; align-items: center; gap: 8px; }
@@ -405,7 +406,7 @@ html.locked, html.locked body { overflow: hidden; }
   background: radial-gradient(circle at 35% 30%, #5E584E, #3C3832 60%, #2A2723);
   box-shadow: inset 3px 3px 0 rgba(255, 255, 255, .07), inset -4px -4px 0 rgba(0, 0, 0, .45), 0 0 16px -2px var(--glow), 0 4px 10px rgba(0, 0, 0, .6);
   animation: cellGlow 2.6s ease-in-out infinite; animation-delay: calc(var(--d) * -1); }
-.wcell.c-green { --glow: #63F58B; } .wcell.c-violet { --glow: #B783FF; } .wcell.c-red { --glow: #FF5E5E; } .wcell.c-gold { --glow: #FFD45E; }
+.c-green { --glow: #63F58B; } .c-violet { --glow: #B783FF; } .c-red { --glow: #FF5E5E; } .c-gold { --glow: #FFD45E; }
 .wcell .rune { position: absolute; inset: 16%; width: 68%; height: 68%; }
 .wcell .rune path { fill: none; stroke: var(--glow); stroke-width: 2.6; stroke-linecap: round; stroke-linejoin: round; }
 .wcell .rune { filter: drop-shadow(0 0 3px var(--glow)) drop-shadow(0 0 9px var(--glow)); animation: runePulse 2.6s ease-in-out infinite; animation-delay: calc(var(--d) * -1); }
@@ -435,7 +436,7 @@ html.locked, html.locked body { overflow: hidden; }
   display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 10px; text-align: center; cursor: pointer;
   padding: calc(24px + env(safe-area-inset-top, 0px)) 22px calc(24px + env(safe-area-inset-bottom, 0px)); animation: cellOpen .5s cubic-bezier(.2, .9, .3, 1.1); overflow-y: auto; }
 @keyframes cellOpen { from { transform: scale(.2) rotateX(70deg); opacity: 0; } to { transform: none; opacity: 1; } }
-.wrfor { font-size: 15px; letter-spacing: .12em; text-transform: uppercase; color: #9A917F; }
+.wrfor { position: relative; z-index: 1; font-size: 15px; letter-spacing: .12em; text-transform: uppercase; color: #9A917F; }
 .wric { width: min(58vw, 250px); height: min(58vw, 250px); object-fit: contain; filter: drop-shadow(0 0 22px rgba(243, 210, 140, .25)); }
 .wrname { font-size: 34px; font-weight: 800; line-height: 1.1; }
 .wreveal.side-good .wrname { color: #A9C4F5; } .wreveal.side-evil .wrname { color: #F59A9A; }
@@ -446,3 +447,57 @@ html.locked, html.locked body { overflow: hidden; }
   .wcell.cracking .crack path { stroke-dashoffset: 0; animation: none; }
 }
 
+
+/* ---------- рисованная графика (html.art-*: картинки есть в сборке) ---------- */
+/* стена: камень на весь экран, при выкатывании снизу виден обломанный край */
+html.art-wall .wall { background: var(--a-wall-bg) center top / cover no-repeat, #1A1916; }
+html.art-wall .wall::after { content: ''; position: absolute; left: 0; right: 0; top: 100%; height: 54px; pointer-events: none;
+  background: var(--a-wall-edge) left top / auto 100% repeat-x; }
+/* табличка: рисованный камень; сияние — маска wall_glow за табличкой цвета её рун */
+html.art-wall .wcell { background: var(--a-tablet) center / 100% 100% no-repeat; border: none; border-radius: 0; box-shadow: none; overflow: visible; animation: none; }
+html.art-wall .wcell::before { content: ''; position: absolute; inset: -30%; z-index: -1; pointer-events: none; background: var(--glow);
+  -webkit-mask: var(--a-wall-glow) center / 100% 100% no-repeat; mask: var(--a-wall-glow) center / 100% 100% no-repeat;
+  animation: glowPulse 2.6s ease-in-out infinite; animation-delay: calc(var(--d) * -1); }
+@keyframes glowPulse { 0%, 100% { opacity: .55; transform: scale(.97); } 50% { opacity: .95; transform: scale(1.03); } }
+html.art-wall .wcell::after { content: ''; position: absolute; inset: 0; pointer-events: none; opacity: 0; background: var(--a-tablet-cracked) center / 100% 100% no-repeat; }
+html.art-wall .wcell.done { background-image: var(--a-tablet-cracked); }
+html.art-wall .wcell.done::before, html.art-wall .wcell.opened::before { display: none; }
+html.art-wall .wcell.cracking { background-image: var(--a-tablet); animation: cellShake .35s ease-in-out 2; }
+html.art-wall .wcell.cracking::after { animation: crackIn .45s .12s ease-out forwards; }
+@keyframes crackIn { 0% { opacity: 0; filter: brightness(1.8); } 40% { opacity: 1; filter: brightness(1.4); } 100% { opacity: 1; filter: none; } }
+html.art-wall .wcell.opened { filter: brightness(.55); }
+html.art-wall .wcell:focus-visible { outline: 2px solid var(--glow); outline-offset: 2px; }
+/* руна: маска из runes.png, светится цветом ячейки (свечение — на обёртке: фильтр под маской не работает) */
+.runeg { position: absolute; inset: 22%; filter: drop-shadow(0 0 3px var(--glow)) drop-shadow(0 0 9px var(--glow)); animation: runePulse 2.6s ease-in-out infinite; animation-delay: calc(var(--d) * -1); }
+.runei { position: absolute; inset: 0; background: var(--glow); -webkit-mask: var(--rm) center / contain no-repeat; mask: var(--rm) center / contain no-repeat; }
+.wcell.done .runeg { animation: none; filter: none; opacity: .75; }
+.wcell.done .runei { background: #24211D; }
+.wcell.opened .runeg { opacity: 0; }
+.wcell.cracking .runeg { animation: runeOut 1s ease-out forwards; }
+.wcell.cracking .runei { background: var(--glow); animation: runeDark 1s ease-out forwards; }
+@keyframes runeOut { 0% { opacity: 1; filter: drop-shadow(0 0 4px var(--glow)) drop-shadow(0 0 16px var(--glow)); } 100% { opacity: .75; filter: none; } }
+@keyframes runeDark { to { background: #24211D; } }
+/* роль из распахнутой ячейки: вспышка и медленно вращающийся магический круг цвета рун */
+.wreveal { overflow-x: hidden; }
+.wtop .wturn label, .wtop .wturn > span { text-shadow: 0 1px 3px #000, 0 0 8px #000; color: #CFC6B4; }
+.wrart { position: relative; width: min(58vw, 250px); height: min(58vw, 250px); display: flex; align-items: center; justify-content: center; }
+.wrart .wric { position: relative; z-index: 1; }
+.wrart .fxc, .wrart .fxo { position: absolute; left: 50%; top: 50%; pointer-events: none; background: var(--glow);
+  -webkit-mask-position: center; mask-position: center; -webkit-mask-size: 100% 100%; mask-size: 100% 100%; -webkit-mask-repeat: no-repeat; mask-repeat: no-repeat; }
+.wrart .fxc { width: 136%; height: 136%; margin: -68% 0 0 -68%; opacity: .5; -webkit-mask-image: var(--a-fx-circle); mask-image: var(--a-fx-circle); animation: fxSpin 60s linear infinite; }
+.wrart .fxo { width: 260%; height: 260%; margin: -130% 0 0 -130%; opacity: 0; -webkit-mask-image: var(--a-fx-open); mask-image: var(--a-fx-open); animation: fxBurst 1.1s .05s ease-out; }
+@keyframes fxSpin { to { transform: rotate(360deg); } }
+@keyframes fxBurst { 0% { opacity: 1; transform: scale(.25); } 60% { opacity: .8; } 100% { opacity: 0; transform: scale(1.15); } }
+
+/* яд: капля-картинка, рамка border-image и потёки сверху */
+img.drop1 { object-fit: contain; }
+span.drops { display: inline-flex; align-items: flex-end; gap: 1px; width: auto; height: 24px; }
+span.drops img { object-fit: contain; } span.drops .d1 { height: 17px; } span.drops .d2 { height: 23px; } span.drops .d3 { height: 13px; }
+html.art-poison .reveal.poison { border: 18px solid transparent; border-image: var(--a-poison-frame) var(--frame-slice) / 18px round; border-radius: 0;
+  background: var(--poisonbg) padding-box; padding: 24px 10px 10px; overflow: visible; }
+.reveal .drip2 { position: absolute; left: 0; right: 0; top: 0; height: 18px; pointer-events: none; background: var(--a-poison-drips) left top / auto 100% repeat-x; }
+.oled .reveal .drip2 { filter: drop-shadow(0 0 4px rgba(107, 227, 122, .45)); }
+@media (prefers-reduced-motion: reduce) {
+  html.art-wall .wcell::before, .runeg, .wrart .fxc, .wrart .fxo, html.art-wall .wcell.cracking::after, .wcell.cracking .runeg, .wcell.cracking .runei { animation: none !important; }
+  html.art-wall .wcell.cracking::after { opacity: 1; }
+}
