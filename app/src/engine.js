@@ -930,8 +930,8 @@ function specialSpec(S, step, first) {
   const sp = DATA.special[step.id];
   const spec = { title: sp.name, who: '', text: (first ? sp.first : sp.other) || '', active: true, reason: '', inputs: [], defaults: {}, warn: [], info: () => null, apply: () => {}, bounds: boundsFor(step.id, first) };
   const minions = S.players.filter(p => realTeam(p) === 'minion'), demon = S.players.find(isDemon);
-  // Приспешникам: «ЭТО ДЕМОН» и «ЭТО ВАШИ ПРИСПЕШНИКИ» (они видят друг друга); Демону: Приспешники и блефы
-  const minionCards = () => [{ label: 'Приспешникам', caption: CARD.demon, players: demon ? [demon.id] : [] }, { label: 'Приспешникам', caption: CARD.minions, players: minions.map(m => m.id) }];
+  // Приспешникам — только «ЭТО ДЕМОН» (друг друга они видят, проснувшись вместе; решение пользователя); Демону — Приспешники и блефы
+  const minionCards = () => [{ label: 'Приспешникам', caption: CARD.demon, players: demon ? [demon.id] : [] }];
   const demonCards = () => [{ label: 'Демону', caption: CARD.minions, players: minions.map(m => m.id) }];
   if (step.id === 'minioninfo') spec.info = () => ({ show: `Демон: ${demon ? demon.name : '—'}`, lines: [`Приспешники: ${minions.map(m => m.name).join(', ') || '—'}`], tokens: minionCards() });
   const blocker = meetingBlocker(S);

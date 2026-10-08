@@ -478,8 +478,8 @@ try {
   S = game(['washerwoman', 'librarian', 'investigator', 'chef', 'empath', 'lunatic', 'poisoner', 'imp'], 'bmr'); E.autoSetup(S, true); E.startGame(S);
   const cardsOf = id => { const st = S.night.steps.find(s => s.id === id); const sp = E.stepSpec(S, st); return (sp.info(Object.assign({}, sp.defaults)) || {}).tokens || []; };
   const cMi = cardsOf('minioninfo'), cDi = cardsOf('demoninfo'), cLu = cardsOf('lunatic');
-  ok('Приспешникам: «ЭТО ДЕМОН» — Демон, «ЭТО ВАШИ ПРИСПЕШНИКИ» — Приспешники',
-    cMi.some(t => t.caption === 'ЭТО ДЕМОН' && t.players[0] === byRole(S, 'imp').id) && cMi.some(t => t.caption === 'ЭТО ВАШИ ПРИСПЕШНИКИ' && t.players.includes(byRole(S, 'poisoner').id)));
+  ok('Приспешникам: только «ЭТО ДЕМОН» — Демон',
+    cMi.length === 1 && cMi[0].caption === 'ЭТО ДЕМОН' && cMi[0].players[0] === byRole(S, 'imp').id);
   ok('Демону: Приспешники и 3 блефа', cDi.some(t => t.caption === 'ЭТО ВАШИ ПРИСПЕШНИКИ') && cDi.filter(t => t.caption === 'ЭТИХ РОЛЕЙ В ИГРЕ НЕТ').length === 3);
   ok('Безумцу: «приспешники» и «блефы», Демону — «ЭТОТ ИГРОК» Безумец',
     cLu.some(t => t.caption === 'ЭТО ВАШИ ПРИСПЕШНИКИ' && t.players.length === 1) && cLu.filter(t => t.caption === 'ЭТИХ РОЛЕЙ В ИГРЕ НЕТ').length === 3

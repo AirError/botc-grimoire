@@ -122,6 +122,27 @@ const DROPS_SVG = HAS_ART('poison_drop') ? `<span class="drops">${[1, 2, 3].map(
 // потёки по верхнему краю «ядовитой» рамки
 const DRIP_SVG = HAS_ART('poison_drips') ? '<span class="drip2" aria-hidden="true"></span>'
   : `<svg class="drip" viewBox="0 0 200 16" preserveAspectRatio="none" aria-hidden="true"><path d="M0 0H200V3C192 3 191 9 188 9S185 3 178 3H132C126 3 126 14 121 14S116 3 110 3H66C61 3 61 8 58 8S55 3 50 3H22C17 3 17 11 13 11S9 3 4 3H0Z"/></svg>`;
+// саван на иконке мёртвого — как в оригинальном Гримуаре: тёмная ткань сверху на жетоне
+// ткань серо-графитовая со светлой каймой — видна и ночью на чёрном, и днём на светлом
+const SHROUD_SVG = `<svg class="shroud" viewBox="0 0 100 64" preserveAspectRatio="none" aria-hidden="true"><defs><linearGradient id="shg" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#6A6874"/><stop offset=".55" stop-color="#3A3942"/><stop offset="1" stop-color="#1E1D23"/></linearGradient></defs>
+  <path d="M0 0H100V36C93 42 88 56 79 49C71 43 64 62 50 55C36 62 29 43 21 49C12 56 7 42 0 36Z" fill="url(#shg)" stroke="#A9A6B4" stroke-width="1.2" vector-effect="non-scaling-stroke"/>
+  <path d="M21 3C24 20 22 34 21 47M50 3V53M79 3C76 20 78 34 79 47" stroke="#8E8B99" stroke-width="1" fill="none" opacity=".55" vector-effect="non-scaling-stroke"/></svg>`;
+// значки на иконке: отравлен — капля, пьян — кружка, защита (Монах, Трактирщик) — крест
+const MUG_SVG = `<svg class="mark" viewBox="0 0 24 24" aria-hidden="true"><path d="M5 7.5h11V19a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2Z" fill="#E2A43A" stroke="#4A2E0C" stroke-width="1.4"/>
+  <path d="M16 10.5h2a2.5 2.5 0 0 1 2.5 2.5v2a2.5 2.5 0 0 1-2.5 2.5h-2" fill="none" stroke="#4A2E0C" stroke-width="1.8"/>
+  <path d="M4.3 8c-.2-2.3 1.6-3.8 3.4-3.3.7-1.5 2.6-2 3.9-1.1 1.3-.8 3.1-.3 3.7 1.1 1.9-.2 3 1.2 2.6 3.3Z" fill="#FFF8E8" stroke="#4A2E0C" stroke-width="1.2"/>
+  <path d="M8.6 11.5v6.5M12.4 11.5v6.5" stroke="#B9761E" stroke-width="1.4" stroke-linecap="round"/></svg>`;
+const CROSS_SVG = `<svg class="mark" viewBox="0 0 24 24" aria-hidden="true"><path d="M10 2h4v6h6v4h-6v10h-4V12H4V8h6Z" fill="#F3D27A" stroke="#5A3E0A" stroke-width="1.3" stroke-linejoin="round"/></svg>`;
+function statusMarks(p, cls) {
+  if (S.phase === 'setup' || !p.role) return '';
+  const off = E.abilityOff(S, p) || '', tok = k => p.tokens.filter(t => t.k === k);
+  const poison = off && (tok('poisoned').length || /отравлен/.test(off));
+  const drunk = off && (tok('drunk').length || p.role === 'drunk' || /пьян|Пьяница/.test(off));
+  const prot = tok('protected').map(t => DATA.roles[t.src] ? DATA.roles[t.src].name : 'защита');
+  const marks = [poison ? `<span title="${esc(off)}">${DROP_SVG}</span>` : '', drunk ? `<span title="${esc(off)}">${MUG_SVG}</span>` : '',
+    prot.length ? `<span title="Защита: ${esc(prot.join(', '))}">${CROSS_SVG}</span>` : ''].join('');
+  return marks ? `<span class="${cls}">${marks}</span>` : '';
+}
 // картинки для CSS — переменными (--a-…), чтобы не повторять data:-адреса в разметке; html.art-* включает рисованный вид
 function artVars() {
   if (typeof ART === 'undefined') return;
@@ -141,10 +162,9 @@ function chipsPlayers(key, n, filter, selected, opts) {
     const icon = opts.noRole ? `<span class="seatno">${i + 1}</span>` : (p.role ? ico(p.role, p.align, 'pti') : `<span class="seatno">${i + 1}</span>`);
     const ghost = !p.alive && opts.ghost ? (p.ghost ? 'голос есть' : 'без голоса') : '';
     const sub = opts.noRole ? (ghost || (E.isTraveller(p) ? 'Странник' : '')) : [p.role ? E.rname(p.role) : '', ghost].filter(Boolean).join(' · ');
-    const off = !opts.noRole && S.phase !== 'setup' && p.role && E.abilityOff(S, p);
     return `<button class="ptile ${on ? 'on' : ''} ${p.alive ? '' : 'dead'}" data-act="${opts.act || 'pickP'}" data-arg="${key}|${p.id}|${n}" ${okp ? '' : 'disabled'} aria-pressed="${on}" aria-label="${esc(p.name)}${p.alive ? '' : ', мёртв'}${p.role && !opts.noRole ? ', ' + esc(E.rname(p.role)) : ''}">
-      ${opts.noRole ? '' : `<span class="pno">${i + 1}</span>`}${p.alive ? '' : `<span class="pdead" title="мёртв">${art('dead', 'pdi') || '✝'}</span>`}${off ? `<span class="ppois" title="${esc(off)}">${DROP_SVG}</span>` : ''}
-      <span class="pic">${icon}</span><span class="pname">${esc(p.name)}</span>${sub ? `<span class="prole">${esc(sub)}</span>` : ''}${on ? '<span class="pck" aria-hidden="true">✓</span>' : ''}</button>`;
+      ${opts.noRole ? '' : `<span class="pno">${i + 1}</span>`}${opts.noRole ? '' : statusMarks(p, 'pmarks')}
+      <span class="pic">${icon}${p.alive ? '' : SHROUD_SVG}</span><span class="pname">${esc(p.name)}</span>${sub ? `<span class="prole">${esc(sub)}</span>` : ''}${on ? '<span class="pck" aria-hidden="true">✓</span>' : ''}</button>`;
   }).join('') + '</div>';
 }
 
@@ -206,7 +226,7 @@ function showOverlay() {
   const sh = UI.show; if (!sh) return '';
   const sc = sh.screens[sh.i]; if (!sc) return '';
   const one = sc.items.length === 1;
-  const names = ids => `<div class="shpl">${(ids || []).map(id => { const p = E.P(S, id); return p ? `<span><i>${S.players.indexOf(p) + 1}</i>${esc(p.name)}</span>` : ''; }).join('') || '<span>—</span>'}</div>`;
+  const names = ids => `<div class="shpl">${(ids || []).map(id => { const p = E.P(S, id); return p ? `<span>${esc(p.name)}</span>` : ''; }).join('') || '<span>—</span>'}</div>`;
   // ответ «ДА»/«НЕТ» без жетона — сам становится карточкой
   const yn = !sc.caption && one && !sc.items[0].role && !sc.items[0].players && /^(ДА|НЕТ)$/.test(sc.items[0].text || '') ? sc.items[0].text : null;
   const roleBox = t => {
@@ -560,11 +580,13 @@ function killFormHtml() {
 // Гримуар: большие квадраты по 3 в ряд — иконка и роль в квадрате, имя игрока под ним; нажатие — карточка игрока
 function viewTable() {
   const cells = S.players.map((p, i) => {
-    const off = S.phase !== 'setup' && p.role && E.abilityOff(S, p), side = !p.role ? 'none' : p.align;
+    const side = !p.role ? 'none' : p.align;
+    // прочие жетоны (кроме яда, пьянства и защиты — у них свои значки) — числом в углу
+    const other = p.tokens.filter(t => !['poisoned', 'drunk', 'protected'].includes(t.k)).length;
     return `<button class="gcell side-${side} ${p.alive ? '' : 'dead'}" data-act="openP" data-arg="${p.id}" aria-label="${esc(p.name)}: ${p.role ? esc(E.rname(p.role)) : 'без роли'}${p.alive ? '' : ', мёртв'}">
-      <span class="gsq"><span class="gno">${i + 1}</span>${off ? `<span class="gpois" title="${esc(off)}">${DROP_SVG}</span>` : ''}${p.tokens.length ? `<span class="gtok" title="жетонов: ${p.tokens.length}">${p.tokens.length}</span>` : ''}
+      <span class="gsq">${p.alive ? '' : SHROUD_SVG}<span class="gno">${i + 1}</span>${statusMarks(p, 'gmarks')}${other ? `<span class="gtok" title="другие жетоны: ${other}">${other}</span>` : ''}
         ${p.role ? ico(p.role, p.align, 'gic') : '<span class="gq">?</span>'}<span class="grn">${p.role ? esc(E.rname(p.role)) : 'без роли'}</span>
-        ${p.believes ? `<span class="gbel">считает: ${esc(E.rname(p.believes))}</span>` : ''}${p.alive ? '' : `<span class="gshroud">${art('dead', 'bd')}${p.ghost ? 'голос есть' : 'мёртв'}</span>`}</span>
+        ${p.believes ? `<span class="gbel">считает: ${esc(E.rname(p.believes))}</span>` : ''}${!p.alive && p.ghost ? '<span class="gvote" title="Голос призрака не потрачен">голос</span>' : ''}</span>
       <span class="gpn">${esc(p.name)}</span></button>`;
   }).join('');
   const bl = S.bluffs.filter(Boolean).length ? `<div class="gbluffs"><span class="small muted">Блефы Демона</span><div>${S.bluffs.filter(Boolean).map(r => `<span class="gbl">${ico(r, null, 'gbi')}${esc(E.rname(r))}</span>`).join('')}</div></div>` : '';

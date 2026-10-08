@@ -327,10 +327,11 @@ html.locked, html.locked body { overflow: hidden; }
 .shrole.side-good .shname { color: #A9C4F5; } .shrole.side-evil .shname { color: #F59A9A; }
 .shab { font-size: 18px; line-height: 1.45; max-width: 32ch; color: #D8D0BF; }
 .shpl { display: flex; flex-direction: column; align-items: center; gap: 4px; margin-top: 6px; }
-.shpl span { font-size: 36px; font-weight: 800; line-height: 1.15; color: #F3E3BC; }
+.shpl span { font-size: 40px; font-weight: 800; line-height: 1.15; color: #F3E3BC; }
 .shpl i { font-style: normal; font-size: 15px; color: #8E8574; margin-right: 8px; vertical-align: 4px; }
 .shtext { font-size: 72px; font-weight: 800; line-height: 1; color: #F3E3BC; margin-top: 6px; }
-.shsub { font-size: 17px; color: #BDB3A0; max-width: 30ch; }
+/* подписи для игрока («Ваш внук», «Один из них — Демон») — крупно, чтобы читать через стол */
+.shsub { font-size: 26px; font-weight: 800; line-height: 1.2; color: #F3E3BC; max-width: 18ch; text-wrap: balance; margin-top: 4px; }
 .shthumb { display: flex; align-items: center; gap: 10px; font-size: 22px; font-weight: 800; letter-spacing: .08em; text-transform: uppercase; }
 .shthumb span { font-size: 40px; }
 .shthumb.side-good { color: #A9C4F5; } .shthumb.side-evil { color: #F59A9A; }
@@ -522,4 +523,20 @@ html.art-poison .reveal.poison { border: 18px solid transparent; border-image: v
 .shrole.small { flex-direction: row; gap: 10px; }
 .shroles.stack .shrole.small .shic, .shrole.small .shic { width: 64px; height: 64px; }
 .shrole.small .shname { font-size: 20px; }
-.shpre { font-size: 19px; font-weight: 700; color: #E3C27A; letter-spacing: .02em; margin-top: 8px; }
+.shpre { font-size: 24px; font-weight: 800; color: #F3E3BC; line-height: 1.2; text-wrap: balance; margin-top: 8px; }
+
+/* мёртвые: саван на иконке (как в оригинальном Гримуаре); значки: капля — отравлен, кружка — пьян, крест — защита */
+.gsq .shroud { position: absolute; left: 0; top: 0; width: 100%; height: 48%; z-index: 1; pointer-events: none; filter: drop-shadow(0 2px 3px rgba(0, 0, 0, .45)); }
+.gsq .gno, .gsq .gtok { z-index: 2; }
+.gcell.dead .gno { color: #CFC6B4; }
+.gcell.dead .gic { filter: grayscale(.55); opacity: .9; }
+.gmarks { position: absolute; top: 4px; right: 4px; z-index: 2; display: flex; flex-direction: column; gap: 2px; }
+.gmarks .drop1, .gmarks .mark { width: 21px; height: 21px; display: block; object-fit: contain; filter: drop-shadow(0 1px 1px rgba(0, 0, 0, .35)); }
+.gvote { position: absolute; left: 50%; top: 27%; transform: translateX(-50%); z-index: 2; font-size: 10.5px; font-weight: 800; color: #1E1B18;
+  background: #F3EFE3; border: 1px solid #1E1B18; border-radius: 999px; padding: 0 6px; line-height: 15px; }
+.ptile .pic { position: relative; }
+.ptile .pic .shroud { position: absolute; left: -5px; top: -3px; width: calc(100% + 10px); height: 62%; pointer-events: none; }
+.ptile.dead .pti { filter: grayscale(.55); opacity: .9; }
+.pmarks { position: absolute; top: 3px; right: 3px; display: flex; flex-direction: column; gap: 1px; }
+.pmarks .drop1, .pmarks .mark { width: 15px; height: 15px; display: block; object-fit: contain; }
+.ptile.on .pmarks { right: 18px; }
