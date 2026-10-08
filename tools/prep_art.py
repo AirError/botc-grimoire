@@ -180,7 +180,53 @@ def beauty():
         f.save(OUT / "poison_frame.png")
         print("рамка: толщина", tx, ty)
     meta["cards"] = cards()
+    meta["marks"] = marks()
     (OUT / "meta.json").write_text(json.dumps(meta), encoding="utf-8")
+
+
+def marks():
+    """Значки Гримуара: саван и лист 4×5 (marks.png). Каждый значок — связные куски, чей центр попал в клетку сетки
+    (две маски, две чашки, нимб с пером, пар над чашкой — несколько кусков одного значка)."""
+    n = 0
+    if (SRC / "shroud.png").exists():
+        s = white_alpha(SRC / "shroud.png"); s.crop(s.getbbox()).save(OUT / "shroud.png")
+    if not (SRC / "marks.png").exists():
+        return n
+    # белые блики внутри значков не вырезаем: только фон с краёв и крупные замкнутые белые области (петля)
+    im = white_alpha(SRC / "marks.png", inner_thr=252, min_area=400)
+    al = np.asarray(im)[..., 3] > 40
+    h, w = al.shape
+    rows_on = al.any(axis=1); runs, start = [], None
+    for y, v in enumerate(rows_on):
+        if v and start is None: start = y
+        if not v and start is not None: runs.append([start, y]); start = None
+    if start is not None: runs.append([start, h])
+    while len(runs) > 5:  # пар над чашкой и т. п. — склеиваем ближайшие полосы
+        k = min(range(len(runs) - 1), key=lambda j: runs[j + 1][0] - runs[j][1])
+        runs[k:k + 2] = [[runs[k][0], runs[k + 1][1]]]
+    lab, cnt = ndimage.label(al)
+    boxes, parts = {}, {}
+    for idx, sl in enumerate(ndimage.find_objects(lab), start=1):
+        if sl is None: continue
+        ys, xs = sl; area = (lab[sl] == idx).sum()
+        if area < 30: continue
+        cy, cx = (ys.start + ys.stop) / 2, (xs.start + xs.stop) / 2
+        r = next((i for i, (a, b) in enumerate(runs) if a <= cy < b), None)
+        if r is None: continue
+        c = min(3, int(cx // (w / 4)))
+        b = boxes.setdefault(r * 4 + c, [ys.start, xs.start, ys.stop, xs.stop]); parts.setdefault(r * 4 + c, []).append(idx)
+        b[:] = [min(b[0], ys.start), min(b[1], xs.start), max(b[2], ys.stop), max(b[3], xs.stop)]
+    rgba = np.asarray(im).copy()
+    for k, (y0, x0, y1, x1) in sorted(boxes.items()):
+        # только свои куски: соседние значки, попавшие в квадрат, — прозрачные
+        own = rgba.copy(); own[..., 3] = np.where(np.isin(lab, parts[k]), own[..., 3], 0)
+        side = max(y1 - y0, x1 - x0) + 8; cy, cx = (y0 + y1) // 2, (x0 + x1) // 2
+        cell = Image.new("RGBA", (side, side), (0, 0, 0, 0))
+        cell.paste(Image.fromarray(own, "RGBA").crop((cx - side // 2, cy - side // 2, cx - side // 2 + side, cy - side // 2 + side)), (0, 0))
+        cell.resize((96, 96), Image.LANCZOS).save(OUT / f"mark{k}.png")
+        n += 1
+    print("значков:", n, "строк", len(runs))
+    return n
 
 
 CARDS = ["card_demon", "card_minions", "card_notinplay", "card_youare", "card_selected", "card_thisplayer",

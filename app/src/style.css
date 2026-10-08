@@ -540,3 +540,31 @@ html.art-poison .reveal.poison { border: 18px solid transparent; border-image: v
 .pmarks { position: absolute; top: 3px; right: 3px; display: flex; flex-direction: column; gap: 1px; }
 .pmarks .drop1, .pmarks .mark { width: 15px; height: 15px; display: block; object-fit: contain; }
 .ptile.on .pmarks { right: 18px; }
+
+/* рисованные значки и саван (prep_art.marks); справка «Значки» */
+img.mark { display: block; object-fit: contain; }
+img.shroud { object-fit: contain; }
+.gsq img.shroud { width: 24%; height: auto; }
+.ptile .pic img.shroud { width: 34%; height: auto; }
+.gmarks { flex-direction: row-reverse; flex-wrap: wrap; justify-content: flex-start; max-width: 66%; }
+.gmarks .mark, .gmarks .drop1 { width: 22px; height: 22px; }
+.pmarks .mark, .pmarks .drop1 { width: 15px; height: 15px; }
+.mtxt { display: flex; align-items: center; justify-content: center; border-radius: 50%; background: var(--gold); color: var(--card); font-size: 11px; font-weight: 800; }
+.mmore { font-size: 11px; font-weight: 800; color: var(--gold); line-height: 15px; }
+.oled .gmarks img.mark, .oled .pmarks img.mark, .oled .gvote img.mark { filter: drop-shadow(0 0 1px rgba(255, 255, 255, .55)); }
+.gvote { top: 24%; left: 50%; transform: translateX(-50%); background: none; border: none; padding: 0; line-height: 0; }
+.gvote .mark { width: 24px; height: 24px; }
+.ghead { justify-content: space-between; flex-wrap: nowrap; }
+.btn.lgbtn { min-height: 34px; padding: 4px 12px 4px 6px; font-size: 14px; font-weight: 700; display: inline-flex; align-items: center; gap: 6px; flex: none; }
+.lgq { width: 22px; height: 22px; border-radius: 50%; border: 1.5px solid var(--gold); color: var(--gold); display: inline-flex; align-items: center; justify-content: center; font-size: 13px; font-weight: 800; }
+.lglist { display: flex; flex-direction: column; }
+.lgrow { display: grid; grid-template-columns: 40px minmax(0, 1fr); gap: 10px; align-items: center; padding: 7px 0; border-bottom: 1px solid var(--line); }
+.lgrow > span:last-child { display: flex; flex-direction: column; }
+.lgic { width: 40px; height: 40px; display: flex; align-items: center; justify-content: center; position: relative; }
+.lgic .mark, .lgic .drop1 { width: 32px; height: 32px; }
+.lgic .shroud { position: static; width: 18px; height: 34px; transform: none; }
+.lgic img.shroud { height: auto; }
+.lgno, .lgtok { position: static !important; }
+.lgno { font-size: 15px; color: var(--muted); }
+.lgbox { width: 30px; height: 30px; border-radius: 8px; border: 2px solid; }
+.lgbox.good { border-color: var(--good); background: var(--goodbg); } .lgbox.evil { border-color: var(--evil); background: var(--evilbg); }

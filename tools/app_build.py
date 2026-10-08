@@ -35,6 +35,9 @@ ART = {
     "poison_drop": (CUT / "poison_drop.png", 72), "poison_drips": (CUT / "poison_drips.png", 900), "poison_frame": (CUT / "poison_frame.png", 600),
 }
 ART.update({f"rune{i}": (CUT / f"rune{i}.png", 128) for i in range(24)})
+# значки Гримуара: саван и 20 значков-напоминаний (prep_art.marks)
+ART["shroud"] = (CUT / "shroud.png", 120)
+ART.update({f"mark{i}": (CUT / f"mark{i}.png", 72) for i in range(20)})
 # карточки для показа игрокам (надпись накладывает приложение — поле в meta.json → cards.box)
 ART.update({n: (CUT / f"{n}.png", 800) for n in ["card_demon", "card_minions", "card_notinplay", "card_youare", "card_selected",
                                                   "card_thisplayer", "card_yourrole", "card_yes", "card_no", "card_good", "card_evil"]})
