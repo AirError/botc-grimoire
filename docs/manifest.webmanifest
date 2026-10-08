@@ -1,8 +1,9 @@
 {
+  "id": "/botc-grimoire/",
   "name": "Гримуар рассказчика",
   "short_name": "Гримуар",
   "lang": "ru",
-  "start_url": "./",
+  "start_url": "./?app=grimoire",
   "scope": "./",
   "display": "standalone",
   "orientation": "any",
