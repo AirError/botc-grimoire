@@ -526,16 +526,16 @@ html.art-poison .reveal.poison { border: 18px solid transparent; border-image: v
 .shpre { font-size: 24px; font-weight: 800; color: #F3E3BC; line-height: 1.2; text-wrap: balance; margin-top: 8px; }
 
 /* мёртвые: саван на иконке (как в оригинальном Гримуаре); значки: капля — отравлен, кружка — пьян, крест — защита */
-.gsq .shroud { position: absolute; left: 0; top: 0; width: 100%; height: 48%; z-index: 1; pointer-events: none; filter: drop-shadow(0 2px 3px rgba(0, 0, 0, .45)); }
+.gsq .shroud { position: absolute; left: 50%; top: 0; width: 34%; height: 56%; transform: translateX(-50%); z-index: 1; pointer-events: none; filter: drop-shadow(0 2px 3px rgba(0, 0, 0, .45)); }
 .gsq .gno, .gsq .gtok { z-index: 2; }
 .gcell.dead .gno { color: #CFC6B4; }
 .gcell.dead .gic { filter: grayscale(.55); opacity: .9; }
 .gmarks { position: absolute; top: 4px; right: 4px; z-index: 2; display: flex; flex-direction: column; gap: 2px; }
 .gmarks .drop1, .gmarks .mark { width: 21px; height: 21px; display: block; object-fit: contain; filter: drop-shadow(0 1px 1px rgba(0, 0, 0, .35)); }
-.gvote { position: absolute; left: 50%; top: 27%; transform: translateX(-50%); z-index: 2; font-size: 10.5px; font-weight: 800; color: #1E1B18;
+.gvote { position: absolute; left: 50%; top: 58%; transform: translateX(-50%); z-index: 2; font-size: 10.5px; font-weight: 800; color: #1E1B18;
   background: #F3EFE3; border: 1px solid #1E1B18; border-radius: 999px; padding: 0 6px; line-height: 15px; }
 .ptile .pic { position: relative; }
-.ptile .pic .shroud { position: absolute; left: -5px; top: -3px; width: calc(100% + 10px); height: 62%; pointer-events: none; }
+.ptile .pic .shroud { position: absolute; left: 50%; top: -3px; width: 46%; height: 70%; transform: translateX(-50%); pointer-events: none; filter: drop-shadow(0 1px 2px rgba(0, 0, 0, .5)); }
 .ptile.dead .pti { filter: grayscale(.55); opacity: .9; }
 .pmarks { position: absolute; top: 3px; right: 3px; display: flex; flex-direction: column; gap: 1px; }
 .pmarks .drop1, .pmarks .mark { width: 15px; height: 15px; display: block; object-fit: contain; }

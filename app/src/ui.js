@@ -124,9 +124,10 @@ const DRIP_SVG = HAS_ART('poison_drips') ? '<span class="drip2" aria-hidden="tru
   : `<svg class="drip" viewBox="0 0 200 16" preserveAspectRatio="none" aria-hidden="true"><path d="M0 0H200V3C192 3 191 9 188 9S185 3 178 3H132C126 3 126 14 121 14S116 3 110 3H66C61 3 61 8 58 8S55 3 50 3H22C17 3 17 11 13 11S9 3 4 3H0Z"/></svg>`;
 // саван на иконке мёртвого — как в оригинальном Гримуаре: тёмная ткань сверху на жетоне
 // ткань серо-графитовая со светлой каймой — видна и ночью на чёрном, и днём на светлом
-const SHROUD_SVG = `<svg class="shroud" viewBox="0 0 100 64" preserveAspectRatio="none" aria-hidden="true"><defs><linearGradient id="shg" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#6A6874"/><stop offset=".55" stop-color="#3A3942"/><stop offset="1" stop-color="#1E1D23"/></linearGradient></defs>
-  <path d="M0 0H100V36C93 42 88 56 79 49C71 43 64 62 50 55C36 62 29 43 21 49C12 56 7 42 0 36Z" fill="url(#shg)" stroke="#A9A6B4" stroke-width="1.2" vector-effect="non-scaling-stroke"/>
-  <path d="M21 3C24 20 22 34 21 47M50 3V53M79 3C76 20 78 34 79 47" stroke="#8E8B99" stroke-width="1" fill="none" opacity=".55" vector-effect="non-scaling-stroke"/></svg>`;
+// узкий вымпел сверху по центру с вырезом «ласточкин хвост» — как саван в оригинальном Гримуаре
+const SHROUD_SVG = `<svg class="shroud" viewBox="0 0 40 64" aria-hidden="true"><defs><linearGradient id="shg" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#5E5C68"/><stop offset=".6" stop-color="#2E2D35"/><stop offset="1" stop-color="#17161B"/></linearGradient></defs>
+  <path d="M3 0H37V58L20 47L3 58Z" fill="url(#shg)" stroke="#A9A6B4" stroke-width="1.4" stroke-linejoin="round"/>
+  <path d="M12 3V50M28 3V50" stroke="#8E8B99" stroke-width="1" opacity=".5"/></svg>`;
 // значки на иконке: отравлен — капля, пьян — кружка, защита (Монах, Трактирщик) — крест
 const MUG_SVG = `<svg class="mark" viewBox="0 0 24 24" aria-hidden="true"><path d="M5 7.5h11V19a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2Z" fill="#E2A43A" stroke="#4A2E0C" stroke-width="1.4"/>
   <path d="M16 10.5h2a2.5 2.5 0 0 1 2.5 2.5v2a2.5 2.5 0 0 1-2.5 2.5h-2" fill="none" stroke="#4A2E0C" stroke-width="1.8"/>
