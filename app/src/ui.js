@@ -177,9 +177,23 @@ function tokenGroups(tokens) {
     const last = g.screens[g.screens.length - 1];
     // несколько ролей подряд под одним жетоном (блефы, Изгои, Сновидец) — на одном экране
     if (last && last.caption === (t.caption || '') && plainRole(t) && last.items.every(plainRole)) last.items.push(t);
-    else g.screens.push({ caption: t.caption || '', thumb: t.thumb || null, items: [t] });
+    else g.screens.push({ caption: t.caption || '', items: [t] });
+    // жест «добрый/злой» — отдельным экраном после жетона (как в правилах: сначала жетон, потом палец вверх или вниз)
+    if (t.thumb) g.screens.push({ caption: t.thumb === 'down' ? 'Вы злой' : 'Вы добрый', thumb: t.thumb, items: [] });
   }
   return groups;
+}
+// карточки для показа (рисованные таблички): фразу крупно пишет приложение в поле под медальоном
+const CARD_ART = { 'ЭТО ДЕМОН': 'card_demon', 'ЭТО ВАШИ ПРИСПЕШНИКИ': 'card_minions', 'ЭТИХ РОЛЕЙ В ИГРЕ НЕТ': 'card_notinplay',
+  'ТЕПЕРЬ ВЫ': 'card_youare', 'ОБЛАДАТЕЛЬ ЭТОЙ РОЛИ ВЫБРАЛ ВАС': 'card_selected', 'ЭТОТ ИГРОК': 'card_thisplayer', 'ВАША РОЛЬ': 'card_yourrole',
+  'ДА': 'card_yes', 'НЕТ': 'card_no', 'ВЫ ДОБРЫЙ': 'card_good', 'ВЫ ЗЛОЙ': 'card_evil' };
+function cardHtml(text, thumb) {
+  const key = CARD_ART[String(text).toUpperCase()];
+  if (!HAS_ART(key)) return thumb ? `<div class="shthumb side-${thumb === 'down' ? 'evil' : 'good'}"><span aria-hidden="true">${thumb === 'down' ? '👎' : '👍'}</span>${esc(text)}</div>` : `<div class="shcap">${esc(text)}</div>`;
+  const b = (typeof ART_META !== 'undefined' && ART_META.cards && ART_META.cards.box) || [0.03, 0.42, 0.97, 0.95];
+  const n = String(text).length, sz = n <= 3 ? 'xl' : n <= 12 ? 'l' : 'm';
+  return `<div class="shcard" role="img" aria-label="${esc(text)}"><img src="${ART[key]}" alt="">
+    <div class="shct sz-${sz}" style="left:${b[0] * 100}%;top:${b[1] * 100}%;right:${(1 - b[2]) * 100}%;bottom:${(1 - b[3]) * 100}%"><span>${esc(text)}</span></div></div>`;
 }
 function showButtons(tokens) {
   const groups = tokenGroups(tokens); if (!groups.length) return '';
@@ -191,17 +205,18 @@ function showOverlay() {
   const sc = sh.screens[sh.i]; if (!sc) return '';
   const one = sc.items.length === 1;
   const names = ids => `<div class="shpl">${(ids || []).map(id => { const p = E.P(S, id); return p ? `<span><i>${S.players.indexOf(p) + 1}</i>${esc(p.name)}</span>` : ''; }).join('') || '<span>—</span>'}</div>`;
+  // ответ «ДА»/«НЕТ» без жетона — сам становится карточкой
+  const yn = !sc.caption && one && !sc.items[0].role && !sc.items[0].players && /^(ДА|НЕТ)$/.test(sc.items[0].text || '') ? sc.items[0].text : null;
   const roleBox = t => {
-    const r = t.role && DATA.roles[t.role], al = t.align || (sc.thumb === 'down' ? 'evil' : sc.thumb === 'up' ? 'good' : (r && isGoodRole(t.role) ? 'good' : 'evil'));
+    const r = t.role && DATA.roles[t.role], al = t.align || (t.thumb === 'down' ? 'evil' : t.thumb === 'up' ? 'good' : (r && isGoodRole(t.role) ? 'good' : 'evil'));
     // способность — только когда игрок получает роль («ТЕПЕРЬ ВЫ», показ своей роли) или роль одна без имён и чисел
     const ab = r && one && !t.players && !t.text && (sc.caption === 'ТЕПЕРЬ ВЫ' || sc.caption === 'Ваша роль' || !sc.caption);
     return `<div class="shrole side-${al}">${r ? `${ico(t.role, al, 'shic')}<div class="shname">${esc(E.rname(t.role))}</div>` : ''}${t.players ? names(t.players) : ''}
       ${t.text ? `<div class="shtext">${esc(t.text)}</div>` : ''}${t.sub ? `<div class="shsub">${esc(t.sub)}</div>` : ''}${ab ? `<div class="shab">${esc(r.ability)}</div>` : ''}</div>`;
   };
   return `<div class="ov showov" data-act="showNext" role="dialog" aria-label="Показ игроку">
-    ${sc.caption ? `<div class="shcap">${esc(sc.caption)}</div>` : ''}
-    <div class="shroles n${Math.min(sc.items.length, 3)}">${sc.items.map(roleBox).join('')}</div>
-    ${sc.thumb ? `<div class="shthumb side-${sc.thumb === 'down' ? 'evil' : 'good'}"><span aria-hidden="true">${sc.thumb === 'down' ? '👎' : '👍'}</span>${sc.thumb === 'down' ? 'Вы злой' : 'Вы добрый'}</div>` : ''}
+    ${sc.caption ? cardHtml(sc.caption, sc.thumb) : yn ? cardHtml(yn) : ''}
+    ${sc.items.length && !yn ? `<div class="shroles n${Math.min(sc.items.length, 3)}">${sc.items.map(roleBox).join('')}</div>` : ''}
     <div class="shhint">${sh.i + 1 < sh.screens.length ? `Нажмите — дальше (${sh.i + 1} из ${sh.screens.length})` : 'Нажмите, чтобы закрыть'}</div></div>`;
 }
 // роль игрока, которую он видит (Пьяница — кем себя считает, Безумец — своего «Демона»)

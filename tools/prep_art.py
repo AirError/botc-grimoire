@@ -179,7 +179,41 @@ def beauty():
         meta["frame_slice"] = max(tx, ty) + 2
         f.save(OUT / "poison_frame.png")
         print("рамка: толщина", tx, ty)
+    meta["cards"] = cards()
     (OUT / "meta.json").write_text(json.dumps(meta), encoding="utf-8")
+
+
+CARDS = ["card_demon", "card_minions", "card_notinplay", "card_youare", "card_selected", "card_thisplayer",
+         "card_yourrole", "card_yes", "card_no", "card_good", "card_evil"]
+
+
+def cards():
+    """Карточки для показа игрокам: вырезаем белый фон и меряем поле под надпись — от низа медальона до нижней рамки,
+    между боковыми рамками (доли ширины и высоты картинки), чтобы приложение писало фразу точно в поле."""
+    out = {}
+    for name in CARDS:
+        if not (SRC / f"{name}.png").exists():
+            continue
+        im = white_alpha(SRC / f"{name}.png"); im = im.crop(im.getbbox())
+        a = np.asarray(im.convert("RGB")).astype(int); lum = a.mean(axis=2); w, h = im.size
+        bright = lum > 110  # золото рамки
+        row = bright[int(h * 0.7)]; col = bright[:, int(w * 0.25)]
+        left = int(np.where(row[: w // 5])[0].max()) + 1; right = int(w * 4 // 5 + np.where(row[w * 4 // 5:])[0].min())
+        top = int(np.where(col[: h // 2])[0].max()) + 1
+        bottom = int(h - 1 - np.where(col[::-1][: h // 4])[0].max())  # внутренний край нижней рамки — снизу вверх
+        # низ медальона — геометрически: над табличкой видна только дуга круга; по её высоте и ширине находим радиус
+        al = np.asarray(im)[..., 3] > 128
+        plaque = next(y for y in range(h) if al[y].sum() > 0.8 * w)  # верхняя кромка таблички
+        y0, ys = 0, plaque - 3
+        xs = np.where(al[ys])[0]; c = (xs.max() - xs.min()) / 2; d = ys - y0
+        r = (d * d + c * c) / (2 * d)
+        med = int(y0 + 2 * r) + 6
+        out[name] = [left / w, med / h, right / w, bottom / h]
+        im.save(OUT / f"{name}.png")
+    # все карточки сделаны правкой одной — раскладка общая; медиана гасит сбои замера (нимб над медальоном, тёмный низ)
+    box = [round(float(np.median([v[i] for v in out.values()])), 4) for i in range(4)] if out else None
+    print("карточек:", len(out), "поле под надпись (доли):", box)
+    return {"names": list(out), "box": box}
 
 
 if __name__ == "__main__":
