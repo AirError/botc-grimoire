@@ -1206,7 +1206,7 @@ const LOGIC = {
   }),
   spy: (S, p) => jinxOn(S, 'spy', 'poppygrower') && poppyActive(S)
     ? { active: false, reason: 'Джинкс с Дурманщиком: пока у Дурманщика есть способность, Шпион не заглядывает в Гримуар' }
-    : { info: () => ({ show: 'Покажите Гримуар', lines: [] }), apply: () => log(S, `Шпион (${p.name}) смотрит Гримуар`, 'info') },
+    : { info: () => ({ show: 'Покажите Гримуар', lines: [], grim: true }), apply: () => log(S, `Шпион (${p.name}) смотрит Гримуар`, 'info') },
   scarletwoman: (S, p) => {
     if (S.flags.swBecame !== p.id) return { active: false, reason: 'Блудница не становилась Демоном' };
     return { info: () => ({ show: `«ТЕПЕРЬ ВЫ» — ${rname(p.role)}`, lines: [], tokens: [{ caption: 'ТЕПЕРЬ ВЫ', role: p.role }] }),
@@ -1597,7 +1597,7 @@ const LOGIC = {
       inputs: [PL('t', 1, 'Кого отравляет Вдова (посмотрев Гримуар)'), PL('know', 1, 'Добрый игрок, который узнаёт, что Вдова в игре', goodOk)],
       defaults: stable(S, 'widowKnow:' + p.id, () => ({ know: good.length ? [pick(good).id] : [] })),
       info: inp => { const k = inp.know && P(S, inp.know[0]), noLook = jinxOn(S, 'widow', 'poppygrower') && poppyActive(S);
-        return { show: noLook ? 'Гримуар не показывайте: джинкс с Дурманщиком' : 'Покажите Вдове Гримуар', lines: [k ? `Затем разбудите ${k.name} и покажите жетон Вдовы` : ''],
+        return { show: noLook ? 'Гримуар не показывайте: джинкс с Дурманщиком' : 'Покажите Вдове Гримуар', grim: !noLook, lines: [k ? `Затем разбудите ${k.name} и покажите жетон Вдовы` : ''],
         tokens: k ? [{ label: k.name, role: 'widow', sub: 'Эта роль в игре' }] : [] }; },
       apply: inp => {
         markOnce(S, p, 'widow');

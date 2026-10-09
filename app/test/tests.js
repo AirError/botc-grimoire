@@ -140,7 +140,10 @@ try {
 
   // 19. Девственница и Шпион — решение рассказчика
   S = game(['washerwoman', 'virgin', 'investigator', 'chef', 'empath', 'drunk', 'spy', 'imp'], 'tb');
-  E.autoSetup(S, true); E.startGame(S); runNight(S, {});
+  E.autoSetup(S, true); E.startGame(S);
+  const spyStep = S.night.steps.find(s => s.id === 'spy');
+  ok('Шпион: шаг показывает Гримуар на весь экран', !!spyStep && E.stepSpec(S, spyStep).info({}).grim === true);
+  runNight(S, {});
   ok('предпросмотр: спросить про Шпиона', E.nominationPreview(S, byRole(S, 'spy').id, byRole(S, 'virgin').id).askSpy);
   E.nominate(S, byRole(S, 'spy').id, byRole(S, 'virgin').id, { spyTownsfolk: true });
   ok('Шпион определился Горожанином — казнён', !byRole(S, 'spy').alive);
@@ -202,6 +205,8 @@ try {
   ok('Catfishing: раскладка 8 игроков без ошибок', E.setupProblems(S).length === 0, E.setupProblems(S).join('; '));
   E.startGame(S);
   const chef = byRole(S, 'chef'), ft = byRole(S, 'fortuneteller'), can = byRole(S, 'cannibal');
+  const wSt = S.night.steps.find(s => s.id === 'widow'), wSpec = E.stepSpec(S, wSt);
+  ok('Вдова: шаг показывает Гримуар на весь экран', wSpec.active && wSpec.info(wSpec.defaults || {}).grim === true);
   runNight(S, { widow: { t: [chef.id], know: [ft.id] }, fortuneteller: { t: [chef.id, ft.id] } });
   ok('Вдова отравила Повара, добрый игрок раскрыт', E.hasTok(chef, 'poisoned', 'widow') && !!E.abilityOff(S, chef) && E.hasTok(ft, 'know', 'widow'));
   ok('Аэронавт: показанный игрок запомнен', !!S.flags['balloonLast_' + byRole(S, 'balloonist').id]);
