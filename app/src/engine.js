@@ -1512,7 +1512,7 @@ const LOGIC = {
     info: inp => inp.t && inp.t.length && inp.r ? { show: `Разбудите ${nm(S, inp.t[0])}: помешан на роли «${rname(inp.r)}»`, lines: [off ? 'Цереновус пьян или отравлен: можно показать, но безумие не действует' : ''],
       // один экран: «ОБЛАДАТЕЛЬ ЭТОЙ РОЛИ ВЫБРАЛ ВАС», маленький жетон Цереновуса и крупно — роль безумия (join: на тот же экран)
       tokens: [{ label: nm(S, inp.t[0]), caption: CARD.selected, role: 'cerenovus', small: true },
-        { label: nm(S, inp.t[0]), join: true, pre: 'Будьте безумны: завтра вы —', role: inp.r }] } : null,
+        { label: nm(S, inp.t[0]), join: true, pre: 'Безумие: завтра вы —', role: inp.r }] } : null,
     apply: inp => { const t = P(S, inp.t[0]); if (!off) addTok(S, t, 'mad', 'cerenovus', ['dusk', S.n + 1], { note: rname(inp.r) }); else recordAbn(S, p, 'безумие не наложено', abnSource(S, p));
       log(S, `Цереновус (${p.name}): ${t.name} должен быть помешан на роли «${rname(inp.r)}»`, 'action'); },
   }),

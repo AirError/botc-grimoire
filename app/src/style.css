@@ -604,10 +604,10 @@ img.shroud { object-fit: contain; }
 .shtext.long { font-size: 34px; line-height: 1.15; overflow-wrap: anywhere; max-width: 92vw; }
 @media (prefers-reduced-motion: reduce) { .wrlater { animation-duration: .01s; } }
 
-/* шрифты показа игрокам: Ruslan Display — надписи карточек, ДА/НЕТ и числа (старорусский, крупно и чётко);
+/* шрифты показа игрокам: Alegreya — надписи карточек, ДА/НЕТ и числа (выбор пользователя, крупно и чётко);
    Kurale — имена, роли и подписи (средневековый, но легко читается). Без сети — запасные шрифты системы */
-:root { --f-show: 'Ruslan Display', 'Alegreya Sans', serif; --f-tale: 'Kurale', 'Alegreya Sans', Georgia, serif; }
-.shct span, .shcap, .shtext, .shthumb { font-family: var(--f-show); font-weight: 400; letter-spacing: .04em; }
+:root { --f-show: 'Alegreya', 'Alegreya Sans', Georgia, serif; --f-tale: 'Kurale', 'Alegreya Sans', Georgia, serif; }
+.shct span, .shcap, .shtext, .shthumb { font-family: var(--f-show); font-weight: 800; letter-spacing: .04em; }
 .shct span { line-height: 1.12; }
 .shname, .shpl span, .shsub, .shpre, .wrname, .wrfor, .wturn b, .wsel select { font-family: var(--f-tale); }
 /* способность — жирным и простым шрифтом: так её удобнее читать */
