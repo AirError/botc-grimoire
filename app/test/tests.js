@@ -518,15 +518,56 @@ try {
   ok('сценарии сообщества: раздача и две ночи без ошибок', !commErr.length, commErr.slice(0, 3).join(' | '));
   ok('сценарий со Сказочниками: Джинн и Ловец Бури в игре', E.newGame('reptiles2').fabled.join() === 'stormcatcher,djinn');
 
-  // 31. жребий: каменная стена
+  // 31. жребий: каменная стена — роли закреплены за игроками до жребия, какую ячейку ни открой — выпадет своя
   S = game(['washerwoman', 'librarian', 'investigator', 'chef', 'empath', 'drunk', 'poisoner', 'imp'], 'tb'); E.autoSetup(S, true);
-  const before = S.players.map(p => p.role).sort().join(), drunkSees = byRole(S, 'drunk').believes;
+  const mine = Object.fromEntries(S.players.map(p => [p.id, p.role])), drunkSees = byRole(S, 'drunk').believes;
   E.drawStart(S);
-  ok('жребий: до открытия ячеек ролей у игроков нет', S.players.every(p => !p.role) && S.draw.cells.length === 8 && E.setupProblems(S).some(t => /Жребий не закончен/.test(t)));
-  let guardDraw = 0; while (S.draw.turn && guardDraw++ < 20) { const k = S.draw.cells.findIndex(c => !c.pid); E.drawOpen(S, k); E.drawClose(S); }
-  ok('жребий: все вытянули, набор ролей тот же', S.draw.finished && S.players.map(p => p.role).sort().join() === before && E.setupProblems(S).length === 0, E.setupProblems(S).join('; '));
+  ok('жребий: роли закреплены за игроками, жребий не закончен', S.players.every(p => p.role === mine[p.id]) && S.draw.cells.length === 8 && E.setupProblems(S).some(t => /Жребий не закончен/.test(t)));
+  ok('жребий: во время жребия случайная раздача недоступна', E.randomDeal(S) === false && S.players.every(p => p.role === mine[p.id]));
+  let guardDraw = 0, cellOk = true;
+  while (S.draw.turn && guardDraw++ < 20) { const pl = E.P(S, S.draw.turn), k = S.draw.cells.map((c, i) => c.pid ? -1 : i).filter(i => i >= 0).pop();
+    E.drawOpen(S, k); if (S.draw.cells[k].role !== pl.role) cellOk = false; E.drawClose(S); }
+  ok('жребий: какую ячейку ни открой — выпадает своя роль', cellOk && S.draw.finished && S.players.every(p => p.role === mine[p.id]) && E.setupProblems(S).length === 0, E.setupProblems(S).join('; '));
   ok('жребий: Пьяница видит роль, которой себя считает', E.drawShown(S.draw.cells.find(c => c.role === 'drunk')) === drunkSees && byRole(S, 'drunk').believes === drunkSees);
-  ok('жребий: злые стали злыми', byRole(S, 'imp').align === 'evil' && byRole(S, 'poisoner').align === 'evil' && byRole(S, 'chef').align === 'good');
+  ok('жребий: после стены роли не раздать заново', E.drawLocked(S) && E.randomDeal(S) === false && S.players.every(p => p.role === mine[p.id]));
+  // назначения: конкретная роль и тип роли
+  S = E.newGame('tb'); for (let i = 0; i < 8; i++) S.players.push(E.newPlayer('N' + i));
+  S.assign = { [S.players[0].id]: { role: 'imp' }, [S.players[1].id]: { team: 'outsider' }, [S.players[2].id]: { role: 'washerwoman' } };
+  E.drawStart(S);
+  ok('жребий: назначенные роль и тип роли выпадают нужным игрокам', S.players[0].role === 'imp' && E.realTeam(S.players[1]) === 'outsider' && S.players[2].role === 'washerwoman', S.players.slice(0, 3).map(p => p.role).join());
+  // набор ролей на игру (S.pool) — раздача берёт только его
+  S = E.newGame('tb'); for (let i = 0; i < 7; i++) S.players.push(E.newPlayer('P' + i));
+  S.pool = ['chef', 'empath', 'monk', 'slayer', 'soldier', 'poisoner', 'imp']; E.randomDeal(S);
+  ok('раздача из выбранного набора ролей', S.players.map(p => p.role).sort().join() === S.pool.slice().sort().join());
+  // The Midnight Oasis: случайная раздача по таблице; Егерь — с Девицей; Атеист случайно не попадает
+  const oasisErr = [];
+  for (let k = 0; k < 150; k++) {
+    const g = E.newGame('oasis'), n = 7 + (k % 9); for (let i = 0; i < n; i++) g.players.push(E.newPlayer('o' + i));
+    E.randomDeal(g); const probs = E.setupProblems(g).filter(t => !/выберите, сколько Изгоев/.test(t)), c = E.countTeams(g);
+    if (probs.length) oasisErr.push(n + ': ' + probs.join('; ')); if (c.demon !== 1) oasisErr.push(n + ': Демонов ' + c.demon);
+    if (g.players.some(p => p.role === 'atheist')) oasisErr.push('Атеист в случайной раздаче');
+  }
+  ok('Midnight Oasis: случайная раздача по таблице, всегда 1 Демон', !oasisErr.length, oasisErr.slice(0, 3).join(' | '));
+  const dAt = E.distribution(9, ['atheist', 'chef'], {}, 4);
+  ok('Атеист: злых ролей нет, добрых — по числу игроков', dAt.minion === 0 && dAt.demon === 0 && dAt.townsfolk + dAt.outsider === 9);
+  // блефы: без повторов и без роли, которой себя считает Пьяница
+  let bluffBad = 0;
+  for (let k = 0; k < 100; k++) { const g = game(['washerwoman', 'librarian', 'investigator', 'chef', 'empath', 'drunk', 'poisoner', 'imp'], 'tb'); E.autoSetup(g, true);
+    const dr = g.players.find(p => p.role === 'drunk'); if (g.bluffs.includes(dr.believes) || new Set(g.bluffs).size !== g.bluffs.length) bluffBad++; }
+  ok('блефы: без повторов и без роли Пьяницы', bluffBad === 0, String(bluffBad));
+  // джинксы Шпиона: с Дурманщиком — не смотрит Гримуар; с Девицей — Девица отравлена
+  S = E.newGame('tb'); S.script = { key: 'custom', name: 'J', roles: ['poppygrower', 'damsel', 'chef', 'empath', 'monk', 'soldier', 'spy', 'imp', 'slayer'] };
+  ['poppygrower', 'damsel', 'chef', 'empath', 'monk', 'spy', 'imp'].forEach((r, i) => { const p = E.newPlayer('J' + i); p.role = r; S.players.push(p); });
+  E.finishRoles(S); E.autoSetup(S, true); E.startGame(S);
+  const spySt = S.night.steps.find(s => s.id === 'spy');
+  ok('джинкс: при Дурманщике Шпион не смотрит Гримуар', spySt && !E.stepSpec(S, spySt).active);
+  ok('джинкс: при Шпионе Девица отравлена', /отравлена/.test(E.abilityOff(S, byRole(S, 'damsel')) || ''));
+  // подсказки: факты Саванта (правда + ложь), советы Рыбаку, Мецефель
+  S = game(['savant', 'fisherman', 'chef', 'empath', 'monk', 'drunk', 'poisoner', 'imp']); E.autoSetup(S, true); E.startGame(S);
+  const sp2 = IDEAS.savantPair(S, byRole(S, 'savant').id);
+  ok('Савант: два факта — один правдивый, другой ложный', sp2 && sp2.length === 2 && sp2.filter(x => x.truth).length === 1, JSON.stringify(sp2));
+  ok('Рыбак: есть советы по текущей игре', IDEAS.fishermanAdvice(S, byRole(S, 'fisherman').id).length >= 5);
+  ok('идеи: Амнезиак и слова Мецефеля — не меньше 15', IDEAS.AMNESIAC.length >= 15 && IDEAS.MEZ_WORDS.length >= 15);
 
   // 27. слова для утра
   const placeholders = [];

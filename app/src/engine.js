@@ -106,11 +106,17 @@ function abilityOff(S, p) { // способность не работает (п�
   if (alwaysSober(p)) return null;
   const t = p.tokens.find(t => tokOff(S, t));
   if (t) return (t.k === 'drunk' ? 'пьян' : 'отравлен') + (t.src && R(t.src) ? ` (${R(t.src).name})` : '');
+  // джинксы: если Шпион или Вдова в игре (или были в ней), Девица отравлена
+  if (p.role === 'damsel') for (const ev of ['spy', 'widow']) if (jinxOn(S, ev, 'damsel') && (inPlay(S, ev) || (S.flags.ever || {})[ev])) return `отравлена (джинкс: ${R(ev).name})`;
   for (const nd of holders(S, 'nodashii')) {
     if (demonAlive(nd) && !abilityOffNoND(S, nd) && townsfolkNeighbours(S, nd).includes(p)) return 'отравлен (Но Даши)';
   }
   return null;
 }
+// джинкс действует, если обе роли есть в сценарии
+const jinxOn = (S, a, b) => !!(DATA.jinxes[a + '|' + b] || DATA.jinxes[b + '|' + a]) && S.script.roles.includes(a) && S.script.roles.includes(b);
+// у Дурманщика есть способность: жив, трезв и здоров (джинксы со Шпионом и Вдовой — они не заглядывают в Гримуар)
+const poppyActive = S => S.players.some(q => q.role === 'poppygrower' && q.alive && !abilityOff(S, q));
 function abilityOffNoND(S, p) { // то же, но без Но Даши (чтобы не зациклиться)
   if (p.role === 'drunk' && !p.gained) return 'Пьяница';
   if (alwaysSober(p)) return null;
@@ -302,6 +308,8 @@ const OUT_CHOICES = {
   godfather: { opts: [-1, 1], def: null },     // [−1 или +1 Изгой]
   balloonist: { opts: [0, 1], def: 0 },        // [+0 или +1 Изгой]
   sentinel: { opts: [-1, 0, 1], def: 0 },      // Сказочник: Изгоев может быть на 1 больше или меньше
+  // Егерь [+Девица] (вики): если Девицы нет — убрать 1 Горожанина и добавить Девицу (+1); если Девица уже среди Изгоев — без изменений
+  huntsman: { opts: [0, 1], def: 1 },
 };
 
 // roles — роли в игре и Сказочники; mods — выбор рассказчика {godfather: −1|1, balloonist: 0|1, sentinel: −1|0|1};
@@ -319,6 +327,9 @@ function distribution(nPlayers, roles, mods, maxOut) {
     if (r === 'vigormortis') { t += 1; o -= 1; notes.push('Вигормортис: −1 Изгой'); }
   }
   if (o < 0) { t += o; o = 0; } // убирать Изгоя некого — число Горожан не меняется
+  // Атеист [В игре нет злых ролей] (вики): злых убрать, добрых добавить до числа игроков; Горожан/Изгоев — на усмотрение рассказчика
+  let free = false;
+  if (roles.includes('atheist')) { t += m + d; m = 0; d = 0; free = true; notes.push('Атеист: злых ролей нет; сколько Горожан и Изгоев — решаете вы'); }
   for (const [id, c] of Object.entries(OUT_CHOICES)) {
     if (!roles.includes(id)) continue;
     // Аэронавт сам Горожанин: хотя бы один Горожанин должен остаться
@@ -328,18 +339,20 @@ function distribution(nPlayers, roles, mods, maxOut) {
     choices.push({ id, opts, value: v });
     if (v !== null) { o += v; t -= v; }
   }
-  return { townsfolk: t, outsider: o, minion: m, demon: d, notes, choices, pending: choices.filter(c => c.value === null).map(c => c.id) };
+  return { townsfolk: t, outsider: o, minion: m, demon: d, notes, choices, free, pending: choices.filter(c => c.value === null).map(c => c.id) };
 }
 
-// роли и Сказочники, раскладку которых приложение умеет считать; с остальными (экспериментальные: Легион, Атеист,
+// роли и Сказочники, раскладку которых приложение умеет считать; с остальными (экспериментальные: Легион,
 // Казали и т. п.) раскладку проверяет рассказчик, и приложение не мешает начать игру
-const KNOWN_SETUP = new Set(['drunk', 'baron', 'godfather', 'fanggu', 'vigormortis', 'balloonist', 'sentinel']);
+const KNOWN_SETUP = new Set(['drunk', 'baron', 'godfather', 'fanggu', 'vigormortis', 'balloonist', 'sentinel', 'huntsman', 'atheist']);
 const unknownSetup = S => [...new Set(S.players.map(p => p.role).concat(S.fabled || []))].filter(r => r && R(r) && R(r).setup && !KNOWN_SETUP.has(r));
 
-// сверка раскладки с таблицей: строки «есть / нужно» по типам ролей («?» — пока не выбран сдвиг Изгоев)
+// сверка раскладки с таблицей: строки «есть / нужно» по типам ролей («?» — пока не выбран сдвиг Изгоев);
+// при Атеисте Горожане и Изгои сверяются только вместе
 function distCheck(d, c) {
   return ['townsfolk', 'outsider', 'minion', 'demon'].map(t => {
-    const unknown = d.pending.length > 0 && (t === 'townsfolk' || t === 'outsider');
+    const good = t === 'townsfolk' || t === 'outsider', unknown = d.pending.length > 0 && good;
+    if (d.free && good) return { t, have: c[t], want: d[t], bad: c.townsfolk + c.outsider !== d.townsfolk + d.outsider };
     return { t, have: c[t], want: unknown ? '?' : d[t], bad: unknown || c[t] !== d[t] };
   });
 }
@@ -357,32 +370,60 @@ function countTeams(S) {
   return c;
 }
 
-// случайная раздача по сценарию с учётом модификаторов раскладки
-function randomDeal(S) {
-  const core = S.players.filter(p => !isTraveller(p)), n = core.length, roles = S.script.roles;
-  const byTeam = t => shuffle(roles.filter(r => R(r) && R(r).team === t));
-  const demon = byTeam('demon')[0];
-  const base = BASE_DIST[n];
-  const minions = byTeam('minion').slice(0, base[2]);
-  const chosen = [demon, ...minions];
-  // сдвиги Изгоев — как выбрал рассказчик; Крёстному Отцу без выбора — случайно −1 или +1 (выбор запоминается)
+/* ---------- набор ролей на игру, назначения для жребия, случайная раздача ---------- */
+const SETUP_TF = ['balloonist', 'huntsman']; // Горожане, которые сами меняют раскладку
+const coreOf = S => S.players.filter(p => !isTraveller(p));
+// набор ролей, выбранный рассказчиком на вкладке «Гримуар» (S.pool), годится, если ролей ровно по числу игроков
+const validPool = S => !!(S.pool && S.pool.length === coreOf(S).length && S.pool.every(r => S.script.roles.includes(r)));
+
+// случайный набор ролей по раскладке; назначенные для жребия роли (S.assign) обязательно входят в набор.
+// Атеиста случайно не берём — игру без злых рассказчик выбирает сам (набором ролей)
+function randomPool(S) {
+  const n = coreOf(S).length, roles = S.script.roles, as = Object.values(S.assign || {});
+  const must = as.filter(a => a.role && roles.includes(a.role)).map(a => a.role);
+  const byTeam = t => { const m = must.filter(r => R(r).team === t); return m.concat(shuffle(roles.filter(r => R(r) && R(r).team === t && r !== 'atheist' && !m.includes(r)))); };
+  const base = BASE_DIST[Math.min(15, Math.max(5, n))];
+  const chosen = [byTeam('demon')[0], ...byTeam('minion').slice(0, base[2])].filter(Boolean);
   const mods = S.flags.mods = Object.assign({}, S.flags.mods);
   if (chosen.includes('godfather') && mods.godfather == null) mods.godfather = pick([-1, 1]);
   const dist = extra => distribution(n, chosen.concat(extra, S.fabled || []), mods, scriptOutsiders(S));
-  let d = dist([]);
   const tfAll = byTeam('townsfolk');
-  let tf = tfAll.slice(0, Math.max(0, d.townsfolk));
-  // Аэронавт попал в раздачу — он сам меняет раскладку: пересчитываем так же, как таблица, и оставляем его в игре
-  if (tf.includes('balloonist')) { d = dist(['balloonist']); tf = ['balloonist', ...tfAll.filter(r => r !== 'balloonist')].slice(0, Math.max(0, d.townsfolk)); }
-  const outs = byTeam('outsider');
+  // Горожане, меняющие раскладку (Аэронавт, Егерь), — пересчитываем раскладку с ними и оставляем их в игре
+  let d = dist([]), tf = tfAll.slice(0, Math.max(0, d.townsfolk));
+  for (let k = 0; k < 2; k++) {
+    const sp = tf.filter(r => SETUP_TF.includes(r)); d = dist(sp);
+    tf = sp.concat(tfAll.filter(r => !sp.includes(r) && !SETUP_TF.includes(r))).slice(0, Math.max(0, d.townsfolk));
+  }
+  // Егерь: Девица обязательно среди Изгоев
+  const outs = byTeam('outsider').sort((a, b) => (b === 'damsel' && tf.includes('huntsman')) - (a === 'damsel' && tf.includes('huntsman')));
   let o = d.outsider;
   if (o > outs.length) { tf.push(...tfAll.filter(r => !tf.includes(r)).slice(0, o - outs.length)); o = outs.length; }
-  chosen.push(...outs.slice(0, Math.max(0, o)));
-  chosen.push(...tf);
-  const seats = shuffle(core);
-  seats.forEach((p, i) => { p.role = chosen[i] || null; });
+  const pool = chosen.concat(outs.slice(0, Math.max(0, o)), tf);
+  // ровно по числу игроков: недостающих добираем добрыми ролями сценария, лишних Горожан убираем
+  const spare = shuffle(roles.filter(r => R(r) && isGoodTeam(R(r).team) && !pool.includes(r) && r !== 'atheist'));
+  while (pool.length < n && spare.length) pool.push(spare.shift());
+  while (pool.length > n) { const i = pool.findIndex(r => R(r).team === 'townsfolk' && !must.includes(r) && !SETUP_TF.includes(r)); pool.splice(i < 0 ? pool.length - 1 : i, 1); }
+  return pool;
+}
+
+// раздать набор игрокам: сначала назначенные роли, потом назначенный тип роли, остальным — случайно
+function dealPool(S, pool) {
+  const core = coreOf(S), left = shuffle(pool.slice()), as = S.assign || {}, got = {};
+  const take = f => { const i = left.findIndex(f); return i < 0 ? null : left.splice(i, 1)[0]; };
+  for (const p of core) { const a = as[p.id]; if (a && a.role) got[p.id] = take(r => r === a.role); }
+  for (const p of core) { const a = as[p.id]; if (a && a.team && !got[p.id]) got[p.id] = take(r => R(r).team === a.team); }
+  for (const p of shuffle(core)) if (!got[p.id]) got[p.id] = take(() => true);
+  core.forEach(p => { p.role = got[p.id] || null; p.believes = null; });
   finishRoles(S);
+}
+
+// случайная раздача: выбранный набор ролей (если он полный) или случайный по раскладке.
+// Если роли уже выдаются или выданы стеной — раздавать заново нельзя (возвращает false)
+function randomDeal(S) {
+  if (S.draw) return false;
+  dealPool(S, validPool(S) ? S.pool : randomPool(S));
   autoSetup(S, true);
+  return true;
 }
 
 function finishRoles(S) {
@@ -393,17 +434,21 @@ function finishRoles(S) {
   }
 }
 
-// значения по умолчанию для подготовки: Пьяница, Безумец, блефы, внук, ложная цель, близнец
+// значения по умолчанию для подготовки: Пьяница, Безумец, блефы, внук, ложная цель, близнец.
+// Пьянице — роль не из блефов (иначе Демон поймёт, кто Пьяница); блефы — только добрые роли сценария не в игре, без повторов
 function autoSetup(S, force) {
   const roles = S.script.roles, used = new Set(S.players.map(p => p.role));
-  const notInPlay = t => shuffle(roles.filter(r => R(r) && R(r).team === t && !used.has(r)));
+  const bl = force ? [] : S.bluffs.filter(Boolean);
+  const notInPlay = t => shuffle(roles.filter(r => R(r) && R(r).team === t && !used.has(r) && !bl.includes(r)));
   for (const p of S.players) {
-    if (p.role === 'drunk' && (force || !p.believes)) { p.believes = notInPlay('townsfolk')[0] || null; if (p.believes) used.add(p.believes); }
+    if (p.role === 'drunk' && (force || !p.believes || bl.includes(p.believes))) { p.believes = notInPlay('townsfolk')[0] || null; }
+    if (p.role === 'drunk' && p.believes) used.add(p.believes);
     if (p.role === 'lunatic' && (force || !p.believes)) p.believes = shuffle(roles.filter(r => R(r) && R(r).team === 'demon'))[0] || null;
   }
-  if (force || !S.bluffs.length) {
-    const good = shuffle(roles.filter(r => R(r) && isGoodTeam(R(r).team) && !used.has(r)));
-    S.bluffs = good.slice(0, 3);
+  if (force || !S.bluffs.filter(Boolean).length || S.bluffs.some(b => b && used.has(b))) {
+    const keep = force ? [] : S.bluffs.filter(b => b && !used.has(b));
+    const good = shuffle(roles.filter(r => R(r) && isGoodTeam(R(r).team) && !used.has(r) && !keep.includes(r)));
+    S.bluffs = keep.concat(good).slice(0, 3);
   }
   const goodPlayers = S.players.filter(p => p.align === 'good');
   if (inPlay(S, 'grandmother') && (force || !S.flags.grandchild)) {
@@ -415,24 +460,31 @@ function autoSetup(S, force) {
   }
 }
 
-/* «Стена жребия» — как мешочек с жетонами: роли лежат в ячейках вперемешку, игроки по очереди открывают ячейку.
+/* «Стена жребия» — как мешочек с жетонами: игроки по очереди открывают ячейку. Роль за каждым игроком закреплена
+   до начала жребия (выданные роли, назначения или случайный набор), поэтому какую ячейку игрок ни откроет — выпадет его роль.
    Пьяница видит роль, которой себя считает, Безумец — своего «Демона». */
 const RUNE_COLORS = ['green', 'violet', 'red', 'gold'];
 function drawStart(S) {
-  const core = S.players.filter(p => !isTraveller(p));
-  if (core.some(p => !p.role)) randomDeal(S);
-  autoSetup(S, false);
-  const pool = shuffle(core.map(p => ({ role: p.role, believes: p.believes || null })));
+  if (S.draw) return false;
+  const core = coreOf(S);
+  const prev = core.map(p => ({ id: p.id, role: p.role, believes: p.believes }));
+  if (core.some(p => !p.role)) { dealPool(S, validPool(S) ? S.pool : randomPool(S)); autoSetup(S, true); }
+  else autoSetup(S, false);
+  const cells = shuffle(core.map(p => ({ role: p.role, believes: p.believes || null })));
   const glyphs = shuffle([...Array(24).keys()]);
-  S.draw = { prev: core.map(p => ({ id: p.id, role: p.role, believes: p.believes })), order: core.map(p => p.id), turn: core[0] ? core[0].id : null, open: null,
-    cells: pool.map((x, i) => ({ role: x.role, believes: x.believes, glyph: glyphs[i % glyphs.length], color: RUNE_COLORS[Math.floor(Math.random() * 4)], pid: null, done: false })) };
-  core.forEach(p => { p.role = null; p.believes = null; });
+  S.draw = { prev, order: core.map(p => p.id), turn: core[0] ? core[0].id : null, open: null,
+    cells: cells.map((x, i) => ({ role: x.role, believes: x.believes, glyph: glyphs[i % glyphs.length], color: RUNE_COLORS[Math.floor(Math.random() * 4)], pid: null, done: false })) };
+  return true;
 }
 const drawShown = c => c.believes || c.role; // что видит игрок
 function drawOpen(S, i) {
   const d = S.draw, c = d && d.cells[i], p = d && P(S, d.turn);
   if (!c || c.pid || d.open !== null || !p) return false;
-  c.pid = p.id; d.open = i; p.role = c.role; p.believes = c.believes;
+  // игроку выпадает его роль, какую бы ячейку он ни открыл: меняем содержимое ячеек местами
+  const j = d.cells.findIndex(x => !x.pid && x.role === p.role && (x.believes || null) === (p.believes || null));
+  if (j >= 0 && j !== i) { const b = d.cells[j]; [c.role, b.role] = [b.role, c.role]; [c.believes, b.believes] = [b.believes, c.believes]; }
+  if (j < 0) { c.role = p.role; c.believes = p.believes || null; } // роль поменяли во время жребия
+  c.pid = p.id; d.open = i;
   return true;
 }
 function drawClose(S) {
@@ -445,7 +497,7 @@ function drawClose(S) {
 }
 function drawFinish(S) {
   finishRoles(S);
-  // внук, ложная цель Гадалки, добрый близнец — должны остаться добрыми после жребия
+  // внук, ложная цель Гадалки, добрый близнец — должны остаться добрыми
   const good = S.players.filter(p => p.align === 'good' && !isTraveller(p));
   const fix = (flag, ok) => { const q = S.flags[flag] && P(S, S.flags[flag]); if (!q || !ok(q)) { const c = good.filter(ok); S.flags[flag] = c.length ? pick(c).id : null; } };
   if (inPlay(S, 'grandmother')) fix('grandchild', q => q.align === 'good' && q.role !== 'grandmother');
@@ -454,12 +506,15 @@ function drawFinish(S) {
   S.draw.finished = true;
   log(S, 'Роли выданы жребием (стена)', 'phase');
 }
+// отменить можно только незаконченный жребий: роли возвращаются как были до него
 function drawCancel(S) {
-  const d = S.draw; if (!d) return;
-  if (!d.finished) d.prev.forEach(x => { const p = P(S, x.id); if (p) { p.role = x.role; p.believes = x.believes; } });
+  const d = S.draw; if (!d || d.finished) return;
+  d.prev.forEach(x => { const p = P(S, x.id); if (p) { p.role = x.role; p.believes = x.believes; } });
+  finishRoles(S);
   S.draw = null;
 }
-
+// роли выданы стеной: заново не раздаются, менять можно только на роль сценария, которой нет в игре
+const drawLocked = S => !!(S.draw && S.draw.finished);
 function setupProblems(S) {
   const out = [];
   const core = S.players.filter(p => !isTraveller(p));
@@ -472,7 +527,9 @@ function setupProblems(S) {
     const diff = distCheck(d, countTeams(S)).filter(x => x.bad && x.want !== '?');
     if (diff.length && !odd) out.push('Раскладка не совпадает с таблицей: ' + diff.map(x => `${TEAM_RU[x.t]}: ${x.have} из ${x.want}`).join(', '));
     const c = countTeams(S);
-    if (c.demon !== 1 && !odd) out.push('В игре должен быть ровно 1 Демон');
+    if (c.demon !== d.demon && !odd) out.push(d.demon ? 'В игре должен быть ровно 1 Демон' : 'Атеист в игре: злых ролей быть не должно');
+    if (d.free && c.minion) out.push('Атеист в игре: Приспешников быть не должно');
+    if (inPlay(S, 'huntsman') && !inPlay(S, 'damsel')) out.push('Егерь в игре — Девица тоже должна быть в игре');
     const roles = S.players.map(p => p.role);
     if (new Set(roles).size !== roles.length) out.push('Одна роль выдана дважды');
     for (const b of S.bluffs) if (b && S.players.some(p => p.role === b || p.believes === b)) out.push(`Блеф «${rname(b)}» есть в игре — выберите другой`);
@@ -494,6 +551,7 @@ function jinxesInPlay(S) {
 
 function startGame(S) {
   finishRoles(S); S.draw = null;
+  S.flags.ever = Object.fromEntries(S.players.filter(p => p.role).map(p => [p.role, true])); // роли, бывшие в игре (джинксы «есть или был»)
   for (const p of S.players) { p.alive = true; p.ghost = true; p.tokens = []; }
   S.flags.demonless = !S.players.some(isDemon);
   if (S.flags.grandchild) addTok(S, P(S, S.flags.grandchild), 'grandchild', 'grandmother');
@@ -573,6 +631,7 @@ function currentStep(S) { return S.night && S.night.steps[S.night.i]; }
 
 function endNight(S) {
   expire(S, 'dawn');
+  S.flags.abnPrev = S.flags.abn || []; // для фактов Саванта: сбои со вчерашнего утра
   S.flags.abn = []; // Математик считает «с рассвета»
   const deaths = S.night.deaths.map(d => nm(S, d.pid));
   S.phase = 'day';
@@ -1145,7 +1204,9 @@ const LOGIC = {
     apply: inp => { const t = P(S, inp.t[0]); if (!off) addTok(S, t, 'poisoned', 'poisoner', ['dusk', S.n + 1]); else recordAbn(S, p, 'яд не подействовал', abnSource(S, p));
       log(S, `Отравитель (${p.name}) травит ${t.name}${off ? ' — не работает' : ''}`, 'action'); },
   }),
-  spy: (S, p) => ({ info: () => ({ show: 'Покажите Гримуар', lines: [] }), apply: () => log(S, `Шпион (${p.name}) смотрит Гримуар`, 'info') }),
+  spy: (S, p) => jinxOn(S, 'spy', 'poppygrower') && poppyActive(S)
+    ? { active: false, reason: 'Джинкс с Дурманщиком: пока у Дурманщика есть способность, Шпион не заглядывает в Гримуар' }
+    : { info: () => ({ show: 'Покажите Гримуар', lines: [] }), apply: () => log(S, `Шпион (${p.name}) смотрит Гримуар`, 'info') },
   scarletwoman: (S, p) => {
     if (S.flags.swBecame !== p.id) return { active: false, reason: 'Блудница не становилась Демоном' };
     return { info: () => ({ show: `«ТЕПЕРЬ ВЫ» — ${rname(p.role)}`, lines: [], tokens: [{ caption: 'ТЕПЕРЬ ВЫ', role: p.role }] }),
@@ -1535,7 +1596,8 @@ const LOGIC = {
     return {
       inputs: [PL('t', 1, 'Кого отравляет Вдова (посмотрев Гримуар)'), PL('know', 1, 'Добрый игрок, который узнаёт, что Вдова в игре', goodOk)],
       defaults: stable(S, 'widowKnow:' + p.id, () => ({ know: good.length ? [pick(good).id] : [] })),
-      info: inp => { const k = inp.know && P(S, inp.know[0]); return { show: 'Покажите Вдове Гримуар', lines: [k ? `Затем разбудите ${k.name} и покажите жетон Вдовы` : ''],
+      info: inp => { const k = inp.know && P(S, inp.know[0]), noLook = jinxOn(S, 'widow', 'poppygrower') && poppyActive(S);
+        return { show: noLook ? 'Гримуар не показывайте: джинкс с Дурманщиком' : 'Покажите Вдове Гримуар', lines: [k ? `Затем разбудите ${k.name} и покажите жетон Вдовы` : ''],
         tokens: k ? [{ label: k.name, role: 'widow', sub: 'Эта роль в игре' }] : [] }; },
       apply: inp => {
         markOnce(S, p, 'widow');
@@ -1645,10 +1707,29 @@ const LOGIC = {
     };
   },
 
+  // Мецефель (вики): в 1-ю ночь узнаёт тайное слово; первый добрый, произнёсший его, ночью становится злым
+  // (если Мецефель этой ночью пьян или отравлен — игрок остаётся добрым, способность потрачена)
+  mezepheles: (S, p, first, off) => {
+    if (first) return {
+      inputs: [Object.assign(TEXT('word', 'Тайное слово — необычное, чтобы его не сказали случайно (можно своё)'), { ideas: 'MEZ_WORDS' })],
+      defaults: stable(S, 'mezWord:' + p.id, () => ({ word: S.flags.mezWord || (typeof IDEAS !== 'undefined' ? pick(IDEAS.MEZ_WORDS) : '') })),
+      info: inp => inp.word ? { show: `Тайное слово: ${inp.word}`, lines: ['Покажите на экране или скажите шёпотом'], tokens: [{ caption: 'ТАЙНОЕ СЛОВО', text: String(inp.word).trim() }] } : null,
+      apply: inp => { S.flags.mezWord = String(inp.word || '').trim(); log(S, `Мецефель (${p.name}) узнаёт тайное слово: «${S.flags.mezWord}»`, 'info'); },
+    };
+    const t = S.flags.mezTarget && P(S, S.flags.mezTarget);
+    if (S.flags.mezUsed || !t) return { active: false, reason: S.flags.mezUsed ? 'Способность уже использована' : 'Никто из добрых не произнёс тайное слово' };
+    return {
+      info: () => off ? { secret: true, show: `${t.name} остаётся добрым: Мецефель пьян или отравлен, способность потрачена`, lines: [] }
+        : { show: `${t.name} становится злым`, lines: ['Разбудите его: «ТЕПЕРЬ ВЫ» и жест «злой». Мецефель об этом не узнаёт'], tokens: [{ label: t.name, caption: 'Вы злой', thumb: 'down' }] },
+      apply: () => { S.flags.mezUsed = true; S.flags.mezTarget = null;
+        if (off) return log(S, `${t.name} произнёс тайное слово, но Мецефель пьян или отравлен — остаётся добрым`, 'effect');
+        t.align = 'evil'; log(S, `${t.name} произнёс тайное слово и становится злым (Мецефель)`, 'effect'); },
+    };
+  },
   amnesiac: (S, p) => {
     const key = 'amnesiac_' + p.id;
     return {
-      inputs: [TEXT('ability', 'Способность Амнезиака — решаете вы, игрок её не знает'), PL('t', 3, 'Выбор Амнезиака, если способность его требует', () => true, { min: 0 })],
+      inputs: [Object.assign(TEXT('ability', 'Способность Амнезиака — решаете вы, игрок её не знает'), { ideas: 'AMNESIAC' }), PL('t', 3, 'Выбор Амнезиака, если способность его требует', () => true, { min: 0 })],
       defaults: { ability: S.flags[key] || '' },
       apply: inp => {
         S.flags[key] = String(inp.ability || '').trim();
@@ -1797,6 +1878,10 @@ function situation(S) {
   if (S.flags.moonchildPending) out.push(`Дитя Луны (${nm(S, S.flags.moonchildPending)}) должно публично выбрать игрока.`);
   if (S.flags.klutzPending) out.push(`Растяпа (${nm(S, S.flags.klutzPending)}) должен публично выбрать игрока.`);
   if (vortoxActive(S)) out.push('Вортокс: день без казни — победа зла.');
+  // Травница: оба живых соседа добрые — не могут умереть, даже при казни
+  const tl = S.players.filter(p => p.alive && teaLadyProtects(S, p));
+  if (tl.length) out.push(`Травница защищает: ${tl.map(p => p.name).join(' и ')} — не могут умереть, даже при казни.`);
+  if (S.phase === 'day' && S.day) { const b = block(S) && P(S, block(S)); if (b && teaLadyProtects(S, b)) out.push(`На плахе ${b.name}, но его защищает Травница: казнь его не убьёт.`); }
   if (S.phase === 'day' && S.day) {
     const bishop = holders(S, 'bishop').find(h => h.alive && !abilityOff(S, h));
     if (bishop && !S.day.nominated.some(id => P(S, id) && P(S, id).align !== bishop.align))
@@ -1826,7 +1911,8 @@ function klutzChoose(S, pid) {
 const ENGINE = { newGame, newPlayer, P, nm, rname, realTeam, actsAs, aliveCount, aliveAll, coreCount, isTraveller, exile, exileThreshold, addTraveller, meetingBlocker, isDemon, distribution, setupDistribution, distCheck, unknownSetup, countTeams, randomDeal,
   amnesiacGuess, AMNESIAC_ANSWERS, storytellerKill, voteCount, voteWeight, voudonActive, bishopActive, travellerWorks, executeNow,
   judgeRuling, gunslingerShot, tinkerDies, doomsayerKill, fiddlerEnd, swapSeats, goonWarn,
-  finishRoles, autoSetup, setupProblems, drawStart, drawOpen, drawClose, drawCancel, drawShown, distortion, jinxesInPlay, startGame, startNight, currentStep, stepSpec, applyStep, skipStep,
+  finishRoles, autoSetup, setupProblems, drawStart, drawOpen, drawClose, drawCancel, drawShown, drawLocked, distortion,
+  randomPool, dealPool, validPool, scriptOutsiders, CARD, jinxesInPlay, startGame, startNight, currentStep, stepSpec, applyStep, skipStep,
   stepInputs, missingInputs, endNight,
   nominate, nominationPreview, recordVote, block, execute, endDay, slayerShot, voteThreshold, situation, moonchildChoose, klutzChoose,
   abilityOff, attemptKill, die, addTok, rmTok, hasTok, TOK_RU, TEAM_RU, log, checkWin, endGame, aliveNeighbours,
