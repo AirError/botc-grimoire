@@ -181,7 +181,38 @@ def beauty():
         print("рамка: толщина", tx, ty)
     meta["cards"] = cards()
     meta["marks"] = marks()
+    meta["digits"] = digits()
     (OUT / "meta.json").write_text(json.dumps(meta), encoding="utf-8")
+
+
+def digits():
+    """Цифры 0–9 (digits.png, 2 строки по 5): каждая — по своей клетке; высота — по строке, чтобы все цифры были одного роста."""
+    if not (SRC / "digits.png").exists():
+        return 0
+    im = white_alpha(SRC / "digits.png", edge_thr=215, inner_thr=205)  # в золотых цифрах белого нет — режем и светлую кайму в «дырках»
+    al = np.asarray(im)[..., 3] > 40
+    h, w = al.shape
+    on = al.any(axis=1); runs, start = [], None
+    for y, v in enumerate(on):
+        if v and start is None: start = y
+        if not v and start is not None: runs.append([start, y]); start = None
+    if start is not None: runs.append([start, h])
+    runs = sorted(runs, key=lambda r: r[1] - r[0], reverse=True)[:2]; runs.sort()
+    lab, _ = ndimage.label(al)
+    cols = {}
+    for idx, sl in enumerate(ndimage.find_objects(lab), start=1):
+        if sl is None or (lab[sl] == idx).sum() < 200: continue
+        cy, cx = (sl[0].start + sl[0].stop) / 2, (sl[1].start + sl[1].stop) / 2
+        r = next((i for i, (a, b) in enumerate(runs) if a <= cy < b), None)
+        if r is None: continue
+        k = r * 5 + min(4, int(cx // (w / 5)))
+        x0, x1 = cols.get(k, (sl[1].start, sl[1].stop)); cols[k] = (min(x0, sl[1].start), max(x1, sl[1].stop))
+    for k, (x0, x1) in sorted(cols.items()):
+        y0, y1 = runs[k // 5]
+        d = im.crop((x0 - 4, y0 - 4, x1 + 4, y1 + 4)); d = d.resize((round(d.width * 220 / d.height), 220), Image.LANCZOS)
+        d.save(OUT / f"digit{k}.png")
+    print("цифр:", len(cols))
+    return len(cols)
 
 
 def marks():

@@ -614,3 +614,7 @@ img.shroud { object-fit: contain; }
 .shab, .wrab { font-weight: 700; font-size: 19px; }
 .shtext { font-size: 84px; }
 .shtext.long { font-size: 34px; }
+
+/* рисованные цифры (prep_art.digits): крупно, с тенью — видно через стол в темноте */
+.shdig { display: flex; justify-content: center; align-items: flex-end; gap: 6px; margin-top: 6px; }
+.shdig img { height: min(34vw, 150px); width: auto; filter: drop-shadow(0 4px 12px rgba(0, 0, 0, .7)); }

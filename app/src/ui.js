@@ -279,6 +279,12 @@ function showButtons(tokens) {
   UI.showGroups = groups;
   return `<div class="showbtns">${groups.map((g, i) => `<button class="btn showbtn" data-act="showOpen" data-arg="${i}">${art('eye', 'bg')}${g.label ? 'Показать: ' + esc(g.label) : 'Показать игроку на экране'}</button>`).join('')}</div>`;
 }
+// число — рисованными золотыми цифрами (если они есть в сборке), остальное — шрифтом
+const numText = s => {
+  s = String(s);
+  if (/^\d{1,3}$/.test(s) && HAS_ART('digit0')) return `<div class="shdig" role="img" aria-label="${s}">${[...s].map(c => `<img src="${ART['digit' + c]}" alt="">`).join('')}</div>`;
+  return `<div class="shtext ${s.length > 4 ? 'long' : ''}">${esc(s)}</div>`;
+};
 function showOverlay() {
   const sh = UI.show; if (!sh) return '';
   const sc = sh.screens[sh.i]; if (!sc) return '';
@@ -291,7 +297,7 @@ function showOverlay() {
     // способность — только когда игрок получает роль («ТЕПЕРЬ ВЫ», показ своей роли) или роль одна без имён и чисел
     const ab = r && one && !t.players && !t.text && (sc.caption === 'ТЕПЕРЬ ВЫ' || sc.caption === 'Ваша роль' || !sc.caption);
     return `<div class="shrole side-${al} ${t.small ? 'small' : ''}">${t.pre ? `<div class="shpre">${esc(t.pre)}</div>` : ''}${r ? `${ico(t.role, al, 'shic')}<div class="shname">${esc(E.rname(t.role))}</div>` : ''}${t.players ? names(t.players) : ''}
-      ${t.text ? `<div class="shtext ${String(t.text).length > 4 ? 'long' : ''}">${esc(t.text)}</div>` : ''}${t.sub ? `<div class="shsub">${esc(t.sub)}</div>` : ''}${ab ? `<div class="shab">${esc(r.ability)}</div>` : ''}</div>`;
+      ${t.text ? numText(t.text) : ''}${t.sub ? `<div class="shsub">${esc(t.sub)}</div>` : ''}${ab ? `<div class="shab">${esc(r.ability)}</div>` : ''}</div>`;
   };
   return `<div class="ov showov" data-act="showNext" role="dialog" aria-label="Показ игроку">
     ${sc.caption ? cardHtml(sc.caption, sc.thumb) : yn ? cardHtml(yn) : ''}

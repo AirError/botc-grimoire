@@ -35,6 +35,8 @@ ART = {
     "poison_drop": (CUT / "poison_drop.png", 72), "poison_drips": (CUT / "poison_drips.png", 900), "poison_frame": (CUT / "poison_frame.png", 600),
 }
 ART.update({f"rune{i}": (CUT / f"rune{i}.png", 128) for i in range(24)})
+# рисованные цифры 0–9 для показа чисел игрокам (prep_art.digits)
+ART.update({f"digit{i}": (CUT / f"digit{i}.png", 150) for i in range(10)})
 # значки Гримуара: саван и 20 значков-напоминаний (prep_art.marks)
 ART["shroud"] = (CUT / "shroud.png", 120)
 ART.update({f"mark{i}": (CUT / f"mark{i}.png", 72) for i in range(20)})
