@@ -138,6 +138,22 @@ try {
   E.attemptKill(S, byRole(S, 'drunk'), 'ability');
   ok('двое живых — победа зла', S.result && S.result.winner === 'evil', S.result && S.result.reason);
 
+  // 18б. Отметки Прачки и Сыщика в Гримуаре; выбор подготовки от прежней раздачи не ставит отметку роли не в игре
+  S = game(['washerwoman', 'investigator', 'chef', 'empath', 'monk', 'poisoner', 'imp'], 'tb');
+  E.autoSetup(S, true); S.flags.goodTwin = byRole(S, 'chef').id; S.flags.grandchild = byRole(S, 'monk').id; E.startGame(S);
+  ok('отметка Близнеца и внука не ставится, если Злого Близнеца и Бабушки нет в игре', !S.players.some(p => E.hasTok(p, 'twin') || E.hasTok(p, 'grandchild')) && !S.flags.goodTwin && !S.flags.grandchild);
+  runNight(S, { washerwoman: { t: ids(S, 'chef', 'empath'), r: 'chef' }, investigator: { t: ids(S, 'poisoner', 'monk'), r: 'poisoner' } });
+  const sh = (r, src) => byRole(S, r).tokens.find(t => t.k === 'shown' && t.src === src);
+  ok('Прачка: у Повара отметка «Повар», у второго — ложная цель', sh('chef', 'washerwoman') && !sh('chef', 'washerwoman').wrong && sh('chef', 'washerwoman').note === 'chef' && sh('empath', 'washerwoman') && sh('empath', 'washerwoman').wrong);
+  ok('Сыщик: у Отравителя отметка, у второго — ложная цель', sh('poisoner', 'investigator') && !sh('poisoner', 'investigator').wrong && sh('monk', 'investigator').wrong);
+  // 18в. Экзорцист: отметка «Выбран» переходит на нового выбранного
+  S = game(['exorcist', 'chef', 'empath', 'monk', 'soldier', 'poisoner', 'imp'], 'bmr');
+  S.script.roles = S.script.roles.concat(['chef', 'empath', 'monk', 'soldier', 'poisoner', 'imp']);
+  E.autoSetup(S, true); E.startGame(S); runNight(S, {}); E.endDay(S);
+  runNight(S, { exorcist: { t: ids(S, 'chef') } }); E.endDay(S);
+  runNight(S, { exorcist: { t: ids(S, 'empath') } });
+  ok('Экзорцист: «Выбран» только на последнем выбранном', E.hasTok(byRole(S, 'empath'), 'chosen', 'exorcist') && !E.hasTok(byRole(S, 'chef'), 'chosen', 'exorcist'));
+
   // 19. Девственница и Шпион — решение рассказчика
   S = game(['washerwoman', 'virgin', 'investigator', 'chef', 'empath', 'drunk', 'spy', 'imp'], 'tb');
   E.autoSetup(S, true); E.startGame(S);

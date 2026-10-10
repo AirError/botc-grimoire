@@ -24,7 +24,7 @@ SITE = ROOT / "out" / "site"
 SITE.mkdir(parents=True, exist_ok=True)
 for f in SITE.iterdir():
     shutil.rmtree(f) if f.is_dir() else f.unlink()
-VERSION = "17"
+VERSION = "18"
 
 body = (ROOT / "app" / "dist" / "grimoire.html").read_text(encoding="utf-8")
 # хэш страницы — в имени кэша: изменилась страница → изменился sw.js → телефоны получат обновление, даже если VERSION забыли поднять

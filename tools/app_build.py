@@ -65,7 +65,7 @@ if missing:
 
 css = (SRC / "style.css").read_text(encoding="utf-8")
 js = "\n".join([(SRC / "data.js").read_text(encoding="utf-8"), (SRC / "icons.js").read_text(encoding="utf-8"), art_js]
-               + [(SRC / f).read_text(encoding="utf-8") for f in ("engine.js", "morning.js", "ideas.js", "ui.js")])
+               + [(SRC / f).read_text(encoding="utf-8") for f in ("engine.js", "morning.js", "ideas.js", "notes.js", "ui.js")])
 assert "</script" not in js.lower()
 
 body = (f'<title>Гримуар рассказчика</title>\n{FONTS}\n<style>\n{css}\n</style>\n'

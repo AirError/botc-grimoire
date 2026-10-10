@@ -60,7 +60,7 @@ function rmTok(p, k, src) { p.tokens = p.tokens.filter(t => !(t.k === k && (!src
 const TOK_RU = {
   poisoned: 'Отравлен', drunk: 'Пьян', protected: 'Защищён', cursed: 'Проклят', safe: 'Не умрёт при казни',
   master: 'Хозяин', mad: 'Помешан', hasability: 'Сохранил способность', twin: 'Близнец', grandchild: 'Внук',
-  herring: 'Ложная цель', chosen: 'Выбран', note: 'Заметка', know: 'Раскрытый', lunch: 'Обед',
+  herring: 'Ложная цель', chosen: 'Выбран', note: 'Заметка', know: 'Раскрытый', lunch: 'Обед', shown: 'Показан',
   votes3: '3 голоса', voteneg: 'Голос против', sober: 'Трезв и здоров', twice: 'Действует дважды', bad: 'Что-то плохое',
 };
 
@@ -554,9 +554,11 @@ function startGame(S) {
   S.flags.ever = Object.fromEntries(S.players.filter(p => p.role).map(p => [p.role, true])); // роли, бывшие в игре (джинксы «есть или был»)
   for (const p of S.players) { p.alive = true; p.ghost = true; p.tokens = []; }
   S.flags.demonless = !S.players.some(isDemon);
-  if (S.flags.grandchild) addTok(S, P(S, S.flags.grandchild), 'grandchild', 'grandmother');
-  if (S.flags.ftHerring) addTok(S, P(S, S.flags.ftHerring), 'herring', 'fortuneteller');
-  if (S.flags.goodTwin) addTok(S, P(S, S.flags.goodTwin), 'twin', 'eviltwin');
+  // выбор подготовки остаётся от прежней раздачи — ставим отметку, только если роль правда в игре (иначе выбор сбрасываем)
+  for (const [flag, rid, tok] of [['grandchild', 'grandmother', 'grandchild'], ['ftHerring', 'fortuneteller', 'herring'], ['goodTwin', 'eviltwin', 'twin']]) {
+    const q = S.flags[flag] && P(S, S.flags[flag]);
+    if (q && inPlay(S, rid)) addTok(S, q, tok, rid); else S.flags[flag] = null;
+  }
   log(S, `Игра началась: ${S.players.length} игроков, сценарий «${S.script.name}»`, 'phase');
   startNight(S);
 }
@@ -1101,6 +1103,13 @@ function infoPair(team) {
       apply: inp => {
         log(S, `${rname(p.role === 'drunk' ? p.believes : p.role)} (${p.name}): ${inp.none === 'yes' ? 'Изгоев нет' : `${rname(inp.r)} — ${(inp.t || []).map(id => nm(S, id)).join(' или ')}`}`, 'info');
         if (dist && !correct(inp)) recordAbn(S, p, 'ложная информация', dist.src);
+        // жетоны-напоминания, как в Гримуаре: у кого показанная роль — «Горожанин/Изгой/Приспешник», второй — ложная цель
+        // (информация ложная — ложные цели оба); note — показанная роль
+        const own = actsAs(p);
+        S.players.forEach(q => { q.tokens = q.tokens.filter(t => !(t.k === 'shown' && t.src === own && t.by === p.id)); });
+        if (inp.none !== 'yes' && inp.r) for (const id of inp.t || []) {
+          const q = P(S, id); if (q) addTok(S, q, 'shown', own, null, { note: inp.r, wrong: q.role !== inp.r, by: p.id });
+        }
       },
     };
   };
@@ -1274,6 +1283,7 @@ const LOGIC = {
     info: inp => { const t = inp.t && P(S, inp.t[0]); return t && isDemon(t) && !off ? { show: 'Это Демон', lines: ['Разбудите Демона, покажите жетон Экзорциста и укажите на Экзорциста. Демон не просыпается этой ночью.'],
       tokens: [{ label: `Демону (${t.name})`, caption: CARD.selected, role: 'exorcist', players: [p.id] }] } : t && isDemon(t) ? { secret: true, show: 'Это Демон, но Экзорцист пьян или отравлен — Демон просыпается как обычно', lines: [] } : null; },
     apply: inp => { const t = P(S, inp.t[0]); S.flags['exorcistLast_' + p.id] = t.id; if (!off && isDemon(t)) S.night.data.exorcised = t.id; else if (off && isDemon(t)) recordAbn(S, p, 'Демон не остановлен', abnSource(S, p));
+      S.players.forEach(q => rmTok(q, 'chosen', 'exorcist')); addTok(S, t, 'chosen', 'exorcist'); // «Выбран»: следующей ночью — не его
       log(S, `Экзорцист (${p.name}) выбирает ${t.name}`, 'action'); },
   }),
   innkeeper: (S, p, first, off) => ({

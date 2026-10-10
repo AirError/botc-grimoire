@@ -726,6 +726,27 @@ img.shroud { object-fit: contain; }
 .ringsvg line { stroke: var(--gold); stroke-width: .9; stroke-linecap: round; }
 .ringsvg marker path { fill: var(--gold); }
 
+/* ---------- заметки «что доработать» (вкладка «Ещё», notes.js) ---------- */
+.notes textarea { min-height: 88px; }
+.btn.nfile { display: inline-flex; align-items: center; cursor: pointer; }
+.nthumbs { display: flex; flex-wrap: wrap; gap: 6px; }
+.nthumb { position: relative; width: 72px; height: 72px; padding: 0; border: 1px solid var(--line); border-radius: 8px; overflow: hidden; background: var(--paper); cursor: pointer; flex: none; }
+.nthumb img { width: 100%; height: 100%; object-fit: cover; display: block; }
+.nthumb .nx { position: absolute; right: 2px; top: 2px; width: 22px; height: 22px; border-radius: 50%; border: none; background: rgba(0, 0, 0, .65); color: #FFFFFF; font-size: 14px; line-height: 22px; padding: 0; cursor: pointer; }
+.nlist { display: flex; flex-direction: column; gap: 10px; }
+.note { border: 1px solid var(--line); border-radius: 10px; padding: 10px; display: flex; flex-direction: column; gap: 6px; background: var(--paper); }
+.note.done { opacity: .6; }
+.note.done .ntext { text-decoration: line-through; }
+.ntext { white-space: pre-wrap; overflow-wrap: anywhere; }
+.nact { gap: 14px; }
+.linkish.danger { color: var(--evil); }
+.noteov { background: #000000; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 10px; padding: 16px; cursor: pointer; }
+.noteov img { max-width: 100%; max-height: calc(100% - 40px); object-fit: contain; }
+/* направление номеров за столом (круги рассадки и номинации) */
+.ringdir { justify-content: center; }
+.ringdirbox summary { cursor: pointer; text-align: center; color: var(--gold); }
+.ringdirbox[open] { display: flex; flex-direction: column; gap: 8px; }
+
 </style>
 <div id="app"></div>
 <script>
@@ -798,7 +819,7 @@ function rmTok(p, k, src) { p.tokens = p.tokens.filter(t => !(t.k === k && (!src
 const TOK_RU = {
   poisoned: 'Отравлен', drunk: 'Пьян', protected: 'Защищён', cursed: 'Проклят', safe: 'Не умрёт при казни',
   master: 'Хозяин', mad: 'Помешан', hasability: 'Сохранил способность', twin: 'Близнец', grandchild: 'Внук',
-  herring: 'Ложная цель', chosen: 'Выбран', note: 'Заметка', know: 'Раскрытый', lunch: 'Обед',
+  herring: 'Ложная цель', chosen: 'Выбран', note: 'Заметка', know: 'Раскрытый', lunch: 'Обед', shown: 'Показан',
   votes3: '3 голоса', voteneg: 'Голос против', sober: 'Трезв и здоров', twice: 'Действует дважды', bad: 'Что-то плохое',
 };
 
@@ -1292,9 +1313,11 @@ function startGame(S) {
   S.flags.ever = Object.fromEntries(S.players.filter(p => p.role).map(p => [p.role, true])); // роли, бывшие в игре (джинксы «есть или был»)
   for (const p of S.players) { p.alive = true; p.ghost = true; p.tokens = []; }
   S.flags.demonless = !S.players.some(isDemon);
-  if (S.flags.grandchild) addTok(S, P(S, S.flags.grandchild), 'grandchild', 'grandmother');
-  if (S.flags.ftHerring) addTok(S, P(S, S.flags.ftHerring), 'herring', 'fortuneteller');
-  if (S.flags.goodTwin) addTok(S, P(S, S.flags.goodTwin), 'twin', 'eviltwin');
+  // выбор подготовки остаётся от прежней раздачи — ставим отметку, только если роль правда в игре (иначе выбор сбрасываем)
+  for (const [flag, rid, tok] of [['grandchild', 'grandmother', 'grandchild'], ['ftHerring', 'fortuneteller', 'herring'], ['goodTwin', 'eviltwin', 'twin']]) {
+    const q = S.flags[flag] && P(S, S.flags[flag]);
+    if (q && inPlay(S, rid)) addTok(S, q, tok, rid); else S.flags[flag] = null;
+  }
   log(S, `Игра началась: ${S.players.length} игроков, сценарий «${S.script.name}»`, 'phase');
   startNight(S);
 }
@@ -1839,6 +1862,13 @@ function infoPair(team) {
       apply: inp => {
         log(S, `${rname(p.role === 'drunk' ? p.believes : p.role)} (${p.name}): ${inp.none === 'yes' ? 'Изгоев нет' : `${rname(inp.r)} — ${(inp.t || []).map(id => nm(S, id)).join(' или ')}`}`, 'info');
         if (dist && !correct(inp)) recordAbn(S, p, 'ложная информация', dist.src);
+        // жетоны-напоминания, как в Гримуаре: у кого показанная роль — «Горожанин/Изгой/Приспешник», второй — ложная цель
+        // (информация ложная — ложные цели оба); note — показанная роль
+        const own = actsAs(p);
+        S.players.forEach(q => { q.tokens = q.tokens.filter(t => !(t.k === 'shown' && t.src === own && t.by === p.id)); });
+        if (inp.none !== 'yes' && inp.r) for (const id of inp.t || []) {
+          const q = P(S, id); if (q) addTok(S, q, 'shown', own, null, { note: inp.r, wrong: q.role !== inp.r, by: p.id });
+        }
       },
     };
   };
@@ -2012,6 +2042,7 @@ const LOGIC = {
     info: inp => { const t = inp.t && P(S, inp.t[0]); return t && isDemon(t) && !off ? { show: 'Это Демон', lines: ['Разбудите Демона, покажите жетон Экзорциста и укажите на Экзорциста. Демон не просыпается этой ночью.'],
       tokens: [{ label: `Демону (${t.name})`, caption: CARD.selected, role: 'exorcist', players: [p.id] }] } : t && isDemon(t) ? { secret: true, show: 'Это Демон, но Экзорцист пьян или отравлен — Демон просыпается как обычно', lines: [] } : null; },
     apply: inp => { const t = P(S, inp.t[0]); S.flags['exorcistLast_' + p.id] = t.id; if (!off && isDemon(t)) S.night.data.exorcised = t.id; else if (off && isDemon(t)) recordAbn(S, p, 'Демон не остановлен', abnSource(S, p));
+      S.players.forEach(q => rmTok(q, 'chosen', 'exorcist')); addTok(S, t, 'chosen', 'exorcist'); // «Выбран»: следующей ночью — не его
       log(S, `Экзорцист (${p.name}) выбирает ${t.name}`, 'action'); },
   }),
   innkeeper: (S, p, first, off) => ({
@@ -2853,6 +2884,161 @@ const IDEAS = (() => {
 })();
 
 'use strict';
+/* Заметки «что доработать» — вкладка «Ещё». Хранятся отдельно от игры (новая игра и отмена их не трогают):
+   IndexedDB, без него — localStorage. Скриншоты сжимаются (до 1600 px, JPEG) и хранятся с миниатюрой для списка.
+   К заметке само добавляется, где вы были: фаза, шаг ночи, сценарий. Выгрузка: «Поделиться», файл со всем, текст. */
+let NOTES = [];                      // [{ id, created, text, done, ctx, images: [{ full, thumb }] }], новые — первыми
+const NOTE_DRAFT = { imgs: [], busy: false };
+const NOTES_DB = 'botc-grimoire-notes', NOTES_LS = 'botc-grimoire-notes-v1';
+let notesIdb = null;
+
+function notesOpen() {
+  return new Promise(res => {
+    try {
+      const rq = indexedDB.open(NOTES_DB, 1);
+      rq.onupgradeneeded = () => rq.result.createObjectStore('notes', { keyPath: 'id' });
+      rq.onsuccess = () => res(rq.result);
+      rq.onerror = () => res(null);
+    } catch (e) { res(null); }
+  });
+}
+const notesTx = (mode, fn) => new Promise((res, rej) => {
+  const tx = notesIdb.transaction('notes', mode), st = tx.objectStore('notes'), out = fn(st);
+  tx.oncomplete = () => res(out && out.result); tx.onerror = () => rej(tx.error);
+});
+// без IndexedDB — localStorage (места меньше: около 5 МБ на все заметки)
+function notesSaveLs() { try { localStorage.setItem(NOTES_LS, JSON.stringify(NOTES)); return true; } catch (e) { return false; } }
+async function notesLoad() {
+  notesIdb = await notesOpen();
+  try {
+    if (notesIdb) NOTES = (await notesTx('readonly', st => st.getAll())) || [];
+    else NOTES = JSON.parse(localStorage.getItem(NOTES_LS) || '[]');
+  } catch (e) { NOTES = []; }
+  NOTES.sort((a, b) => b.created - a.created);
+  if (typeof render === 'function' && typeof S !== 'undefined' && S) render();
+}
+async function notePut(n) {
+  if (notesIdb) { try { await notesTx('readwrite', st => st.put(n)); return true; } catch (e) { return false; } }
+  return notesSaveLs();
+}
+async function noteDelete(id) {
+  NOTES = NOTES.filter(n => n.id !== id);
+  if (notesIdb) { try { await notesTx('readwrite', st => st.delete(id)); } catch (e) { /* уже удалена */ } } else notesSaveLs();
+}
+
+// скриншот → JPEG до 1600 px по длинной стороне + миниатюра 240 px (для списка)
+function noteImage(file) {
+  return new Promise((res, rej) => {
+    const url = URL.createObjectURL(file), img = new Image();
+    img.onload = () => {
+      const pack = max => { const k = Math.min(1, max / Math.max(img.naturalWidth, img.naturalHeight)), c = document.createElement('canvas');
+        c.width = Math.round(img.naturalWidth * k); c.height = Math.round(img.naturalHeight * k);
+        const g = c.getContext('2d'); g.fillStyle = '#FFFFFF'; g.fillRect(0, 0, c.width, c.height); g.drawImage(img, 0, 0, c.width, c.height);
+        return c.toDataURL('image/jpeg', max > 400 ? 0.82 : 0.7); };
+      URL.revokeObjectURL(url); res({ full: pack(1600), thumb: pack(240) });
+    };
+    img.onerror = () => { URL.revokeObjectURL(url); rej(new Error('не картинка')); };
+    img.src = url;
+  });
+}
+// где был рассказчик, когда писал заметку
+function noteContext() {
+  if (!S) return '';
+  const ph = S.phase === 'setup' ? 'Подготовка' : S.phase === 'night' ? `Ночь ${S.n}` : S.phase === 'day' ? `День ${S.n}` : 'Игра окончена';
+  const st = S.phase === 'night' && E.currentStep(S), step = st ? (st.meet ? 'знакомство злых' : E.rname(st.id)) : '';
+  return [ph + (step ? ' · шаг: ' + step : ''), S.script.name].join(' · ');
+}
+const noteDate = ts => new Date(ts).toLocaleString('ru-RU', { day: 'numeric', month: 'long', hour: '2-digit', minute: '2-digit' });
+
+function notesCard() {
+  const pend = NOTE_DRAFT.imgs.map((im, i) => `<span class="nthumb"><img src="${im.thumb}" alt="Скриншот ${i + 1}"><button class="nx" data-act="noteImgDel" data-arg="${i}" aria-label="Убрать скриншот">×</button></span>`).join('');
+  const open = NOTES.filter(n => !n.done).length;
+  const list = NOTES.map(n => `<div class="note ${n.done ? 'done' : ''}">
+      <div class="nhead"><span class="small muted">${esc(noteDate(n.created))}${n.ctx ? ' · ' + esc(n.ctx) : ''}</span></div>
+      ${n.text ? `<div class="ntext">${esc(n.text)}</div>` : ''}
+      ${(n.images || []).length ? `<div class="nthumbs">${n.images.map((im, i) => `<button class="nthumb" data-act="noteView" data-arg="${n.id}|${i}" aria-label="Открыть скриншот ${i + 1}"><img src="${im.thumb}" alt=""></button>`).join('')}</div>` : ''}
+      <div class="row nact"><button class="linkish" data-act="noteDone" data-arg="${n.id}">${n.done ? 'Вернуть в работу' : 'Сделано'}</button>
+        ${UI.noteDel === n.id ? `<span class="small">Удалить?</span><button class="linkish danger" data-act="noteDel" data-arg="${n.id}">Да, удалить</button><button class="linkish" data-act="noteDelAsk">Нет</button>`
+          : `<button class="linkish" data-act="noteDelAsk" data-arg="${n.id}">Удалить</button>`}</div></div>`).join('');
+  return `<div class="card notes"><h3>Заметки: что доработать</h3>
+    <div class="small muted">Пишите, что исправить или добавить, и прикладывайте скриншоты. Заметки хранятся на этом устройстве отдельно от игры. Чтобы передать их, нажмите «Поделиться» или «Скачать файлом».</div>
+    <textarea id="noteText" data-act="noteText" placeholder="Например: в круге номинации не видно, кто уже голосовал">${esc(UI.noteText || '')}</textarea>
+    ${pend ? `<div class="nthumbs">${pend}</div>` : ''}
+    <div class="row"><label class="btn nfile">${NOTE_DRAFT.busy ? 'Обрабатываю…' : 'Добавить скриншоты'}<input type="file" accept="image/*" multiple data-act="noteFiles" hidden></label>
+      <button class="btn primary" data-act="noteSave">Сохранить заметку</button></div>
+    ${UI.noteMsg ? `<div class="note-ok">${esc(UI.noteMsg)}</div>` : ''}
+    ${NOTES.length ? `<div class="row"><span class="small muted">Заметок: ${NOTES.length}${open !== NOTES.length ? `, в работе: ${open}` : ''}</span></div>
+      <div class="row"><button class="btn" data-act="noteShare">Поделиться</button><button class="btn" data-act="noteExport">Скачать файлом</button><button class="btn" data-act="noteCopy">Скопировать текст</button></div>
+      <div class="nlist">${list}</div>` : ''}</div>`;
+}
+// скриншот на весь экран (нажатие — закрыть)
+function noteViewOverlay() {
+  const v = UI.noteView, n = v && NOTES.find(x => x.id === v.id), im = n && (n.images || [])[v.i];
+  if (!im) return '';
+  return `<div class="ov noteov" data-act="noteView" role="dialog" aria-label="Скриншот"><img src="${im.full}" alt="Скриншот"><div class="shhint">Нажмите, чтобы закрыть</div></div>`;
+}
+// текст всех заметок (для копирования и «Поделиться»)
+function notesPlain() {
+  return NOTES.slice().reverse().map((n, i) => `${i + 1}. ${noteDate(n.created)}${n.ctx ? ' — ' + n.ctx : ''}${n.done ? ' [сделано]' : ''}\n${n.text || '(без текста)'}${(n.images || []).length ? `\nСкриншотов: ${n.images.length}` : ''}`).join('\n\n');
+}
+const noteFileName = ext => `Гримуар — заметки ${new Date().toISOString().slice(0, 10)}.${ext}`;
+// один HTML-файл: текст и скриншоты внутри — удобно переслать целиком
+function notesHtmlFile() {
+  const items = NOTES.slice().reverse().map((n, i) => `<section><h2>${i + 1}. ${esc(noteDate(n.created))}${n.done ? ' — сделано' : ''}</h2>${n.ctx ? `<p class="ctx">${esc(n.ctx)}</p>` : ''}
+    <p>${esc(n.text || '(без текста)').replace(/\n/g, '<br>')}</p>${(n.images || []).map((im, k) => `<img src="${im.full}" alt="Скриншот ${k + 1}">`).join('')}</section>`).join('');
+  return `<!doctype html><html lang="ru"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Гримуар — заметки</title>
+<style>body{font:16px/1.45 system-ui,sans-serif;max-width:760px;margin:0 auto;padding:16px;background:#F4EFE3;color:#1E1B18}h1{font-size:22px}h2{font-size:17px;margin:0 0 4px}
+section{background:#FFFCF5;border:1px solid #DCD2BE;border-radius:10px;padding:12px;margin:12px 0}.ctx{color:#6A6257;font-size:14px;margin:0 0 6px}img{display:block;max-width:100%;margin:8px 0;border:1px solid #DCD2BE;border-radius:6px}</style></head>
+<body><h1>Гримуар рассказчика — заметки: что доработать</h1>${items}</body></html>`;
+}
+const dataUrlFile = (url, name) => { const [h, b] = url.split(','), bin = atob(b), a = new Uint8Array(bin.length); for (let i = 0; i < bin.length; i++) a[i] = bin.charCodeAt(i); return new File([a], name, { type: h.slice(5, h.indexOf(';')) }); };
+function downloadFile(name, text, type) {
+  const url = URL.createObjectURL(new Blob([text], { type })), a = document.createElement('a');
+  a.href = url; a.download = name; document.body.appendChild(a); a.click(); a.remove(); setTimeout(() => URL.revokeObjectURL(url), 4000);
+}
+const noteMsg = t => { UI.noteMsg = t; render(); clearTimeout(noteMsg.timer); noteMsg.timer = setTimeout(() => { UI.noteMsg = ''; render(); }, 4000); };
+
+// обработчики (подмешиваются в A из ui.js)
+const NOTE_ACTS = {
+  noteText: (a, el) => { UI.noteText = el.value; },
+  noteFiles: async (a, el) => {
+    const files = [...(el.files || [])]; el.value = ''; if (!files.length) return;
+    NOTE_DRAFT.busy = true; render();
+    for (const f of files) { try { NOTE_DRAFT.imgs.push(await noteImage(f)); } catch (e) { /* не картинка — пропускаем */ } }
+    NOTE_DRAFT.busy = false; render();
+  },
+  noteImgDel: i => { NOTE_DRAFT.imgs.splice(+i, 1); render(); },
+  noteSave: async () => {
+    const text = (UI.noteText || '').trim();
+    if (!text && !NOTE_DRAFT.imgs.length) { noteMsg('Напишите текст или добавьте скриншот'); return; }
+    const n = { id: 'n' + Date.now().toString(36) + Math.random().toString(36).slice(2, 6), created: Date.now(), text, done: false, ctx: noteContext(), images: NOTE_DRAFT.imgs.slice() };
+    NOTES.unshift(n);
+    if (!(await notePut(n))) { NOTES.shift(); noteMsg('Не удалось сохранить: на устройстве не хватает места. Удалите старые заметки или скриншоты.'); return; }
+    UI.noteText = ''; NOTE_DRAFT.imgs = []; noteMsg('Заметка сохранена');
+  },
+  noteDone: async id => { const n = NOTES.find(x => x.id === id); if (!n) return; n.done = !n.done; await notePut(n); render(); },
+  noteDelAsk: id => { UI.noteDel = id || null; render(); },
+  noteDel: async id => { UI.noteDel = null; await noteDelete(id); render(); },
+  noteView: arg => { if (UI.noteView) UI.noteView = null; else { const [id, i] = String(arg).split('|'); UI.noteView = { id, i: +i }; } render(); },
+  noteCopy: async () => {
+    try { await navigator.clipboard.writeText(notesPlain()); noteMsg('Текст заметок скопирован (скриншоты — через «Поделиться» или «Скачать файлом»)'); }
+    catch (e) { noteMsg('Не получилось скопировать — используйте «Скачать файлом»'); }
+  },
+  noteExport: () => { downloadFile(noteFileName('html'), notesHtmlFile(), 'text/html'); noteMsg('Файл с заметками и скриншотами сохранён'); },
+  noteShare: async () => {
+    const text = notesPlain(), imgs = [];
+    NOTES.slice().reverse().forEach((n, i) => (n.images || []).forEach((im, k) => imgs.push(dataUrlFile(im.full, `заметка-${i + 1}-скриншот-${k + 1}.jpg`))));
+    const files = [new File([text], noteFileName('txt'), { type: 'text/plain' })].concat(imgs);
+    try {
+      if (navigator.canShare && navigator.canShare({ files })) await navigator.share({ title: 'Гримуар — заметки', files });
+      else if (navigator.share) await navigator.share({ title: 'Гримуар — заметки', text });
+      else { NOTE_ACTS.noteExport(); return; }
+    } catch (e) { if (e && e.name !== 'AbortError') noteMsg('Не получилось поделиться — используйте «Скачать файлом»'); }
+  },
+};
+notesLoad();
+
+'use strict';
 /* Интерфейс карманного гримуара. Один render() перерисовывает экран из состояния игры S.
    Всё, что важно для партии, живёт в S (включая черновики выбора и незавершённую номинацию),
    поэтому отмена и перезагрузка страницы возвращают ровно то, что было на экране. */
@@ -3006,6 +3192,8 @@ const MARK_DEFS = [
   { id: 'twin', role: 'eviltwin', i: 8, t: 'Близнец', d: 'Добрый близнец Злого Близнеца' },
   { id: 'grandchild', role: 'grandmother', i: 9, t: 'Внук Бабушки', d: 'Если его убьёт Демон, Бабушка умрёт тоже' },
   { id: 'herring', role: 'fortuneteller', i: 10, red: true, t: 'Ложная цель Гадалки', d: 'Красная полоска — ложная цель: для Гадалки определяется как Демон' },
+  { id: 'shown', role: 'washerwoman', t: 'Показан Прачкой, Библиотекарем, Сыщиком', d: 'У него роль, которую показали; с красной полоской — второй игрок, ложная цель (или вся информация ложная)' },
+  { id: 'chosen', role: 'exorcist', t: 'Выбран Экзорцистом', d: 'Следующей ночью Экзорцист не может выбрать его снова' },
   { id: 'know', role: 'widow', i: 11, t: 'Знает о Вдове', d: 'Знает, что Вдова в игре' },
   { id: 'lunch', role: 'cannibal', i: 12, t: 'Обед Каннибала', d: 'Каннибал получил способность этого казнённого' },
   { id: 'votes3', role: 'bureaucrat', i: 13, t: 'Голос за троих', d: 'Бюрократ: завтра его голос считается трижды' },
@@ -3022,16 +3210,18 @@ const markArt = id => {
   if (id === 'poison') return DROP_SVG;
   return HAS_ART('mark' + m.i) ? `<img class="mark" src="${ART['mark' + m.i]}" alt="">` : (m.svg || `<span class="mark mtxt">${esc(m.t[0])}</span>`);
 };
-// жетон-напоминание: src — роль, положившая жетон (иначе роль по умолчанию, иначе рисованный значок)
-const markIcon = (id, src) => {
+// жетон-напоминание: src — роль, положившая жетон (иначе роль по умолчанию, иначе рисованный значок); red — ложная цель (красная полоска)
+const markIcon = (id, src, red) => {
   const m = MARK[id]; if (!m && !src) return '';
   const r = src && DATA.roles[src] ? src : m && m.role, fab = r && ['fabled', 'loric'].includes(team(r));
   const inner = r && typeof ICONS !== 'undefined' && ICONS[r] ? ico(r, fab ? 'good' : null, 'rti') : markArt(id);
-  return `<span class="rtok ${m && m.red ? 'red' : ''}">${inner}</span>`;
+  return `<span class="rtok ${red || (m && m.red) ? 'red' : ''}">${inner}</span>`;
 };
-// какой значок у жетона игрока: [id значка, роль-источник]
+// какой значок у жетона игрока: [id значка, роль-источник, ложная цель]
 const tokMark = t => [t.k === 'poisoned' ? 'poison' : t.k === 'protected' ? (t.src === 'innkeeper' ? 'innkeeper' : 'monk') : t.k,
-  t.k === 'bad' && !t.src ? ((S.fabled || []).includes('hellslibrarian') ? 'hellslibrarian' : 'angel') : t.src];
+  t.k === 'bad' && !t.src ? ((S.fabled || []).includes('hellslibrarian') ? 'hellslibrarian' : 'angel') : t.src, !!t.wrong];
+// подпись жетона: показанный Прачкой/Библиотекарем/Сыщиком — «Прачка: Повар» (ложная цель — с пометкой)
+const shownTitle = t => `${E.rname(t.src)}: ${t.note && DATA.roles[t.note] ? E.rname(t.note) : '—'}${t.wrong ? ' — ложная цель' : ''}`;
 // значки состояния игрока: яд и пьянство — только если способность правда не работает; остальные — по жетонам.
 // [id, подсказка, роль-источник]; opts.noNotes — без заметок рассказчика (Гримуар для Шпиона и Вдовы)
 function playerMarks(p, opts) {
@@ -3045,16 +3235,17 @@ function playerMarks(p, opts) {
   if (off && (tok('drunk') || p.role === 'drunk' || /пьян|Пьяница/.test(off))) out.push(['drunk', Off, tok('drunk') ? tok('drunk').src : p.role === 'drunk' ? 'drunk' : null]);
   if (p.alive && E.teaLadyProtects(S, p)) out.push(['tealady', MARK.tealady.t, 'tealady']);
   for (const t of p.tokens) {
-    const [id, src] = tokMark(t);
-    if (['poisoned', 'drunk'].includes(t.k) || (opts && opts.noNotes && id === 'note') || out.some(x => x[0] === id && x[2] === src)) continue;
+    const [id, src, red] = tokMark(t);
+    if (['poisoned', 'drunk'].includes(t.k) || (opts && opts.noNotes && id === 'note') || (id !== 'shown' && out.some(x => x[0] === id && x[2] === src))) continue;
     if (!MARK[id] && !(src && DATA.roles[src])) continue;
+    if (id === 'shown') { out.push([id, shownTitle(t), src, red]); continue; }
     // подпись: название жетона и чей он (если роль ещё не названа: «Защита Монаха», но «Голос за троих · Бюрократ»)
     const title = MARK[id] ? MARK[id].t : E.TOK_RU[t.k] || t.k, who = src && DATA.roles[src] ? E.rname(src) : '';
-    out.push([id, title + (who && !title.toLowerCase().includes(who.slice(0, 4).toLowerCase()) ? ' · ' + who : '') + (t.note ? ': ' + t.note : ''), src]);
+    out.push([id, title + (who && !title.toLowerCase().includes(who.slice(0, 4).toLowerCase()) ? ' · ' + who : '') + (t.note ? ': ' + t.note : ''), src, red]);
   }
   return out;
 }
-const markSpan = ([id, title, src]) => `<span class="rslot" title="${esc(title)}">${markIcon(id, src)}</span>`;
+const markSpan = ([id, title, src, red]) => `<span class="rslot" title="${esc(title)}">${markIcon(id, src, red)}</span>`;
 // Гримуар и ночной выбор игроков: значки слева и справа от иконки роли, по 2 в высоту с каждой стороны (порядок: левый верх, правый верх, левый низ, правый низ).
 // Лишние — «+N» в последней ячейке (все жетоны — в карточке игрока)
 function sideMarks(p) {
@@ -3067,15 +3258,21 @@ function sideMarks(p) {
 function legendOverlay() {
   if (!UI.legend) return '';
   const row = (icon, t, d) => `<div class="lgrow"><span class="lgic">${icon}</span><span><b>${esc(t)}</b><span class="small muted">${esc(d)}</span></span></div>`;
+  // только значки ролей этого сценария (и тех, кто в игре, Странников и Сказочников); яд, пьянство и заметка — всегда
+  const here = new Set([...S.script.roles, ...(S.script.travellers || []), ...(S.fabled || []), ...S.players.map(p => p.role)]);
+  const LG_ROLES = { shown: ['washerwoman', 'librarian', 'investigator'], hasability: ['vigormortis', 'bonecollector'], bad: ['angel', 'hellslibrarian'] };
+  const marks = MARK_DEFS.filter(m => !m.role || (LG_ROLES[m.id] || [m.role]).some(r => here.has(r)));
+  const shownSrc = LG_ROLES.shown.find(r => here.has(r)), ex = { poison: 'poisoner', drunk: 'drunk', shown: shownSrc };
   return `<div class="ov sheetov" role="dialog" aria-label="Значки Гримуара"><div class="sheetbg" data-act="legend"></div><div class="sheet">
     <div class="sheethead"><span></span><div class="sht"><div class="shp">Значки Гримуара</div></div><button class="btn sq" data-act="legend" aria-label="Закрыть">×</button></div>
-    <div class="small muted">Кружок с иконкой роли — её жетон-напоминание, как в настоящем Гримуаре. Значки стоят слева и справа от иконки игрока, по два с каждой стороны.</div>
+    <div class="small muted">Кружок с иконкой роли — её жетон-напоминание, как в настоящем Гримуаре. Значки стоят слева и справа от иконки игрока, по два с каждой стороны. Здесь — значки ролей сценария «${esc(S.script.name)}».</div>
     <div class="lglist">
       ${row(shroudHtml({ alive: false, ghost: true }), 'Саван с белым контуром', 'Игрок мёртв, голос призрака ещё есть — может проголосовать один раз')}
       ${row(shroudHtml({ alive: false, ghost: false }), 'Саван без контура', 'Игрок мёртв, голос призрака потрачен')}
-      ${MARK_DEFS.map(m => row(markIcon(m.id, { poison: 'poisoner', drunk: 'drunk' }[m.id]), m.t, m.d)).join('')}
+      ${marks.map(m => row(markIcon(m.id, ex[m.id]), m.t, m.d)).join('')}
+      ${shownSrc ? row(markIcon('shown', shownSrc, true), 'Ложная цель', 'Второй игрок, которого показали Прачка, Библиотекарь или Сыщик (или вся их информация ложная)') : ''}
       ${row('<span class="rslot rmore lgmore">+2</span>', 'Ещё жетоны', 'Не поместились рядом с иконкой — все жетоны в карточке игрока')}
-      ${row('<span class="gno lgno">3</span>', 'Номер', 'Место за столом по часовой стрелке')}
+      ${row('<span class="gno lgno">3</span>', 'Номер', `Место за столом; номера идут ${dirName()}`)}
       ${row('<span class="lgbox good"></span>', 'Синяя рамка', 'Добрый игрок')}
       ${row('<span class="lgbox evil"></span>', 'Красная рамка', 'Злой игрок')}
     </div></div></div>`;
@@ -3118,10 +3315,14 @@ function tiles(key, n, filter, selected, act, opts) {
       <span class="tn">${i + 1}</span><span class="tname">${esc(p.name)}</span>${sub ? `<span class="tsub">${sub}</span>` : ''}${on ? '<span class="tck" aria-hidden="true">✓</span>' : ''}</button>`;
   }).join('') + '</div>';
 }
-// порядок голосования: начиная со следующего за номинированным по часовой, номинированный — последний
+// направление номеров за столом: по часовой (1) или против (−1) — S.flags.seatDir, задаёт рассказчик в круге
+const seatDir = () => S.flags.seatDir === 'ccw' ? -1 : 1;
+const dirName = () => seatDir() > 0 ? 'по часовой' : 'против часовой';
+// порядок голосования: голоса считают по часовой (вики), начиная с соседа номинированного, номинированный — последний.
+// Номера идут против часовой — значит, по часовой это обратный порядок списка
 function voteOrder(onId) {
-  const k = S.players.findIndex(p => p.id === onId);
-  return k < 0 ? S.players : S.players.slice(k + 1).concat(S.players.slice(0, k + 1));
+  const ps = seatDir() > 0 ? S.players : S.players.slice().reverse(), k = ps.findIndex(p => p.id === onId);
+  return k < 0 ? ps : ps.slice(k + 1).concat(ps.slice(0, k + 1));
 }
 
 /* показ игроку на весь экран: только жетоны, без остальной информации. screens: [{caption, items:[{role, align}], thumb}] */
@@ -3343,7 +3544,7 @@ function viewSetup() {
       <details><summary class="small">Загрузить свой сценарий (JSON из конструктора)</summary>
       <div class="field" style="margin-top:8px"><textarea id="customJson" data-act="customText" placeholder='[{"id":"_meta","name":"Мой сценарий"},"washerwoman","imp"]'>${esc(UI.customText)}</textarea>
       <button class="btn" data-act="customLoad">Загрузить</button></div></details></div>
-    <div class="card"><div class="row ghead"><h3>Игроки по кругу (по часовой)</h3>${S.players.length > 1 ? '<button class="btn ringbtn" data-act="ringSeat">◯ Кругом</button>' : ''}</div>${players || '<div class="muted small">Добавьте игроков в порядке, в котором они сидят.</div>'}
+    <div class="card"><div class="row ghead"><h3>Игроки по кругу (${dirName()})</h3>${S.players.length > 1 ? '<button class="btn ringbtn" data-act="ringSeat">◯ Кругом</button>' : ''}</div>${players || '<div class="muted small">Добавьте игроков в порядке, в котором они сидят.</div>'}
       <div class="row" style="flex-wrap:nowrap"><input type="text" id="newName" placeholder="Имя игрока" aria-label="Имя нового игрока"><button class="btn" data-act="addP">Добавить</button></div>
       <details><summary class="small">Вставить список имён</summary><div class="field" style="margin-top:8px"><textarea id="bulkNames" placeholder="Аня, Борис, Вика…"></textarea><button class="btn" data-act="bulk">Заменить список</button></div></details>
       ${travellerForm()}</div>
@@ -3597,7 +3798,8 @@ function roleTokenHtml(p, key) {
     <svg class="rtkn" viewBox="0 0 100 100" aria-hidden="true"><path id="${key}" d="M13 56A37 37 0 0 0 87 56" fill="none"/><text><textPath href="#${key}" startOffset="50%" text-anchor="middle"${fit}>${esc(name)}</textPath></text></svg>
     ${shroudHtml(p)}</span>`;
 }
-// места по кругу: по часовой, первое — сверху. Все размеры — в cqw (доли ширины поля), поэтому круг сам масштабируется под экран.
+// места по кругу: первое — внизу экрана (у рассказчика), дальше по часовой или против — как номера за столом (seatDir).
+// Все размеры — в cqw (доли ширины поля), поэтому круг сам масштабируется под экран.
 // На высоком экране круг немного вытянут по высоте (не больше чем в 1,3 раза) — жетоны крупнее. label — табличка с именем под жетоном.
 // t — жетон: самый крупный, при котором соседи не налезают друг на друга; reserve — сколько высоты экрана занято вокруг круга
 function ringGeom(n, label, reserve) {
@@ -3608,9 +3810,11 @@ function ringGeom(n, label, reserve) {
     const step = 2 * Math.PI / n;
     if (n < 3 || (rx * step >= t * 1.06 && ry * step >= (t + L) * 1.02)) break;
   }
-  const pos = i => { const a = 2 * Math.PI * i / n; return { a, x: 50 + rx * Math.sin(a), y: H / 2 - ry * Math.cos(a) }; };
-  return { n, t, L, rx, ry, H, pos };
+  const dir = seatDir(), pos = i => { const a = Math.PI + dir * 2 * Math.PI * i / n; return { a, x: 50 + rx * Math.sin(a), y: H / 2 - ry * Math.cos(a) }; };
+  return { n, t, L, rx, ry, H, dir, pos };
 }
+// переключатель направления номеров (в кругах рассадки и номинации)
+const dirSeg = () => `<div class="seg ringdir" role="group" aria-label="Направление номеров"><button class="${seatDir() > 0 ? 'on' : ''}" data-act="seatDir" data-arg="cw">↻ По часовой</button><button class="${seatDir() < 0 ? 'on' : ''}" data-act="seatDir" data-arg="ccw">↺ Против часовой</button></div>`;
 function grimCircle() {
   const ps = S.players, n = ps.length; if (!n) return '';
   const g = ringGeom(n, true), { t, L, rx, ry, H } = g;
@@ -3646,7 +3850,7 @@ function grimCircle() {
     const at = c => `left:${(c.x - r2).toFixed(2)}cqw;top:${(c.y - r2).toFixed(2)}cqw;width:${rr}cqw;height:${rr}cqw`;
     const rems = pos.map((c, k) => over && k === pos.length - 1
       ? `<span class="gcm" style="${at(c)}"><span class="rmore" style="font-size:${(rr * 0.42).toFixed(2)}cqw">+${ms.length - k}</span></span>`
-      : `<span class="gcm" style="${at(c)}" title="${esc(ms[k][1])}">${markIcon(ms[k][0], ms[k][2])}</span>`).join('');
+      : `<span class="gcm" style="${at(c)}" title="${esc(ms[k][1])}">${markIcon(ms[k][0], ms[k][2], ms[k][3])}</span>`).join('');
     return `${rems}<button class="gct" data-act="grimZoom" data-arg="${p.id}" style="left:${(x - t / 2).toFixed(2)}cqw;top:${(y - t / 2).toFixed(2)}cqw;width:${t}cqw;height:${t}cqw" aria-label="${esc(p.name)}: ${esc(E.rname(tokenRole(p)))}${p.alive ? '' : ', мёртв'}">${roleTokenHtml(p, 'gca-' + p.id)}</button>
       <span class="gcl ${p.alive ? '' : 'dead'}" style="left:${x.toFixed(2)}cqw;top:${(y + t / 2 + 0.4).toFixed(2)}cqw;font-size:${nf.toFixed(2)}cqw;max-width:${s.lw.toFixed(2)}cqw">${esc(p.name)}</span>`;
   }).join('');
@@ -3660,7 +3864,7 @@ function grimZoomHtml() {
     <div class="gztok">${roleTokenHtml(p, 'gcz-' + p.id)}</div><div class="gzname">${esc(p.name)}</div>
     <div class="gzrole side-${p.align}">${esc(E.rname(r))}${p.alive ? '' : ` · мёртв${p.ghost ? ', голос призрака есть' : ''}`}</div>
     <div class="gzab">${esc(DATA.roles[r] ? DATA.roles[r].ability : '')}</div>
-    ${ms.length ? `<div class="gzmarks">${ms.map(m => `<div class="gzm">${markIcon(m[0], m[2])}<span>${esc(m[1])}</span></div>`).join('')}</div>` : ''}
+    ${ms.length ? `<div class="gzmarks">${ms.map(m => `<div class="gzm">${markIcon(m[0], m[2], m[3])}<span>${esc(m[1])}</span></div>`).join('')}</div>` : ''}
     <div class="shhint">Нажмите, чтобы вернуться к Гримуару</div></div></div>`;
 }
 /* ---------- круг игроков для рассказчика: рассадка (перетаскивание) и номинация с голосованием ---------- */
@@ -3687,8 +3891,9 @@ function seatRing() {
   const seats = S.players.map((p, i) => seatHtml(p, i, g, 'drag', `data-rdrag="${p.id}"`)).join('');
   return `<div class="ov ringov" role="dialog" aria-label="Рассадка по кругу">
     <div class="ringtop"><span></span><b>Рассадка</b><button class="wbtn" data-act="ringClose" aria-label="Закрыть">×</button></div>
-    <div class="ringbox"><div class="small muted ringhint">Зажмите игрока и перетащите на другое место — остальные сдвинутся. Порядок — по часовой стрелке, первый — сверху.</div>
-      ${n ? `<div class="ring" data-geom="${esc(JSON.stringify({ t: g.t, rx: g.rx, ry: g.ry, H: g.H }))}" style="${ringStyle(g)}">${seats}<div class="ringmid" style="top:${(g.H / 2).toFixed(2)}cqw"><b>${n}</b><span>игроков</span></div></div>`
+    <div class="ringbox"><div class="small muted ringhint">Зажмите игрока и перетащите на другое место — остальные сдвинутся. Первый — внизу, у вас; номера идут ${dirName()} — как за столом.</div>
+      ${dirSeg()}
+      ${n ? `<div class="ring" data-geom="${esc(JSON.stringify({ t: g.t, rx: g.rx, ry: g.ry, H: g.H, dir: g.dir }))}" style="${ringStyle(g)}">${seats}<div class="ringmid" style="top:${(g.H / 2).toFixed(2)}cqw"><b>${n}</b><span>игроков</span></div></div>`
         : '<div class="muted">Игроков пока нет — добавьте их в списке.</div>'}
       <button class="btn primary wide" data-act="ringClose">Готово</button></div></div>`;
 }
@@ -3726,6 +3931,7 @@ function nomRing() {
   return `<div class="ov ringov" role="dialog" aria-label="Номинация по кругу">
     <div class="ringtop"><span></span><b>${vote ? 'Голосование' : butcherTurn ? 'Номинация Мясника' : 'Номинация'}</b><button class="wbtn" data-act="ringClose" aria-label="Закрыть">×</button></div>
     <div class="ringbox">${notesHtml()}<div class="small muted ringhint">${hint}</div>
+      <details class="ringdirbox"><summary class="small">Номера идут ${dirName()} — изменить</summary>${dirSeg()}</details>
       <div class="ring" style="${ringStyle(g)}">${arrow}${seats}<div class="ringmid" style="top:${(g.H / 2).toFixed(2)}cqw">${mid}${mid2}</div></div>
       ${pv.notes.map(t => `<div class="warn">${esc(t)}</div>`).join('')}
       ${pv.askSpy ? `<div class="field"><label>Ваше решение: Шпион определяется Горожанином?</label><div class="seg"><button class="${nm.spy ? '' : 'on'}" data-act="nomSpy" data-arg="0">Нет</button><button class="${nm.spy ? 'on' : ''}" data-act="nomSpy" data-arg="1">Да — его казнят</button></div></div>` : ''}
@@ -3753,7 +3959,8 @@ function grimOverlay() {
 function sheetOverlay() {
   const p = UI.open && E.P(S, UI.open); if (!p) return '';
   const i = S.players.indexOf(p), off = S.phase !== 'setup' && p.role && E.abilityOff(S, p);
-  const toks = p.tokens.map(t => `<span class="badge tok">${markIcon(...tokMark(t))}${esc(E.TOK_RU[t.k] || t.k)}${t.src && DATA.roles[t.src] ? ' · ' + esc(DATA.roles[t.src].name) : ''}${t.note ? ': ' + esc(t.note) : ''}</span>`).join('');
+  const toks = p.tokens.map(t => `<span class="badge tok">${markIcon(...tokMark(t))}${t.k === 'shown' ? esc(shownTitle(t))
+    : `${esc(E.TOK_RU[t.k] || t.k)}${t.src && DATA.roles[t.src] ? ' · ' + esc(DATA.roles[t.src].name) : ''}${t.note ? ': ' + esc(t.note) : ''}`}</span>`).join('');
   return `<div class="ov sheetov" role="dialog" aria-label="Игрок ${esc(p.name)}"><div class="sheetbg" data-act="openP" data-arg="${p.id}"></div><div class="sheet">
     <div class="sheethead">${p.role ? ico(p.role, p.align, 'si') : ''}<div class="sht"><div class="shp">${i + 1}. ${esc(p.name)}</div>
       <div class="pr t-${team(p.role)}">${p.role ? esc(E.rname(p.role)) : 'без роли'}${E.isTraveller(p) ? ' · Странник' : ''}${p.believes ? ` <span class="muted">(считает себя: ${esc(E.rname(p.believes))})</span>` : ''}${p.gained ? ` <span class="muted">(способность: ${esc(E.rname(p.gained))})</span>` : ''}</div></div>
@@ -3958,7 +4165,7 @@ function filterRefs() {
 const phaseName = t => t.startsWith('Н') ? 'Ночь ' + t.slice(1) : t.startsWith('Д') ? 'День ' + t.slice(1) : t === 'Подг.' ? 'Подготовка' : t;
 
 function viewMenu() {
-  return `${notesHtml()}<div class="card"><h3>Игра</h3>
+  return `${notesHtml()}${notesCard()}<div class="card"><h3>Игра</h3>
     <div class="seg"><button class="${UI.hideInactive ? 'on' : ''}" data-act="toggleHide">Пропускать шаги, которые не срабатывают</button></div>
     ${HISTORY.length ? `<div class="small muted">Можно отменить ${HISTORY.length} последних действий — кнопка «↶» в шапке.</div>` : ''}
     ${UI.confirm === 'new' ? `<div class="warn">Начать новую игру? Текущая будет удалена.</div><div class="row"><button class="btn danger" data-act="newGame">Да, новая игра</button><button class="btn" data-act="cancelConfirm">Отмена</button></div>`
@@ -3999,11 +4206,11 @@ function render() {
       <button class="hundo" data-act="undo" ${last ? '' : 'disabled'} aria-label="${last ? esc('Отменить: ' + last.label) : 'Нечего отменять'}" title="${last ? esc('Отменить: ' + last.label) : ''}">↶</button><span class="save"></span></header>
     <main>${body}</main>
     <nav class="tabs">${[['game', S.phase === 'night' ? 'Ночь' : S.phase === 'day' ? 'День' : 'Игра'], ['table', 'Гримуар'], ['log', 'Журнал'], ['roles', 'Роли'], ['menu', 'Ещё']].map(([k, l]) => `<button class="${UI.tab === k ? 'on' : ''}" data-act="tab" data-arg="${k}">${l}</button>`).join('')}</nav>
-    ${sheetOverlay()}${legendOverlay()}${wallOverlay()}${grimOverlay()}${ringOverlay()}${showOverlay()}`;
+    ${sheetOverlay()}${legendOverlay()}${wallOverlay()}${grimOverlay()}${ringOverlay()}${showOverlay()}${noteViewOverlay()}`;
   // круг рассадки — только на подготовке, круг номинации — только днём (после смены фазы закрываются сами)
   if ((UI.ring === 'seat' && S.phase !== 'setup') || (UI.ring === 'nom' && S.phase !== 'day')) UI.ring = null;
   // под полноэкранными слоями страница не прокручивается
-  document.documentElement.classList.toggle('locked', !!(UI.show || UI.legend || UI.ring || (UI.open && E.P(S, UI.open)) || (UI.wall && S.draw) || (UI.grimShow && S.phase === 'night')));
+  document.documentElement.classList.toggle('locked', !!(UI.show || UI.legend || UI.ring || UI.noteView || (UI.open && E.P(S, UI.open)) || (UI.wall && S.draw) || (UI.grimShow && S.phase === 'night')));
   app.querySelectorAll('details > summary').forEach(s => { if (opened.has(s.textContent)) s.parentElement.open = true; });
   if (UI.tab === 'roles') filterRefs();
   paintSave();
@@ -4136,6 +4343,7 @@ const A = {
   ringSeat: () => { UI.ring = 'seat'; render(); },
   ringNom: () => { UI.ring = 'nom'; render(); },
   ringClose: () => { UI.ring = null; render(); },
+  seatDir: v => { if ((S.flags.seatDir || 'cw') !== v) act(S => { S.flags.seatDir = v; }, v === 'ccw' ? 'номера против часовой' : 'номера по часовой'); },
   // номинация кругом: первое нажатие — кто номинирует, второе — кого; повторное нажатие снимает выбор
   ringPick: id => draft(S => {
     const d = S.day.draft, { bishop, byOk, onOk } = nomRules(), p = E.P(S, id); d.spy = false;
@@ -4194,8 +4402,9 @@ const A = {
   askNew: () => { UI.confirm = 'new'; render(); },
   cancelConfirm: () => { UI.confirm = null; render(); },
   newGame: () => {
-    const key = S.script.key === 'custom' ? 'ecbe' : S.script.key, names = S.players.filter(p => !E.isTraveller(p)).map(p => p.name);
-    HISTORY = []; S = E.newGame(key); S.players = names.map(n => E.newPlayer(n)); UI.confirm = null; UI.tab = 'game'; persist(); render();
+    const key = S.script.key === 'custom' ? 'ecbe' : S.script.key, names = S.players.filter(p => !E.isTraveller(p)).map(p => p.name), dir = S.flags.seatDir;
+    HISTORY = []; S = E.newGame(key); S.players = names.map(n => E.newPlayer(n)); if (dir) S.flags.seatDir = dir; // направление мест — как в прошлой игре
+    UI.confirm = null; UI.tab = 'game'; persist(); render();
   },
   copyJson: () => {
     const text = JSON.stringify(S);
@@ -4206,6 +4415,7 @@ const A = {
   importText: (a, el) => { UI.importText = el.value; },
   importJson: () => { try { const s = JSON.parse(UI.importText); if (!s.players || !s.script) throw 0; HISTORY.push({ s: JSON.stringify(S), label: 'загрузка игры' }); S = upgrade(s); S.updated = Date.now(); UI.importText = ''; UI.copied = ''; UI.tab = 'game'; persist(); render(); } catch (e) { alertNote('Это не похоже на сохранённую игру.'); } },
 };
+Object.assign(A, NOTE_ACTS); // заметки «что доработать» (notes.js)
 function alertNote(text) { UI.copied = ''; UI.notes = [text]; render(); }
 // стена «выкатывается» сверху один раз при показе, дальше перерисовки идут без анимации
 function wallIn() { UI.wall = true; UI.wallAnim = true; render(); setTimeout(() => { UI.wallAnim = false; }, 1200); }
@@ -4256,7 +4466,7 @@ document.addEventListener('pointercancel', dragEnd);
 
 // рассадка кругом: зажать игрока и тянуть; место — по углу от центра круга, остальные сдвигаются; на отпускании — новый порядок
 let ringS = null;
-const ringXY = (G, n, i) => { const a = 2 * Math.PI * i / n; return { x: 50 + G.rx * Math.sin(a), y: G.H / 2 - G.ry * Math.cos(a) }; };
+const ringXY = (G, n, i) => { const a = Math.PI + G.dir * 2 * Math.PI * i / n; return { x: 50 + G.rx * Math.sin(a), y: G.H / 2 - G.ry * Math.cos(a) }; };
 document.addEventListener('pointerdown', ev => {
   const el = ev.target.closest('[data-rdrag]'); if (!el) return;
   const board = el.closest('.ring'), seats = [...board.querySelectorAll('[data-rdrag]')];
@@ -4268,10 +4478,11 @@ document.addEventListener('pointerdown', ev => {
 });
 document.addEventListener('pointermove', ev => {
   if (!ringS) return; ev.preventDefault();
-  const { el, seats, from, G, rect } = ringS, n = seats.length;
+  const { el, seats, G, rect } = ringS, n = seats.length;
   const px = (ev.clientX - rect.left) / rect.width * 100, py = (ev.clientY - rect.top) / rect.width * 100; // в cqw
-  let a = Math.atan2(px - 50, G.H / 2 - py); if (a < 0) a += 2 * Math.PI;
-  const to = Math.round(a / (2 * Math.PI / n)) % n;
+  // угол от верха по часовой → номер места: первое — внизу (π), дальше в сторону G.dir
+  const a = Math.atan2(px - 50, G.H / 2 - py), step = 2 * Math.PI / n;
+  const to = ((Math.round((a - Math.PI) * G.dir / step) % n) + n) % n;
   el.style.left = (px - G.t / 2) + 'cqw'; el.style.top = (py - G.t / 2) + 'cqw';
   if (to === ringS.to) return;
   ringS.to = to;
