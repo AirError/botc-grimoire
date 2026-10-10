@@ -745,7 +745,9 @@ const bluffsHtml = () => S.bluffs.filter(Boolean).length ? `<div class="gbluffs"
 // Гримуар: большие квадраты по 3 в ряд — иконка и роль в квадрате, имя игрока под ним; нажатие — карточка игрока
 function viewTable() {
   const cells = S.players.map((p, i) => grimCell(p, i)).join('');
-  return `${S.phase === 'setup' ? poolCard() + drawCard() : ''}<div class="card"><div class="row ghead"><h3>Гримуар · ${esc(S.script.name)}</h3><button class="btn lgbtn" data-act="legend" aria-label="Что значат значки"><span class="lgq" aria-hidden="true">?</span>Значки</button></div>
+  // «Кругом»: на подготовке — рассадка с перетаскиванием, во время игры — Гримуар рассказчика кругом
+  const ringB = S.players.length > 1 ? `<button class="btn ringbtn" data-act="${S.phase === 'setup' ? 'ringSeat' : 'ringGrim'}">◯ Кругом</button>` : '';
+  return `${S.phase === 'setup' ? poolCard() + drawCard() : ''}<div class="card"><div class="row ghead"><h3>Гримуар · ${esc(S.script.name)}</h3><span class="row gbtns">${ringB}<button class="btn lgbtn" data-act="legend" aria-label="Что значат значки"><span class="lgq" aria-hidden="true">?</span>Значки</button></span></div>
     ${cells ? `<div class="grim">${cells}</div>` : '<div class="muted">Игроков пока нет — добавьте их на вкладке «Игра»</div>'}${bluffsHtml()}${S.phase === 'setup' ? '' : travellerForm()}</div>${S.phase === 'setup' ? '' : fabledZone()}`;
 }
 /* ---------- Гримуар для Шпиона и Вдовы — как в игре: жетоны по кругу, напоминания — к центру ---------- */
@@ -775,20 +777,23 @@ function ringGeom(n, label, reserve) {
 }
 // переключатель направления номеров (в кругах рассадки и номинации)
 const dirSeg = () => `<div class="seg ringdir" role="group" aria-label="Направление номеров"><button class="${seatDir() > 0 ? 'on' : ''}" data-act="seatDir" data-arg="cw">↻ По часовой</button><button class="${seatDir() < 0 ? 'on' : ''}" data-act="seatDir" data-arg="ccw">↺ Против часовой</button></div>`;
-function grimCircle() {
+// opts.names — таблички с именами под жетонами (рассказчику; Шпиону и Вдове — без имён, как в настоящем Гримуаре),
+// opts.notes — заметки рассказчика среди напоминаний, opts.act — что делает нажатие на жетон (grimZoom — крупно, openP — карточка игрока)
+function grimCircle(opts) {
+  opts = opts || {};
   const ps = S.players, n = ps.length; if (!n) return '';
-  const g = ringGeom(n, true), { t, L, rx, ry, H } = g;
+  const g = ringGeom(n, !!opts.names), { t, L, rx, ry, H } = g;
   const nf = Math.min(4.3, L / 1.5), rr = Math.max(6, Math.min(8.5, t * 0.42)), gap = 0.6, cx = 50, cy = H / 2;
   const seats = ps.map((p, i) => {
     const { a, x, y } = g.pos(i);
     const spacing = Math.hypot(rx * Math.cos(a), ry * Math.sin(a)) * 2 * Math.PI / n; // расстояние до соседа по кругу
     const vx = cx - x, vy = cy - y, len = Math.hypot(vx, vy) || 1;
     const lw = Math.max(t * 1.1, Math.min(t * 1.7, spacing * 0.96));
-    return { p, x, y, len, ux: vx / len, uy: vy / len, lw, ms: playerMarks(p, { noNotes: true }), pos: [], j: 0 };
+    return { p, x, y, len, ux: vx / len, uy: vy / len, lw, ms: playerMarks(p, { noNotes: !opts.notes }), pos: [], j: 0 };
   });
   // занятые места: жетоны (круги) и таблички с именами (прямоугольники)
   const discs = seats.map(s => ({ x: s.x, y: s.y, r: t / 2 + 0.3 }));
-  const boxes = seats.map(s => ({ x0: s.x - s.lw / 2, x1: s.x + s.lw / 2, y0: s.y + t / 2, y1: s.y + t / 2 + L + 0.6 }));
+  const boxes = opts.names ? seats.map(s => ({ x0: s.x - s.lw / 2, x1: s.x + s.lw / 2, y0: s.y + t / 2, y1: s.y + t / 2 + L + 0.6 })) : [];
   const free = (x, y, r) => x - r >= 0 && x + r <= 100 && y - r >= 0 && y + r <= H
     && discs.every(o => Math.hypot(o.x - x, o.y - y) >= o.r + r) && boxes.every(b => x + r <= b.x0 || x - r >= b.x1 || y + r <= b.y0 || y - r >= b.y1);
   // напоминания — по лучу от жетона к центру, как кладут на стол; если на луче занято — в сторону (на полшага или шаг).
@@ -811,17 +816,17 @@ function grimCircle() {
     const rems = pos.map((c, k) => over && k === pos.length - 1
       ? `<span class="gcm" style="${at(c)}"><span class="rmore" style="font-size:${(rr * 0.42).toFixed(2)}cqw">+${ms.length - k}</span></span>`
       : `<span class="gcm" style="${at(c)}" title="${esc(ms[k][1])}">${markIcon(ms[k][0], ms[k][2], ms[k][3])}</span>`).join('');
-    return `${rems}<button class="gct" data-act="grimZoom" data-arg="${p.id}" style="left:${(x - t / 2).toFixed(2)}cqw;top:${(y - t / 2).toFixed(2)}cqw;width:${t}cqw;height:${t}cqw" aria-label="${esc(p.name)}: ${esc(E.rname(tokenRole(p)))}${p.alive ? '' : ', мёртв'}">${roleTokenHtml(p, 'gca-' + p.id)}</button>
-      <span class="gcl ${p.alive ? '' : 'dead'}" style="left:${x.toFixed(2)}cqw;top:${(y + t / 2 + 0.4).toFixed(2)}cqw;font-size:${nf.toFixed(2)}cqw;max-width:${s.lw.toFixed(2)}cqw">${esc(p.name)}</span>`;
+    return `${rems}<button class="gct" data-act="${opts.act || 'grimZoom'}" data-arg="${p.id}" style="left:${(x - t / 2).toFixed(2)}cqw;top:${(y - t / 2).toFixed(2)}cqw;width:${t}cqw;height:${t}cqw" aria-label="${opts.names ? esc(p.name) + ': ' : ''}${esc(E.rname(tokenRole(p)))}${p.alive ? '' : ', мёртв'}">${roleTokenHtml(p, 'gca-' + p.id)}</button>
+      ${opts.names ? `<span class="gcl ${p.alive ? '' : 'dead'}" style="left:${x.toFixed(2)}cqw;top:${(y + t / 2 + 0.4).toFixed(2)}cqw;font-size:${nf.toFixed(2)}cqw;max-width:${s.lw.toFixed(2)}cqw">${esc(p.name)}</span>` : ''}`;
   }).join('');
   return `<div class="gcirc" style="aspect-ratio:100 / ${H.toFixed(1)}">${cells}</div>`;
 }
-// жетон крупно: нажатие на жетон в круге (имя, роль, способность и все напоминания словами)
+// жетон крупно: нажатие на жетон в круге Шпиона и Вдовы (роль, способность и все напоминания словами; имени нет — как в Гримуаре)
 function grimZoomHtml() {
   const p = UI.grimZoom && E.P(S, UI.grimZoom); if (!p) return '';
   const r = tokenRole(p), ms = playerMarks(p, { noNotes: true });
-  return `<div class="gzoom" data-act="grimZoom" role="dialog" aria-label="${esc(p.name)}"><div class="gzbox">
-    <div class="gztok">${roleTokenHtml(p, 'gcz-' + p.id)}</div><div class="gzname">${esc(p.name)}</div>
+  return `<div class="gzoom" data-act="grimZoom" role="dialog" aria-label="${esc(E.rname(r))}"><div class="gzbox">
+    <div class="gztok">${roleTokenHtml(p, 'gcz-' + p.id)}</div>
     <div class="gzrole side-${p.align}">${esc(E.rname(r))}${p.alive ? '' : ` · мёртв${p.ghost ? ', голос призрака есть' : ''}`}</div>
     <div class="gzab">${esc(DATA.roles[r] ? DATA.roles[r].ability : '')}</div>
     ${ms.length ? `<div class="gzmarks">${ms.map(m => `<div class="gzm">${markIcon(m[0], m[2], m[3])}<span>${esc(m[1])}</span></div>`).join('')}</div>` : ''}
@@ -899,19 +904,30 @@ function nomRing() {
         : open ? confirmRow('nominate', 'Подтвердить номинацию', (bishop || nm.by) && nm.on, 'nomClear', 'Сбросить') : ''}
       <button class="btn wide" data-act="ringClose">Вернуться к экрану дня</button></div></div>`;
 }
+// Гримуар рассказчика кругом (вкладка «Гримуар», во время игры): роли, имена, все отметки; нажатие на жетон — карточка игрока
+function stGrimRing() {
+  return `<div class="ov ringov" role="dialog" aria-label="Гримуар кругом">
+    <div class="ringtop"><span></span><b>Гримуар</b><button class="wbtn" data-act="ringClose" aria-label="Закрыть">×</button></div>
+    <div class="ringbox"><div class="small muted ringhint">Первый — внизу, у вас. Нажмите на жетон — откроется карточка игрока.</div>
+      <details class="ringdirbox"><summary class="small">Номера идут ${dirName()} — изменить</summary>${dirSeg()}</details>
+      ${grimCircle({ names: true, notes: true, act: 'openP' })}${bluffsHtml()}${fabledList()}
+      <button class="btn wide" data-act="ringClose">Закрыть</button></div></div>`;
+}
+const fabledList = () => (S.fabled || []).length ? `<div class="gbluffs"><span class="small muted">Сказочники</span><div>${S.fabled.map(r => `<span class="gbl">${ico(r, 'good', 'gbi')}${esc(E.rname(r))}</span>`).join('')}</div></div>` : '';
 function ringOverlay() {
   if (UI.ring === 'seat' && S.phase === 'setup') return seatRing();
   if (UI.ring === 'nom' && S.phase === 'day') return nomRing();
+  if (UI.ring === 'grim' && S.phase !== 'setup') return stGrimRing();
   return '';
 }
 
-// Гримуар на весь экран — Шпиону и Вдове в их ночной шаг: только смотреть; жетон можно открыть крупно; закрыть — кнопкой
+// Гримуар на весь экран — Шпиону и Вдове в их ночной шаг: только смотреть; жетон можно открыть крупно; закрыть — кнопкой.
+// Без имён игроков (только жетоны по кругу, как в настоящем Гримуаре) и без блефов Демона — решения пользователя
 function grimOverlay() {
   if (!UI.grimShow || S.phase !== 'night') return '';
-  const fab = (S.fabled || []).length ? `<div class="gbluffs"><span class="small muted">Сказочники</span><div>${S.fabled.map(r => `<span class="gbl">${ico(r, 'good', 'gbi')}${esc(E.rname(r))}</span>`).join('')}</div></div>` : '';
   return `<div class="ov grimov" role="dialog" aria-label="Гримуар">
     <div class="grimtop"><span></span><b>Гримуар</b><button class="wbtn" data-act="grimShow" aria-label="Закрыть Гримуар">×</button></div>
-    <div class="grimbox">${grimCircle()}<div class="small muted gchint">Нажмите на жетон — он откроется крупно</div>${bluffsHtml()}${fab}
+    <div class="grimbox">${grimCircle()}<div class="small muted gchint">Нажмите на жетон — он откроется крупно</div>${fabledList()}
       <button class="btn wide" data-act="grimShow">Закрыть Гримуар</button></div>${grimZoomHtml()}</div>`;
 }
 
@@ -1166,9 +1182,9 @@ function render() {
       <button class="hundo" data-act="undo" ${last ? '' : 'disabled'} aria-label="${last ? esc('Отменить: ' + last.label) : 'Нечего отменять'}" title="${last ? esc('Отменить: ' + last.label) : ''}">↶</button><span class="save"></span></header>
     <main>${body}</main>
     <nav class="tabs">${[['game', S.phase === 'night' ? 'Ночь' : S.phase === 'day' ? 'День' : 'Игра'], ['table', 'Гримуар'], ['log', 'Журнал'], ['roles', 'Роли'], ['menu', 'Ещё']].map(([k, l]) => `<button class="${UI.tab === k ? 'on' : ''}" data-act="tab" data-arg="${k}">${l}</button>`).join('')}</nav>
-    ${sheetOverlay()}${legendOverlay()}${wallOverlay()}${grimOverlay()}${ringOverlay()}${showOverlay()}${noteViewOverlay()}`;
-  // круг рассадки — только на подготовке, круг номинации — только днём (после смены фазы закрываются сами)
-  if ((UI.ring === 'seat' && S.phase !== 'setup') || (UI.ring === 'nom' && S.phase !== 'day')) UI.ring = null;
+    ${legendOverlay()}${wallOverlay()}${grimOverlay()}${ringOverlay()}${sheetOverlay()}${showOverlay()}${noteViewOverlay()}`;
+  // круг рассадки — только на подготовке, круг номинации — только днём, Гримуар кругом — во время игры (после смены фазы закрываются сами)
+  if ((UI.ring === 'seat' && S.phase !== 'setup') || (UI.ring === 'nom' && S.phase !== 'day') || (UI.ring === 'grim' && S.phase === 'setup')) UI.ring = null;
   // под полноэкранными слоями страница не прокручивается
   document.documentElement.classList.toggle('locked', !!(UI.show || UI.legend || UI.ring || UI.noteView || (UI.open && E.P(S, UI.open)) || (UI.wall && S.draw) || (UI.grimShow && S.phase === 'night')));
   app.querySelectorAll('details > summary').forEach(s => { if (opened.has(s.textContent)) s.parentElement.open = true; });
@@ -1302,6 +1318,7 @@ const A = {
   // круг игроков: рассадка (подготовка) и номинация (день)
   ringSeat: () => { UI.ring = 'seat'; render(); },
   ringNom: () => { UI.ring = 'nom'; render(); },
+  ringGrim: () => { UI.ring = 'grim'; render(); },
   ringClose: () => { UI.ring = null; render(); },
   seatDir: v => { if ((S.flags.seatDir || 'cw') !== v) act(S => { S.flags.seatDir = v; }, v === 'ccw' ? 'номера против часовой' : 'номера по часовой'); },
   // номинация кругом: первое нажатие — кто номинирует, второе — кого; повторное нажатие снимает выбор
