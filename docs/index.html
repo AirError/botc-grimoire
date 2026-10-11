@@ -749,6 +749,47 @@ img.shroud { object-fit: contain; }
 .gbtns { flex-wrap: nowrap; gap: 6px; flex: none; }
 .gbtns .btn { min-height: 34px; padding: 4px 10px; }
 
+/* ---------- показ игрокам горизонтально: карточка слева, роли и имена справа ----------
+   Телефон держат боком. Экран не повернулся сам (портрет) — содержимое повёрнуто на 90° и растянуто на весь экран
+   (.flip — на −90°, если держат другим боком); повернулся (альбом) — без поворота. --long/--short — длинная и короткая сторона */
+.shrot { position: fixed; z-index: 31; right: calc(10px + env(safe-area-inset-right, 0px)); top: calc(10px + env(safe-area-inset-top, 0px));
+  width: 44px; height: 44px; border-radius: 50%; border: 1px solid rgba(255, 255, 255, .18); background: rgba(0, 0, 0, .5); color: #CFC6B4;
+  font-size: 20px; font-weight: 800; line-height: 1; cursor: pointer; }
+.shrot.flipb { right: auto; left: calc(10px + env(safe-area-inset-left, 0px)); }
+.showov.land { display: block; padding: 0; overflow: hidden; }
+.showov.land .shwrap { position: absolute; display: flex; flex-direction: row; align-items: center; justify-content: center; gap: 4vmin; padding: 5vmin 7vmin 9vmin; }
+@media (orientation: portrait) {
+  .showov.land { --long: 100vh; --short: 100vw; }
+  .showov.land .shwrap { width: 100vh; height: 100vw; left: 50%; top: 50%; transform: translate(-50%, -50%) rotate(90deg); }
+  .showov.land.flip .shwrap { transform: translate(-50%, -50%) rotate(-90deg); }
+}
+@media (orientation: landscape) {
+  .showov.land { --long: 100vw; --short: 100vh; }
+  .showov.land .shwrap { left: 0; top: 0; width: 100vw; height: 100vh; }
+}
+.showov.land .shmain { flex: none; display: flex; align-items: center; justify-content: center; }
+.showov.land .shcard { width: min(calc(var(--long) * .82), calc(var(--short) * .76 * 1.58)); }
+.showov.land .two .shcard { width: min(calc(var(--long) * .5), calc(var(--short) * .8 * 1.58)); }
+.showov.land .shside { flex: 1 1 auto; min-width: 0; max-height: 100%; display: flex; align-items: center; justify-content: center; }
+.showov.land .shic { width: calc(var(--short) * .5); height: calc(var(--short) * .5); }
+.showov.land .two .shic { width: calc(var(--short) * .4); height: calc(var(--short) * .4); }
+.showov.land .shroles.n2 .shic, .showov.land .shroles.n3 .shic, .showov.land .shroles.stack .shic { width: calc(var(--short) * .25); height: calc(var(--short) * .25); }
+.showov.land .shroles.n2 .shrole, .showov.land .shroles.n3 .shrole { min-width: 0; }
+.showov.land .shname { font-size: calc(var(--short) * .07); }
+.showov.land .shroles.n2 .shname, .showov.land .shroles.n3 .shname { font-size: calc(var(--short) * .05); }
+.showov.land .shpl span { font-size: calc(var(--short) * .09); }
+.showov.land .shtext { font-size: calc(var(--short) * .24); }
+.showov.land .shtext.long { font-size: calc(var(--short) * .09); }
+.showov.land .shdig img { height: calc(var(--short) * .34); }
+.showov.land .shab { font-size: calc(var(--short) * .045); max-width: 44ch; }
+.showov.land .shsub { font-size: calc(var(--short) * .06); max-width: 24ch; }
+.showov.land .shcap, .showov.land .shthumb { font-size: calc(var(--short) * .08); }
+.showov.land .shhint { position: absolute; left: 0; right: 0; bottom: 2.5vmin; margin: 0; }
+/* заметки: кнопки «В работе» и «Выполнено» */
+.ntoggles .btn { min-height: 38px; padding: 6px 12px; font-weight: 700; }
+.ntoggles .btn.on { border-color: var(--gold); background: var(--goldbg); }
+@media (orientation: landscape) { .shrot.flipb { display: none; } } /* экран повернулся сам — переворачивать не нужно */
+
 </style>
 <div id="app"></div>
 <script>
@@ -821,7 +862,7 @@ function rmTok(p, k, src) { p.tokens = p.tokens.filter(t => !(t.k === k && (!src
 const TOK_RU = {
   poisoned: 'Отравлен', drunk: 'Пьян', protected: 'Защищён', cursed: 'Проклят', safe: 'Не умрёт при казни',
   master: 'Хозяин', mad: 'Помешан', hasability: 'Сохранил способность', twin: 'Близнец', grandchild: 'Внук',
-  herring: 'Ложная цель', chosen: 'Выбран', note: 'Заметка', know: 'Раскрытый', lunch: 'Обед', shown: 'Показан',
+  herring: 'Ложная цель', chosen: 'Выбран', note: 'Заметка', know: 'Раскрытый', lunch: 'Обед', shown: 'Показан', guessused: 'Догадка использована',
   votes3: '3 голоса', voteneg: 'Голос против', sober: 'Трезв и здоров', twice: 'Действует дважды', bad: 'Что-то плохое',
 };
 
@@ -856,7 +897,10 @@ function townsfolkNeighbours(S, p) {
 
 // яд Вдовы действует, пока Вдова жива, трезва и здорова (её собственный яд на неё не в счёт)
 const widowWorks = S => holders(S, 'widow').some(w => w.alive && !w.tokens.some(x => (x.k === 'drunk' || x.k === 'poisoned') && x.src !== 'widow'));
-const tokOff = (S, t) => (t.k === 'drunk' || t.k === 'poisoned') && (t.src !== 'widow' || widowWorks(S));
+// Философ: обладатель выбранной им роли пьян, пока Философ жив, трезв и здоров (вики: «если Философ умирает, становится пьян
+// или отравлен — этот игрок снова трезв»)
+const philosopherWorks = S => holders(S, 'philosopher').some(f => f.alive && f.gained && !f.tokens.some(x => (x.k === 'drunk' || x.k === 'poisoned') && x.src !== 'philosopher'));
+const tokOff = (S, t) => (t.k === 'drunk' || t.k === 'poisoned') && (t.src !== 'widow' || widowWorks(S)) && (t.src !== 'philosopher' || philosopherWorks(S));
 
 // Нищий всегда трезв и здоров; Бариста может сделать игрока трезвым и здоровым до заката
 const alwaysSober = p => p.role === 'beggar' || p.tokens.some(t => t.k === 'sober' && t.src === 'barista');
@@ -966,6 +1010,38 @@ function saved(S, p, by) { log(S, `${p.name} не умирает: ${by}`, 'save'
 // смерть по решению рассказчика («что-то плохое» Ангела, ручная отметка в «Гримуаре»): без защит, но со всеми
 // последствиями — ночью попадёт в объявление на рассвете, сработают Смотритель, Дитя Луны, проверка победы и т. д.
 // reason — примечание рассказчика (видно в журнале и в «Гримуаре», в объявлении на рассвете не звучит)
+/* ---------- смена роли посреди игры: Яга, Цирюльник, Заклинатель змей, Фань Гу, Егерь, Блудница, Чёрт ---------- */
+// эффекты, которые держатся, пока у кого-то есть способность-источник: роль сменилась — эффект кончается (яд Отравителя и т. п.)
+const ENDS_WITH_ROLE = ['poisoned', 'drunk', 'protected', 'safe', 'cursed', 'mad', 'hasability', 'votes3', 'voteneg', 'sober', 'twice', 'chosen', 'master'];
+function endOrphanEffects(S) {
+  const held = new Set(S.players.flatMap(q => [q.role, q.gained]).filter(Boolean));
+  for (const q of S.players) q.tokens = q.tokens.filter(t => !(ENDS_WITH_ROLE.includes(t.k) && t.src && R(t.src) && !held.has(t.src)));
+}
+// кем себя считает новый Пьяница (Горожанин сценария не в игре и не из блефов) или Безумец (Демон сценария)
+function pickBelieved(S, role) {
+  const used = new Set(S.players.flatMap(q => [q.role, q.believes]).concat(S.bluffs || []));
+  if (role === 'drunk') return pick(S.script.roles.filter(r => R(r) && R(r).team === 'townsfolk' && !used.has(r))) || null;
+  if (role === 'lunatic') return pick(S.script.roles.filter(r => R(r) && R(r).team === 'demon')) || null;
+  return null;
+}
+// opts: align — новая сторона (Заклинатель, Фань Гу), gained — полученная способность (едет вместе с ролью Философа/Каннибала),
+// believes — кем себя считает (Пьяница/Безумец; при обмене Цирюльника едет вместе с ролью, как жетон с напоминанием)
+function changeRole(S, p, role, opts) {
+  opts = opts || {};
+  const old = p.role;
+  p.role = role; p.gained = opts.gained || null;
+  p.believes = role === 'drunk' || role === 'lunatic' ? (opts.believes || pickBelieved(S, role)) : null;
+  if (opts.align) p.align = opts.align;
+  S.flags.ever = Object.assign({}, S.flags.ever, { [role]: true }); // джинксы «есть или был в игре»
+  // Философ выбрал эту роль, когда её не было в игре, — теперь её обладатель пьян (вики)
+  if (holders(S, 'philosopher').some(f => f !== p && f.gained === role) && !hasTok(p, 'drunk', 'philosopher')) addTok(S, p, 'drunk', 'philosopher');
+  // способность «только в 1-ю ночь» новой роли срабатывает в ближайшую ночь (вики, Яга: созданный Злой Близнец узнаёт близнеца)
+  // (Пьяница — как роль, которой себя считает)
+  if (S.phase !== 'setup') addFresh(S, p.id, actsAs(p), S.phase === 'night' ? S.n : S.n + 1);
+  if (!opts.keep) endOrphanEffects(S); // keep — обмен двух ролей: эффекты проверяем после второй замены
+  return old;
+}
+
 function storytellerKill(S, pid, src, reason) {
   const p = P(S, pid);
   if (p && p.alive) die(S, p, 'storyteller', src || null, { reason: String(reason || '').trim() });
@@ -1020,8 +1096,10 @@ function demonDied(S, p, cause, aliveBefore) {
   if (S.players.some(q => q !== p && demonAlive(q))) return;
   const sw = S.players.find(q => q.role === 'scarletwoman' && q.alive && !abilityOff(S, q));
   if (sw && aliveBefore >= 5) {
-    sw.role = p.role; S.flags.swBecame = sw.id; S.flags.swNight = S.phase === 'night' ? S.n : S.n + 1;
+    changeRole(S, sw, p.role); S.flags.swBecame = sw.id; S.flags.swNight = S.phase === 'night' ? S.n : S.n + 1;
     log(S, `Блудница (${sw.name}) становится новым Демоном: ${rname(p.role)}`, 'effect');
+    // Демон умер посреди ночи — новый Демон просыпается этой же ночью, если его очередь ещё не прошла
+    if (S.phase === 'night' && S.night && S.night.steps[S.night.i]) rebuildRest(S);
     return;
   }
   if (cause === 'execution') {
@@ -1137,11 +1215,11 @@ const coreOf = S => S.players.filter(p => !isTraveller(p));
 // набор ролей, выбранный рассказчиком на вкладке «Гримуар» (S.pool), годится, если ролей ровно по числу игроков
 const validPool = S => !!(S.pool && S.pool.length === coreOf(S).length && S.pool.every(r => S.script.roles.includes(r)));
 
-// случайный набор ролей по раскладке; назначенные для жребия роли (S.assign) обязательно входят в набор.
-// Атеиста случайно не берём — игру без злых рассказчик выбирает сам (набором ролей)
-function randomPool(S) {
+// случайный набор ролей по раскладке; назначенные для жребия роли (S.assign) и роли, уже выданные игрокам (held),
+// обязательно входят в набор. Атеиста случайно не берём — игру без злых рассказчик выбирает сам (набором ролей)
+function randomPool(S, held) {
   const n = coreOf(S).length, roles = S.script.roles, as = Object.values(S.assign || {});
-  const must = as.filter(a => a.role && roles.includes(a.role)).map(a => a.role);
+  const must = [...new Set(as.filter(a => a.role && roles.includes(a.role)).map(a => a.role).concat((held || []).filter(r => roles.includes(r))))];
   const byTeam = t => { const m = must.filter(r => R(r).team === t); return m.concat(shuffle(roles.filter(r => R(r) && R(r).team === t && r !== 'atheist' && !m.includes(r)))); };
   const base = BASE_DIST[Math.min(15, Math.max(5, n))];
   const chosen = [byTeam('demon')[0], ...byTeam('minion').slice(0, base[2])].filter(Boolean);
@@ -1221,31 +1299,60 @@ function autoSetup(S, force) {
   }
 }
 
-/* «Стена жребия» — как мешочек с жетонами: игроки по очереди открывают ячейку. Роль за каждым игроком закреплена
-   до начала жребия (выданные роли, назначения или случайный набор), поэтому какую ячейку игрок ни откроет — выпадет его роль.
+/* «Стена жребия» — как мешочек с жетонами: игроки по очереди открывают ячейку, и роль выпадает В МОМЕНТ открытия
+   (заранее её не знает никто, и рассказчик тоже). В мешочке — «Роли на игру» (S.pool) или, если они не выбраны, случайный
+   набор по раскладке. Пока игрок не открыл ячейку, ему можно назначить роль или тип роли (S.assign) — назначения соблюдаются,
+   и другим не выпадает то, что нужно назначенным. Роль, выданная игроку до стены, остаётся за ним.
    Пьяница видит роль, которой себя считает, Безумец — своего «Демона». */
 const RUNE_COLORS = ['green', 'violet', 'red', 'gold'];
+// почему стену нельзя выкатить (или пусто)
+function drawProblem(S) {
+  const n = coreOf(S).length;
+  if (n < 5 || n > 15) return 'Нужно от 5 до 15 игроков (без Странников)';
+  if (S.pool && S.pool.length && !validPool(S)) return `В «Ролях на игру» отмечено ${S.pool.length}, а игроков ${n}: отметьте ровно ${n} ролей — или очистите выбор, тогда роли наберутся случайно по раскладке`;
+  return '';
+}
 function drawStart(S) {
-  if (S.draw) return false;
-  const core = coreOf(S);
-  const prev = core.map(p => ({ id: p.id, role: p.role, believes: p.believes }));
-  if (core.some(p => !p.role)) { dealPool(S, validPool(S) ? S.pool : randomPool(S)); autoSetup(S, true); }
-  else autoSetup(S, false);
-  const cells = shuffle(core.map(p => ({ role: p.role, believes: p.believes || null })));
+  if (S.draw || drawProblem(S)) return false;
+  const core = coreOf(S), prev = core.map(p => ({ id: p.id, role: p.role, believes: p.believes }));
+  // мешочек: выбранные роли (или случайный набор); роли, уже выданные игрокам до стены, из него вынимаем
+  const bag = validPool(S) ? S.pool.slice() : randomPool(S, core.map(p => p.role).filter(Boolean));
+  for (const p of core) if (p.role) { const k = bag.indexOf(p.role); if (k >= 0) bag.splice(k, 1); }
   const glyphs = shuffle([...Array(24).keys()]);
-  S.draw = { prev, order: core.map(p => p.id), turn: core[0] ? core[0].id : null, open: null,
-    cells: cells.map((x, i) => ({ role: x.role, believes: x.believes, glyph: glyphs[i % glyphs.length], color: RUNE_COLORS[Math.floor(Math.random() * 4)], pid: null, done: false })) };
+  S.draw = { prev, bag, order: core.map(p => p.id), turn: core[0] ? core[0].id : null, open: null,
+    cells: core.map((x, i) => ({ role: null, believes: null, glyph: glyphs[i % glyphs.length], color: RUNE_COLORS[Math.floor(Math.random() * 4)], pid: null, done: false })) };
   return true;
+}
+// какие роли в мешочке нельзя отдать игроку p: назначенные другим, ещё не открывшим (и чтобы хватило на их назначенный тип)
+function drawPick(S, p) {
+  const d = S.draw, as = S.assign || {}, a = as[p.id], bag = d.bag;
+  const others = coreOf(S).filter(q => q !== p && !q.role);
+  const reserved = others.map(q => as[q.id] && as[q.id].role).filter(r => r && bag.includes(r));
+  const need = {}; for (const q of others) { const x = as[q.id]; if (x && x.team && !x.role) need[x.team] = (need[x.team] || 0) + 1; }
+  const fits = r => { const rest = bag.slice(); rest.splice(rest.indexOf(r), 1);
+    return Object.entries(need).every(([t, k]) => rest.filter(x => !reserved.includes(x) && R(x) && R(x).team === t).length >= k); };
+  let cands = a && a.role && bag.includes(a.role) ? [a.role] : bag.filter(r => !reserved.includes(r));
+  if (a && a.team && !a.role) { const t = cands.filter(r => R(r) && R(r).team === a.team); if (t.length) cands = t; }
+  const ok = cands.filter(fits);
+  return pick(ok.length ? ok : cands.length ? cands : bag) || null;
+}
+// Пьянице — Горожанин сценария не в игре и не в мешочке; Безумцу — Демон сценария
+function drawBelieves(S, p) {
+  const used = new Set(S.players.map(q => q.role).concat(S.players.map(q => q.believes), S.draw.bag, S.bluffs || []));
+  if (p.role === 'drunk') p.believes = pick(S.script.roles.filter(r => R(r) && R(r).team === 'townsfolk' && !used.has(r))) || null;
+  if (p.role === 'lunatic') p.believes = pick(S.script.roles.filter(r => R(r) && R(r).team === 'demon')) || null;
 }
 const drawShown = c => c.believes || c.role; // что видит игрок
 function drawOpen(S, i) {
   const d = S.draw, c = d && d.cells[i], p = d && P(S, d.turn);
   if (!c || c.pid || d.open !== null || !p) return false;
-  // игроку выпадает его роль, какую бы ячейку он ни открыл: меняем содержимое ячеек местами
-  const j = d.cells.findIndex(x => !x.pid && x.role === p.role && (x.believes || null) === (p.believes || null));
-  if (j >= 0 && j !== i) { const b = d.cells[j]; [c.role, b.role] = [b.role, c.role]; [c.believes, b.believes] = [b.believes, c.believes]; }
-  if (j < 0) { c.role = p.role; c.believes = p.believes || null; } // роль поменяли во время жребия
-  c.pid = p.id; d.open = i;
+  if (!p.role) { // роль выпадает сейчас
+    p.role = drawPick(S, p); p.believes = null;
+    const k = d.bag.indexOf(p.role); if (k >= 0) d.bag.splice(k, 1);
+    p.align = p.role && !isGoodTeam(realTeam(p)) ? 'evil' : 'good';
+    if (p.role === 'drunk' || p.role === 'lunatic') drawBelieves(S, p);
+  }
+  c.role = p.role; c.believes = p.believes || null; c.pid = p.id; d.open = i;
   return true;
 }
 function drawClose(S) {
@@ -1258,6 +1365,7 @@ function drawClose(S) {
 }
 function drawFinish(S) {
   finishRoles(S);
+  autoSetup(S, false); // блефы, внук, ложная цель, близнец — когда все роли уже известны
   // внук, ложная цель Гадалки, добрый близнец — должны остаться добрыми
   const good = S.players.filter(p => p.align === 'good' && !isTraveller(p));
   const fix = (flag, ok) => { const q = S.flags[flag] && P(S, S.flags[flag]); if (!q || !ok(q)) { const c = good.filter(ok); S.flags[flag] = c.length ? pick(c).id : null; } };
@@ -1374,7 +1482,7 @@ function buildSteps(S) {
   }
   return steps;
 }
-function addFresh(S, pid, role) { S.flags.fresh = (S.flags.fresh || []).filter(f => f.night >= S.n).concat({ pid, role, night: S.n }); }
+function addFresh(S, pid, role, night) { S.flags.fresh = (S.flags.fresh || []).filter(f => f.night >= S.n && f.pid !== pid).concat({ pid, role, night: night || S.n }); }
 // после смены способностей посреди ночи — перестраиваем оставшиеся шаги этой ночи
 function rebuildRest(S) {
   const ord = DATA.order[S.n === 1 ? 'first' : 'other'], cur = S.night.steps[S.night.i];
@@ -1527,6 +1635,19 @@ function cannibalEats(S, ex) {
     else { c.gained = ex.role; rmTok(c, 'poisoned', 'cannibal'); }
     log(S, `Обед Каннибала (${c.name}): ${ex.name} — ${evil ? 'злой игрок, Каннибал отравлен, пока не казнят доброго' : `способность «${rname(ex.role)}» теперь у Каннибала`}`, 'effect');
   }
+}
+
+// Девица (вики): Приспешник публично называет игрока Девицей — одна догадка на всех Приспешников за игру.
+// Угадал живую Девицу (её способность работает) — победа зла; не угадал — догадок больше нет (жетон «Угадать использованное»)
+function damselGuess(S, byId, onId) {
+  const by = P(S, byId), on = P(S, onId), d = S.players.find(q => q.role === 'damsel');
+  if (!by || !on || S.flags.damselGuessUsed || realTeam(by) !== 'minion') return null;
+  S.flags.damselGuessUsed = true;
+  if (d) addTok(S, d, 'guessused', 'damsel');
+  const hit = !!d && on === d && d.alive && !abilityOff(S, d);
+  log(S, `${by.name} (Приспешник) называет Девицей ${on.name}: ${hit ? 'угадал' : on === d ? 'это Девица, но её способность не работает' : 'не угадал'}`, 'day');
+  if (hit) endGame(S, 'evil', `Приспешник ${by.name} угадал Девицу (${on.name})`);
+  return { hit };
 }
 
 // Мясник: казнить сейчас — после этого Мясник может номинировать ещё раз
@@ -1713,6 +1834,7 @@ function stepSpec(S, step) {
   if (p.believes && p.role === 'drunk') base.warn.push(`На самом деле ${p.name} — Пьяница (считает себя: ${rname(p.believes)})`);
   if (p.role === 'cannibal') base.warn.push(`${p.name} — Каннибал со способностью съеденного игрока (${nm(S, (S.flags['cannibal_' + p.id] || {}).pid)}). Не говорите, какая это способность.`);
   if (vortoxActive(S) && role.team === 'townsfolk') base.warn.push('Вортокс в игре: информация Горожан должна быть ложной.');
+  if (role.team === 'demon' && S.night.data.pithagDemon) base.warn.push('Яга создала Демона этой ночью: смерти — на ваше усмотрение (вики). Нападение можно пропустить.');
   if (role.team === 'demon' && S.night.data.lunatic && p.role !== 'lunatic')
     base.warn.push(`Безумец «атаковал»: ${S.night.data.lunatic.map(id => nm(S, id)).join(', ') || 'никого'} — покажите это Демону.`);
   const logic = LOGIC[step.id];
@@ -2004,7 +2126,7 @@ const LOGIC = {
           const heir = inp.heir && inp.heir[0] && P(S, inp.heir[0]);
           log(S, `Чёрт (${p.name}) убивает себя`, 'action');
           const r = attemptKill(S, p, 'demon', 'imp', { noScarlet: true, noCheck: true });
-          if (r.died && heir) { heir.role = 'imp'; log(S, `${heir.name} становится Чёртом`, 'effect'); checkWin(S); }
+          if (r.died && heir) { changeRole(S, heir, 'imp'); log(S, `${heir.name} становится Чёртом`, 'effect'); checkWin(S); }
           else if (r.died) checkWin(S);
           return;
         }
@@ -2178,16 +2300,20 @@ const LOGIC = {
     info: inp => {
       const t = inp.t && P(S, inp.t[0]); if (!t || !isDemon(t)) return null;
       if (off) return { secret: true, show: 'Это Демон, но Заклинатель пьян или отравлен — обмена нет', lines: [] };
-      // обмен: Заклинателю — «ТЕПЕРЬ ВЫ» Демон (злой), прежнему Демону — «ТЕПЕРЬ ВЫ» Заклинатель (добрый, отравлен навсегда)
-      return { show: 'Это Демон — обмен ролями и сторонами!', lines: [`1) Заклинателю (${p.name}): «ТЕПЕРЬ ВЫ», жетон ${rname(t.role)}, палец вниз`, `2) Прежнему Демону (${t.name}): «ТЕПЕРЬ ВЫ», жетон Заклинателя Змей, палец вверх`],
-        tokens: [{ label: `Заклинателю (${p.name})`, caption: 'ТЕПЕРЬ ВЫ', role: t.role, thumb: 'down' }, { label: `Прежнему Демону (${t.name})`, caption: 'ТЕПЕРЬ ВЫ', role: 'snakecharmer', thumb: 'up' }] };
+      // обмен: Заклинателю — «ТЕПЕРЬ ВЫ» Демон (злой), прежнему Демону — «ТЕПЕРЬ ВЫ» его роль (добрый, отравлен навсегда).
+      // Способностью Заклинателя пользовался Философ (или Каннибал) — прежний Демон становится Философом (вики)
+      return { show: 'Это Демон — обмен ролями и сторонами!', lines: [`1) Заклинателю (${p.name}): «ТЕПЕРЬ ВЫ», жетон ${rname(t.role)}, палец вниз`, `2) Прежнему Демону (${t.name}): «ТЕПЕРЬ ВЫ», жетон ${rname(p.role)}, палец вверх`],
+        tokens: [{ label: `Заклинателю (${p.name})`, caption: 'ТЕПЕРЬ ВЫ', role: t.role, thumb: 'down' }, { label: `Прежнему Демону (${t.name})`, caption: 'ТЕПЕРЬ ВЫ', role: p.role, thumb: 'up' }] };
     },
     apply: inp => {
       const t = P(S, inp.t[0]); log(S, `Заклинатель змей (${p.name}) выбирает ${t.name}`, 'action');
       if (!isDemon(t)) return;
       if (off) return recordAbn(S, p, 'выбрал Демона, но обмена не было', abnSource(S, p));
-      const dr = t.role; t.role = 'snakecharmer'; t.align = 'good'; p.role = dr; p.align = 'evil'; addTok(S, t, 'poisoned', 'snakecharmer');
-      log(S, `Обмен: ${p.name} теперь ${rname(dr)}, ${t.name} — Заклинатель змей (отравлен)`, 'effect');
+      // меняются роли и стороны; способность Философа/Каннибала едет вместе с его ролью — новый Демон просыпается Демоном
+      const dr = t.role, mine = p.role, gained = p.gained;
+      changeRole(S, p, dr, { align: 'evil', keep: true }); changeRole(S, t, mine, { align: 'good', gained });
+      addTok(S, t, 'poisoned', 'snakecharmer');
+      log(S, `Обмен: ${p.name} теперь ${rname(dr)}, ${t.name} — ${rname(mine)} (отравлен)`, 'effect');
       rebuildRest(S); // дальше этой ночью Демоном просыпается новый Демон, у прежнего — шаги Заклинателя
     },
   }),
@@ -2255,10 +2381,17 @@ const LOGIC = {
       info: inp => {
         const demon = S.players.find(isDemon), first = demon ? [{ label: `Демону (${demon.name})`, caption: CARD.selected, role: 'barber' }] : [];
         if ((inp.t || []).length < 2) return { show: 'Покажите Демону жетон Цирюльника', lines: ['Демон может выбрать 2 игроков для обмена ролями или отказаться'], tokens: first };
-        const [a, b] = inp.t.map(id => P(S, id));
-        return { show: `${a.name} ↔ ${b.name}`, lines: ['Разбудите каждого и покажите «ТЕПЕРЬ ВЫ» и новую роль'],
-          tokens: first.concat([{ label: a.name, caption: CARD.youAre, role: b.role, align: a.align }, { label: b.name, caption: CARD.youAre, role: a.role, align: b.align }]) }; },
-      apply: inp => { S.flags.haircuts = false; if (!inp.t || inp.t.length < 2) { log(S, 'Цирюльник: Демон отказался менять роли', 'action'); return; } const [a, b] = inp.t.map(id => P(S, id)); [a.role, b.role] = [b.role, a.role]; log(S, `Цирюльник: ${a.name} и ${b.name} меняются ролями (${rname(a.role)} ↔ ${rname(b.role)}), стороны прежние`, 'effect'); } };
+        const [a, b] = inp.t.map(id => P(S, id)), seen = q => q.believes || q.role; // Пьяница видит роль, которой себя считает
+        return { show: `${a.name} ↔ ${b.name}`, lines: ['Разбудите каждого и покажите «ТЕПЕРЬ ВЫ» и новую роль; стороны не меняются — покажите жестом',
+            a.role === 'drunk' || b.role === 'drunk' ? 'Пьяница: вместе с ролью переходит и жетон Горожанина, которым он себя считает — его и покажите' : ''],
+          tokens: first.concat([{ label: a.name, caption: CARD.youAre, role: seen(b), align: a.align, thumb: a.align === 'good' ? 'up' : 'down' },
+            { label: b.name, caption: CARD.youAre, role: seen(a), align: b.align, thumb: b.align === 'good' ? 'up' : 'down' }]) }; },
+      // обмен (вики): стороны прежние; полученная способность (Философ, Каннибал) и «кем себя считает» едут вместе с ролью
+      apply: inp => { S.flags.haircuts = false; if (!inp.t || inp.t.length < 2) { log(S, 'Цирюльник: Демон отказался менять роли', 'action'); return; }
+        const [a, b] = inp.t.map(id => P(S, id)), A0 = { role: a.role, gained: a.gained, believes: a.believes }, B0 = { role: b.role, gained: b.gained, believes: b.believes };
+        changeRole(S, a, B0.role, { gained: B0.gained, believes: B0.believes, keep: true }); changeRole(S, b, A0.role, { gained: A0.gained, believes: A0.believes });
+        log(S, `Цирюльник: ${a.name} и ${b.name} меняются ролями (${rname(a.role)} ↔ ${rname(b.role)}), стороны прежние`, 'effect');
+        rebuildRest(S); checkWin(S); } };
   },
   sweetheart: (S, p) => {
     if (S.flags.sweetheartPending !== p.id) return { active: false, reason: 'Возлюбленная не умирала', deadOk: true };
@@ -2287,34 +2420,57 @@ const LOGIC = {
     apply: inp => { const t = P(S, inp.t[0]); if (!off) addTok(S, t, 'mad', 'cerenovus', ['dusk', S.n + 1], { note: rname(inp.r) }); else recordAbn(S, p, 'безумие не наложено', abnSource(S, p));
       log(S, `Цереновус (${p.name}): ${t.name} должен быть помешан на роли «${rname(inp.r)}»`, 'action'); },
   }),
-  pithag: (S, p, first, off) => ({
-    inputs: [PL('t', 1, 'Яга выбирает игрока'), ROLE('r', 'и роль из сценария, которой нет в игре', r => !inPlay(S, r))],
-    more: inp => inp.r && R(inp.r).team === 'demon' && !off ? [PL('kill', 20, 'Создан Демон: кто умирает этой ночью (ваше решение, можно никого)', aliveOnly, { min: 0 })] : [],
-    info: inp => {
-      if (!inp.t || !inp.t.length || !inp.r || off || inPlay(S, inp.r)) return null;
-      const demon = R(inp.r).team === 'demon';
-      return { show: `Разбудите ${nm(S, inp.t[0])}: «ТЕПЕРЬ ВЫ» — ${rname(inp.r)}`, lines: [demon ? 'Создан Демон: смерти этой ночью — на ваше усмотрение' : ''],
-        tokens: [{ label: nm(S, inp.t[0]), caption: CARD.youAre, role: inp.r, align: P(S, inp.t[0]).align }] };
-    },
-    apply: inp => {
-      const t = P(S, inp.t[0]);
-      if (off || inPlay(S, inp.r)) { log(S, `Яга (${p.name}) выбирает ${t.name} — ничего`, 'action'); if (off && !inPlay(S, inp.r)) recordAbn(S, p, 'превращение не сработало', abnSource(S, p)); return; }
-      const old = t.role; t.role = inp.r; log(S, `Яга превращает ${t.name}: ${rname(old)} → ${rname(inp.r)} (сторона прежняя)`, 'effect');
-      (inp.kill || []).forEach(id => attemptKill(S, P(S, id), 'ability', 'pithag'));
-    },
-  }),
-  fanggu: (S, p, first, off, base) => {
-    if (demonExorcised(S, p, base)) return {};
+  // Яга (вики): игрок становится ролью, если её нет в игре (в игре — ничего не происходит); сторона прежняя; игрок узнаёт роль
+  // («ТЕПЕРЬ ВЫ» + жетон + жест, что сторона не изменилась). Создан Демон — смерти этой ночью на усмотрение рассказчика
+  pithag: (S, p, first, off) => {
+    const bel = r => r === 'drunk' || r === 'lunatic' ? stable(S, `phBel:${S.n}:${r}`, () => pickBelieved(S, r)) : null; // кем себя будет считать
+    const works = inp => inp.t && inp.t.length && inp.r && !off && !inPlay(S, inp.r);
     return {
-      inputs: [PL('t', 1, 'Кого убивает Фань Гу')], more: inp => mayorInput(S, inp),
-      info: inp => { const t = inp.t && P(S, inp.t[0]); return t && realTeam(t) === 'outsider' && !S.flags.fangguJumped && !off ? { show: 'Изгой: прыжок!', lines: [`${t.name} становится злым Фань Гу, старый Фань Гу (${p.name}) умирает. Разбудите ${t.name}: «ТЕПЕРЬ ВЫ», жетон Фань Гу, «ТЕПЕРЬ ВЫ», большой палец вниз.`],
-        tokens: [{ label: t.name, caption: 'ТЕПЕРЬ ВЫ', role: 'fanggu', thumb: 'down' }] } : null; },
+      inputs: [PL('t', 1, 'Яга выбирает игрока'), ROLE('r', 'и роль из сценария (если она в игре — ничего не происходит)', () => true)],
+      more: inp => works(inp) && R(inp.r).team === 'demon' ? [PL('kill', 20, 'Создан Демон: кто умирает этой ночью (ваше решение, можно никого)', aliveOnly, { min: 0 })] : [],
+      info: inp => {
+        if (!inp.t || !inp.t.length || !inp.r) return null;
+        const t = P(S, inp.t[0]);
+        if (inPlay(S, inp.r)) return { secret: true, show: `${rname(inp.r)} уже в игре — ничего не происходит`, lines: ['Ягу просто усыпите'] };
+        if (off) return { secret: true, show: 'Яга пьяна или отравлена — превращения нет', lines: ['Можно разбудить выбранного игрока «понарошку», но роль не меняется'] };
+        const demon = R(inp.r).team === 'demon', seen = bel(inp.r) || inp.r, onlyDemon = isDemon(t) && S.players.filter(demonAlive).length === 1 && !demon;
+        return { show: `Разбудите ${t.name}: «ТЕПЕРЬ ВЫ» — ${rname(seen)}`, lines: [
+            seen !== inp.r ? `${rname(inp.r)}: покажите жетон роли, которой он себя будет считать (${rname(seen)})` : '',
+            `Сторона прежняя (${t.align === 'good' ? 'добрый' : 'злой'}) — покажите жестом`,
+            demon ? 'Создан Демон: смерти этой ночью — на ваше усмотрение (можно и пропустить нападение Демона)' : '',
+            onlyDemon ? 'Это единственный Демон: после превращения живых Демонов не останется — добро побеждает (все Демоны мертвы)' : ''],
+          tokens: [{ label: t.name, caption: CARD.youAre, role: seen, align: t.align, thumb: t.align === 'good' ? 'up' : 'down' }] };
+      },
       apply: inp => {
         const t = P(S, inp.t[0]);
-        if (!off && realTeam(t) === 'outsider' && !S.flags.fangguJumped && t.alive) {
+        if (!works(inp)) { log(S, `Яга (${p.name}) выбирает ${t.name} и ${rname(inp.r)} — ничего${off ? ' (Яга пьяна или отравлена)' : ' (роль в игре)'}`, 'action');
+          if (off && !inPlay(S, inp.r)) recordAbn(S, p, 'превращение не сработало', abnSource(S, p)); return; }
+        const old = changeRole(S, t, inp.r, { believes: bel(inp.r) });
+        log(S, `Яга превращает ${t.name}: ${rname(old)} → ${rname(inp.r)} (сторона прежняя)`, 'effect');
+        if (R(inp.r).team === 'demon') S.night.data.pithagDemon = true;
+        (inp.kill || []).forEach(id => attemptKill(S, P(S, id), 'ability', 'pithag'));
+        rebuildRest(S); // старая роль этой ночью больше не просыпается, новая — в свою очередь (и «первая ночь», если есть)
+        checkWin(S);
+      },
+    };
+  },
+  fanggu: (S, p, first, off, base) => {
+    if (demonExorcised(S, p, base)) return {};
+    // прыжок — только если Изгой правда умер бы (вики: «если выбранный Изгой не умирает, он не становится Фань Гу»)
+    const shield = t => hasTok(t, 'protected', 'monk') ? 'Монах' : hasTok(t, 'protected', 'innkeeper') ? 'Трактирщик' : teaLadyProtects(S, t) ? 'Травница' : '';
+    const jumps = t => t && t.alive && realTeam(t) === 'outsider' && !S.flags.fangguJumped && !off && !shield(t);
+    return {
+      inputs: [PL('t', 1, 'Кого убивает Фань Гу')], more: inp => mayorInput(S, inp),
+      info: inp => { const t = inp.t && P(S, inp.t[0]);
+        if (t && realTeam(t) === 'outsider' && !S.flags.fangguJumped && !off && shield(t)) return { secret: true, show: `Изгой под защитой (${shield(t)}) — не умирает и не становится Фань Гу`, lines: [] };
+        return jumps(t) ? { show: 'Изгой: прыжок!', lines: [`${t.name} становится злым Фань Гу, старый Фань Гу (${p.name}) умирает. Разбудите ${t.name}: «ТЕПЕРЬ ВЫ», жетон Фань Гу, «ТЕПЕРЬ ВЫ», большой палец вниз. Приспешников он не узнаёт.`],
+          tokens: [{ label: t.name, caption: 'ТЕПЕРЬ ВЫ', role: 'fanggu', thumb: 'down' }] } : null; },
+      apply: inp => {
+        const t = P(S, inp.t[0]);
+        if (jumps(t)) {
           S.flags.fangguJumped = true;
           log(S, `Фань Гу (${p.name}) выбирает Изгоя ${t.name}: прыжок`, 'action');
-          t.role = 'fanggu'; t.align = 'evil';
+          changeRole(S, t, 'fanggu', { align: 'evil' });
           die(S, p, 'ability', 'fanggu', { noScarlet: true });
           return;
         }
@@ -2378,6 +2534,38 @@ const LOGIC = {
         log(S, `Вдова (${p.name}) смотрит Гримуар и травит ${t.name}${off ? ' — не работает' : ''}; ${k.name} узнаёт, что Вдова в игре`, 'action');
       },
     };
+  },
+  // Егерь (вики): раз за игру ночью выбирает живого игрока; Девица становится Горожанином не из игры (выбирает рассказчик)
+  // и узнаёт его. Выбрал не Девицу — ничего, способность потрачена; отказался — способность остаётся
+  huntsman: (S, p, first, off) => {
+    if (once(S, p, 'huntsman')) return { active: false, reason: 'Способность уже использована' };
+    const tf = r => R(r) && R(r).team === 'townsfolk' && !inPlay(S, r) && !S.players.some(q => q.believes === r) && !(S.bluffs || []).includes(r);
+    const dam = inp => { const t = inp.t && P(S, inp.t[0]); return t && t.role === 'damsel' ? t : null; };
+    return {
+      inputs: [PL('t', 1, 'Егерь выбирает живого игрока (можно отказаться — способность останется)', aliveOnly, { min: 0 })],
+      more: inp => dam(inp) && !off ? [ROLE('r', 'Девица становится Горожанином, которого нет в игре (выбираете вы)', tf)] : [],
+      defaults: stable(S, 'hunt:' + p.id, () => ({ r: pick(S.script.roles.filter(tf)) || null })),
+      info: inp => {
+        const t = dam(inp); if (!t) return inp.t && inp.t.length ? { secret: true, show: 'Это не Девица — ничего не происходит, способность Егеря потрачена', lines: [] } : null;
+        if (off) return { secret: true, show: 'Это Девица, но Егерь пьян или отравлен — ничего не происходит', lines: [] };
+        return inp.r ? { show: `Девица (${t.name}) становится: ${rname(inp.r)}`, lines: ['Усыпите Егеря, разбудите Девицу и покажите «ТЕПЕРЬ ВЫ» и новую роль'],
+          tokens: [{ label: t.name, caption: CARD.youAre, role: inp.r, align: t.align }] } : null;
+      },
+      apply: inp => {
+        if (!inp.t || !inp.t.length) { log(S, `Егерь (${p.name}) никого не выбирает`, 'action'); return; }
+        markOnce(S, p, 'huntsman'); const t = P(S, inp.t[0]);
+        if (t.role === 'damsel' && !off && inp.r) { changeRole(S, t, inp.r); log(S, `Егерь (${p.name}) нашёл Девицу: ${t.name} теперь ${rname(inp.r)}`, 'effect'); rebuildRest(S); }
+        else { log(S, `Егерь (${p.name}) выбирает ${t.name} — ничего`, 'action'); if (t.role === 'damsel' && off) recordAbn(S, p, 'не превратил Девицу', abnSource(S, p)); }
+      },
+    };
+  },
+  // Девица (вики): в 1-ю ночь Приспешники узнают, что Девица в игре (появилась позже — «если ещё не сделали, сделайте сейчас»)
+  damsel: (S, p, first) => {
+    if (S.flags.damselShown && !first) return { active: false, reason: 'Приспешники уже знают, что Девица в игре', deadOk: true };
+    const ms = S.players.filter(q => realTeam(q) === 'minion');
+    return { deadOk: true, info: () => ({ show: 'Разбудите Приспешников и покажите жетон Девицы', lines: [ms.length ? `Приспешники: ${ms.map(q => q.name).join(', ')}` : 'Приспешников нет'],
+        tokens: [{ label: 'Приспешникам', role: 'damsel', sub: 'Эта роль в игре' }] }),
+      apply: () => { S.flags.damselShown = true; log(S, 'Приспешники узнают, что Девица в игре', 'info'); } };
   },
   balloonist: (S, p, first, off) => {
     const key = 'balloonLast_' + p.id, last = S.flags[key];
@@ -2566,11 +2754,13 @@ const BOUNDS = {
   eviltwin: { first: [Y('Добрый близнец — любой игрок противоположной стороны')] },
   witch: { all: [I('любого игрока (можно себя): если завтра номинирует — умрёт. При 3 живых способность пропадает')] },
   cerenovus: { all: [I('1 игрока и добрую роль'), Y('Если завтра он не помешан на этой роли — можете казнить его')] },
-  pithag: { other: [I('1 игрока и роль, которой нет в игре; сторона игрока не меняется'), Y('Если создан Демон — смерти этой ночью любые, на ваше усмотрение')] },
+  pithag: { other: [I('1 игрока и роль; если роль уже в игре — ничего не происходит. Сторона игрока не меняется, он узнаёт новую роль'), Y('Если создан Демон — смерти этой ночью любые, на ваше усмотрение')] },
   fanggu: { other: [I('любого игрока; первый убитый так Изгой становится злым Фань Гу, а Фань Гу умирает')] },
   vigormortis: { other: [I('любого игрока'), Y('Если убит Приспешник — какой сосед-Горожанин отравлен')] },
   nodashii: { other: [I('любого игрока. Соседи-Горожане Но Даши отравлены всё время')] },
   vortox: { other: [I('любого игрока. Информация Горожан всегда ложная')] },
+  huntsman: { all: [I('1 живого игрока, раз за игру; может отказаться — способность останется'), Y('Если это Девица — каким Горожанином не из игры она станет; она узнаёт новую роль')] },
+  damsel: { first: [Y('Покажите Приспешникам жетон Девицы')], other: [Y('Если Девица появилась позже и Приспешники о ней ещё не знают — покажите им жетон')] },
   widow: { first: [Y('Покажите Гримуар столько, сколько нужно'), I('любого игрока: он отравлен, пока Вдова жива'), Y('1 доброго игрока: он узнаёт, что Вдова в игре (но не кто она и кого отравила)')] },
   balloonist: { first: [Y('Любой игрок: живой или мёртвый, добрый или злой')], other: [Y('Игрок с типом роли не как у показанного прошлой ночью. Пьяному или отравленному Аэронавту можно тот же тип')] },
   tinker: { other: [Y('Можете решить, что Механик умирает (днём — кнопкой на экране дня). Не заканчивайте этим игру')] },
@@ -2681,8 +2871,8 @@ function klutzChoose(S, pid) {
 
 const ENGINE = { newGame, newPlayer, P, nm, rname, realTeam, actsAs, aliveCount, aliveAll, coreCount, isTraveller, exile, exileThreshold, addTraveller, meetingBlocker, isDemon, distribution, setupDistribution, distCheck, unknownSetup, countTeams, randomDeal,
   amnesiacGuess, AMNESIAC_ANSWERS, storytellerKill, voteCount, voteWeight, voudonActive, bishopActive, travellerWorks, executeNow,
-  judgeRuling, gunslingerShot, tinkerDies, doomsayerKill, fiddlerEnd, swapSeats, goonWarn,
-  finishRoles, autoSetup, setupProblems, drawStart, drawOpen, drawClose, drawCancel, drawShown, drawLocked, distortion,
+  judgeRuling, gunslingerShot, tinkerDies, doomsayerKill, fiddlerEnd, swapSeats, goonWarn, damselGuess, changeRole,
+  finishRoles, autoSetup, setupProblems, drawStart, drawOpen, drawClose, drawCancel, drawShown, drawLocked, drawProblem, distortion,
   randomPool, dealPool, validPool, scriptOutsiders, CARD, jinxesInPlay, startGame, startNight, currentStep, stepSpec, applyStep, skipStep,
   stepInputs, missingInputs, endNight,
   nominate, nominationPreview, recordVote, block, execute, endDay, slayerShot, voteThreshold, situation, moonchildChoose, klutzChoose,
@@ -2954,24 +3144,28 @@ const noteDate = ts => new Date(ts).toLocaleString('ru-RU', { day: 'numeric', mo
 
 function notesCard() {
   const pend = NOTE_DRAFT.imgs.map((im, i) => `<span class="nthumb"><img src="${im.thumb}" alt="Скриншот ${i + 1}"><button class="nx" data-act="noteImgDel" data-arg="${i}" aria-label="Убрать скриншот">×</button></span>`).join('');
-  const open = NOTES.filter(n => !n.done).length;
-  const list = NOTES.map(n => `<div class="note ${n.done ? 'done' : ''}">
+  const work = NOTES.filter(n => !n.done), done = NOTES.filter(n => n.done);
+  const item = n => `<div class="note ${n.done ? 'done' : ''}">
       <div class="nhead"><span class="small muted">${esc(noteDate(n.created))}${n.ctx ? ' · ' + esc(n.ctx) : ''}</span></div>
       ${n.text ? `<div class="ntext">${esc(n.text)}</div>` : ''}
       ${(n.images || []).length ? `<div class="nthumbs">${n.images.map((im, i) => `<button class="nthumb" data-act="noteView" data-arg="${n.id}|${i}" aria-label="Открыть скриншот ${i + 1}"><img src="${im.thumb}" alt=""></button>`).join('')}</div>` : ''}
       <div class="row nact"><button class="linkish" data-act="noteDone" data-arg="${n.id}">${n.done ? 'Вернуть в работу' : 'Сделано'}</button>
         ${UI.noteDel === n.id ? `<span class="small">Удалить?</span><button class="linkish danger" data-act="noteDel" data-arg="${n.id}">Да, удалить</button><button class="linkish" data-act="noteDelAsk">Нет</button>`
-          : `<button class="linkish" data-act="noteDelAsk" data-arg="${n.id}">Удалить</button>`}</div></div>`).join('');
+          : `<button class="linkish" data-act="noteDelAsk" data-arg="${n.id}">Удалить</button>`}</div></div>`;
+  // по умолчанию виден только ввод; заметки в работе — по кнопке, выполненные — отдельно, тоже свёрнуты
   return `<div class="card notes"><h3>Заметки: что доработать</h3>
-    <div class="small muted">Пишите, что исправить или добавить, и прикладывайте скриншоты. Заметки хранятся на этом устройстве отдельно от игры. Чтобы передать их, нажмите «Поделиться» или «Скачать файлом».</div>
+    <div class="small muted">Пишите, что исправить или добавить, и прикладывайте скриншоты. Заметки хранятся на этом устройстве отдельно от игры.</div>
     <textarea id="noteText" data-act="noteText" placeholder="Например: в круге номинации не видно, кто уже голосовал">${esc(UI.noteText || '')}</textarea>
     ${pend ? `<div class="nthumbs">${pend}</div>` : ''}
     <div class="row"><label class="btn nfile">${NOTE_DRAFT.busy ? 'Обрабатываю…' : 'Добавить скриншоты'}<input type="file" accept="image/*" multiple data-act="noteFiles" hidden></label>
       <button class="btn primary" data-act="noteSave">Сохранить заметку</button></div>
     ${UI.noteMsg ? `<div class="note-ok">${esc(UI.noteMsg)}</div>` : ''}
-    ${NOTES.length ? `<div class="row"><span class="small muted">Заметок: ${NOTES.length}${open !== NOTES.length ? `, в работе: ${open}` : ''}</span></div>
+    ${NOTES.length ? `<div class="row ntoggles"><button class="btn ${UI.notesOpen ? 'on' : ''}" data-act="notesOpen" aria-expanded="${!!UI.notesOpen}">${UI.notesOpen ? '▴' : '▾'} В работе: ${work.length}</button>
+      ${done.length ? `<button class="btn ${UI.notesDoneOpen ? 'on' : ''}" data-act="notesDoneOpen" aria-expanded="${!!UI.notesDoneOpen}">${UI.notesDoneOpen ? '▴' : '▾'} Выполнено: ${done.length}</button>` : ''}</div>` : ''}
+    ${UI.notesOpen && work.length ? `<div class="small muted">Передать заметки в работе (выполненные не попадают):</div>
       <div class="row"><button class="btn" data-act="noteShare">Поделиться</button><button class="btn" data-act="noteExport">Скачать файлом</button><button class="btn" data-act="noteCopy">Скопировать текст</button></div>
-      <div class="nlist">${list}</div>` : ''}</div>`;
+      <div class="nlist">${work.map(item).join('')}</div>` : UI.notesOpen ? '<div class="small muted">Заметок в работе нет.</div>' : ''}
+    ${UI.notesDoneOpen && done.length ? `<div class="nlist">${done.map(item).join('')}</div>` : ''}</div>`;
 }
 // скриншот на весь экран (нажатие — закрыть)
 function noteViewOverlay() {
@@ -2979,14 +3173,16 @@ function noteViewOverlay() {
   if (!im) return '';
   return `<div class="ov noteov" data-act="noteView" role="dialog" aria-label="Скриншот"><img src="${im.full}" alt="Скриншот"><div class="shhint">Нажмите, чтобы закрыть</div></div>`;
 }
-// текст всех заметок (для копирования и «Поделиться»)
+// заметки в работе, старые — первыми (выполненные не копируются и не выгружаются)
+const notesWork = () => NOTES.filter(n => !n.done).reverse();
+// текст заметок в работе (для копирования и «Поделиться»)
 function notesPlain() {
-  return NOTES.slice().reverse().map((n, i) => `${i + 1}. ${noteDate(n.created)}${n.ctx ? ' — ' + n.ctx : ''}${n.done ? ' [сделано]' : ''}\n${n.text || '(без текста)'}${(n.images || []).length ? `\nСкриншотов: ${n.images.length}` : ''}`).join('\n\n');
+  return notesWork().map((n, i) => `${i + 1}. ${noteDate(n.created)}${n.ctx ? ' — ' + n.ctx : ''}${n.done ? ' [сделано]' : ''}\n${n.text || '(без текста)'}${(n.images || []).length ? `\nСкриншотов: ${n.images.length}` : ''}`).join('\n\n');
 }
 const noteFileName = ext => `Гримуар — заметки ${new Date().toISOString().slice(0, 10)}.${ext}`;
 // один HTML-файл: текст и скриншоты внутри — удобно переслать целиком
 function notesHtmlFile() {
-  const items = NOTES.slice().reverse().map((n, i) => `<section><h2>${i + 1}. ${esc(noteDate(n.created))}${n.done ? ' — сделано' : ''}</h2>${n.ctx ? `<p class="ctx">${esc(n.ctx)}</p>` : ''}
+  const items = notesWork().map((n, i) => `<section><h2>${i + 1}. ${esc(noteDate(n.created))}${n.done ? ' — сделано' : ''}</h2>${n.ctx ? `<p class="ctx">${esc(n.ctx)}</p>` : ''}
     <p>${esc(n.text || '(без текста)').replace(/\n/g, '<br>')}</p>${(n.images || []).map((im, k) => `<img src="${im.full}" alt="Скриншот ${k + 1}">`).join('')}</section>`).join('');
   return `<!doctype html><html lang="ru"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Гримуар — заметки</title>
 <style>body{font:16px/1.45 system-ui,sans-serif;max-width:760px;margin:0 auto;padding:16px;background:#F4EFE3;color:#1E1B18}h1{font-size:22px}h2{font-size:17px;margin:0 0 4px}
@@ -3020,6 +3216,8 @@ const NOTE_ACTS = {
   },
   noteDone: async id => { const n = NOTES.find(x => x.id === id); if (!n) return; n.done = !n.done; await notePut(n); render(); },
   noteDelAsk: id => { UI.noteDel = id || null; render(); },
+  notesOpen: () => { UI.notesOpen = !UI.notesOpen; render(); },
+  notesDoneOpen: () => { UI.notesDoneOpen = !UI.notesDoneOpen; render(); },
   noteDel: async id => { UI.noteDel = null; await noteDelete(id); render(); },
   noteView: arg => { if (UI.noteView) UI.noteView = null; else { const [id, i] = String(arg).split('|'); UI.noteView = { id, i: +i }; } render(); },
   noteCopy: async () => {
@@ -3029,7 +3227,7 @@ const NOTE_ACTS = {
   noteExport: () => { downloadFile(noteFileName('html'), notesHtmlFile(), 'text/html'); noteMsg('Файл с заметками и скриншотами сохранён'); },
   noteShare: async () => {
     const text = notesPlain(), imgs = [];
-    NOTES.slice().reverse().forEach((n, i) => (n.images || []).forEach((im, k) => imgs.push(dataUrlFile(im.full, `заметка-${i + 1}-скриншот-${k + 1}.jpg`))));
+    notesWork().forEach((n, i) => (n.images || []).forEach((im, k) => imgs.push(dataUrlFile(im.full, `заметка-${i + 1}-скриншот-${k + 1}.jpg`))));
     const files = [new File([text], noteFileName('txt'), { type: 'text/plain' })].concat(imgs);
     try {
       if (navigator.canShare && navigator.canShare({ files })) await navigator.share({ title: 'Гримуар — заметки', files });
@@ -3196,6 +3394,7 @@ const MARK_DEFS = [
   { id: 'herring', role: 'fortuneteller', i: 10, red: true, t: 'Ложная цель Гадалки', d: 'Красная полоска — ложная цель: для Гадалки определяется как Демон' },
   { id: 'shown', role: 'washerwoman', t: 'Показан Прачкой, Библиотекарем, Сыщиком', d: 'У него роль, которую показали; с красной полоской — второй игрок, ложная цель (или вся информация ложная)' },
   { id: 'chosen', role: 'exorcist', t: 'Выбран Экзорцистом', d: 'Следующей ночью Экзорцист не может выбрать его снова' },
+  { id: 'guessused', role: 'damsel', t: 'Догадка о Девице использована', d: 'Приспешники больше не могут угадать Девицу' },
   { id: 'know', role: 'widow', i: 11, t: 'Знает о Вдове', d: 'Знает, что Вдова в игре' },
   { id: 'lunch', role: 'cannibal', i: 12, t: 'Обед Каннибала', d: 'Каннибал получил способность этого казнённого' },
   { id: 'votes3', role: 'bureaucrat', i: 13, t: 'Голос за троих', d: 'Бюрократ: завтра его голос считается трижды' },
@@ -3385,10 +3584,17 @@ function showOverlay() {
     return `<div class="shrole side-${al} ${t.small ? 'small' : ''}">${t.pre ? `<div class="shpre">${esc(t.pre)}</div>` : ''}${r ? `${ico(t.role, al, 'shic')}<div class="shname">${esc(E.rname(t.role))}</div>` : ''}${t.players ? names(t.players) : ''}
       ${t.text ? numText(t.text) : ''}${t.sub ? `<div class="shsub">${esc(t.sub)}</div>` : ''}${ab ? `<div class="shab">${esc(r.ability)}</div>` : ''}</div>`;
   };
-  return `<div class="ov showov" data-act="showNext" role="dialog" aria-label="Показ игроку">
-    ${sc.caption ? cardHtml(sc.caption, sc.thumb) : yn ? cardHtml(yn) : ''}
-    ${sc.items.length && !yn ? `<div class="shroles ${sc.stack ? 'stack' : 'n' + Math.min(sc.items.length, 3)}">${sc.items.map(roleBox).join('')}</div>` : ''}
-    <div class="shhint">${sh.i + 1 < sh.screens.length ? `Нажмите — дальше (${sh.i + 1} из ${sh.screens.length})` : 'Нажмите, чтобы закрыть'}</div></div>`;
+  const card = sc.caption ? cardHtml(sc.caption, sc.thumb) : yn ? cardHtml(yn) : '';
+  const roles = sc.items.length && !yn ? `<div class="shroles ${sc.stack ? 'stack' : 'n' + Math.min(sc.items.length, 3)}">${sc.items.map(roleBox).join('')}</div>` : '';
+  const hint = `<div class="shhint">${sh.i + 1 < sh.screens.length ? `Нажмите — дальше (${sh.i + 1} из ${sh.screens.length})` : 'Нажмите, чтобы закрыть'}</div>`;
+  // кнопка поворота — отдельно от слоя показа (нажатие на слой листает дальше)
+  const rot = `<button class="shrot" data-act="showLand" aria-label="${UI.showLand ? 'Показывать вертикально' : 'Показать горизонтально'}">${UI.showLand ? '↕' : '↔'}</button>`;
+  // горизонтально: карточка слева, роли и имена справа. Телефон держат боком: если экран сам не повернулся (портрет),
+  // содержимое повёрнуто на 90° и растянуто на весь экран; если повернулся (альбом) — без поворота (CSS @media orientation)
+  if (UI.showLand) return `<div class="ov showov land ${UI.showFlip ? 'flip' : ''}" data-act="showNext" role="dialog" aria-label="Показ игроку">
+    <div class="shwrap ${card && roles ? 'two' : ''}">${card ? `<div class="shmain">${card}</div>` : ''}${roles ? `<div class="shside">${roles}</div>` : ''}${hint}</div></div>${rot}
+    <button class="shrot flipb" data-act="showFlip" aria-label="Перевернуть на 180°">⟲</button>`;
+  return `<div class="ov showov" data-act="showNext" role="dialog" aria-label="Показ игроку">${card}${roles}${hint}</div>${rot}`;
 }
 // роль игрока, которую он видит (Пьяница — кем себя считает, Безумец — своего «Демона»)
 const seenRole = p => (p.role === 'drunk' || p.role === 'lunatic') && p.believes ? p.believes : p.role;
@@ -3489,7 +3695,9 @@ function dealButtons() {
   if (d && d.finished) return '<div class="note-ok">Роли выданы жребием (стена). Заново не раздаются; роль можно сменить только на роль сценария, которой нет в игре.</div>';
   if (d) return `<div class="row"><button class="btn primary" data-act="wallShow">Продолжить жребий</button><button class="btn danger" data-act="drawCancel">Отменить жребий</button></div>
     <div class="small muted">Пока идёт жребий, роли закреплены за игроками — случайная раздача недоступна.</div>`;
-  return `<div class="row"><button class="btn" data-act="deal">${E.validPool(S) ? 'Раздать выбранные роли случайно' : 'Раздать роли случайно'}</button><button class="btn" data-act="drawStart">Жребий: каменная стена</button></div>`;
+  const prob = E.drawProblem(S);
+  return `<div class="row"><button class="btn" data-act="deal">${E.validPool(S) ? 'Раздать выбранные роли случайно' : 'Раздать роли случайно'}</button><button class="btn" data-act="drawStart" ${prob ? 'disabled' : ''}>Жребий: каменная стена</button></div>
+    ${prob && S.pool && S.pool.length ? `<div class="small muted">${esc(prob)}</div>` : ''}`;
 }
 // подсказки (ideas.js): нажатие подставляет текст в поле
 const ideaChips = (list, act, key, title) => typeof IDEAS === 'undefined' || !IDEAS[list] ? '' : `<details class="ideas"><summary class="small">${esc(title)} (${IDEAS[list].length})</summary>
@@ -3568,7 +3776,9 @@ function revealHtml(info, dist) {
   return `<div class="reveal ${info.secret ? 'secret' : ''} ${dist ? 'poison' : ''}">${dist ? DRIP_SVG : ''}${tag}
     <div class="lab">${info.secret ? 'Только для вас — не показывайте' : 'Покажите / объявите'}</div>${info.show ? `<div class="big">${esc(info.show)}</div>` : ''}
     ${(info.lines || []).filter(Boolean).map(l => `<div class="ln">${esc(l)}</div>`).join('')}
-    ${info.grim ? `<div class="showbtns"><button class="btn showbtn" data-act="grimShow">${art('eye', 'bg')}Показать Гримуар на весь экран</button></div>` : ''}${info.secret ? '' : showButtons(info.tokens)}</div>`;
+    ${info.grim ? `<div class="showbtns"><button class="btn showbtn" data-act="grimShow">${art('eye', 'bg')}Показать Гримуар на весь экран</button>
+      ${dist ? `<button class="btn showbtn" data-act="grimFake">${art('eye', 'bg')}Показать искажённый Гримуар</button>
+        <div class="small muted">Пьяному или отравленному можно дать ложную информацию (вики, «Пьян»): роли перемешаны, часть заменена ролями сценария того же типа; его место, саваны и Странники — как есть, отметок нет.${S.night.data.fakeGrim ? ' <button class="linkish" data-act="grimFakeNew">Перемешать заново</button>' : ''}</div>` : ''}</div>` : ''}${info.secret ? '' : showButtons(info.tokens)}</div>`;
 }
 
 function viewNight() {
@@ -3657,6 +3867,16 @@ function viewDay() {
     parts.push(`<div class="card"><h3>Истребитель: ${esc(s.name)}</h3>${boundsHtml([{ w: 'Игрок выбирает', t: 'публично, 1 игрока, раз за игру' }])}${chipsPlayers('slay_' + s.id, 1, p => p.alive, sel, { act: 'dayPick' })}
       ${t && t.role === 'recluse' ? `<div class="field"><label>Ваше решение: Затворник определяется Демоном?</label><div class="seg"><button class="${picks.slayReg ? '' : 'on'}" data-act="slayReg" data-arg="0">Нет</button><button class="${picks.slayReg ? 'on' : ''}" data-act="slayReg" data-arg="1">Да — он умрёт</button></div></div>` : ''}
       <button class="btn" data-act="slay" data-arg="${s.id}" ${sel.length ? '' : 'disabled'}>Выстрел</button></div>`);
+  }
+  // Девица: Приспешник публично называет игрока Девицей — одна догадка на всех Приспешников за игру (вики)
+  if (S.players.some(p => p.role === 'damsel') && !S.flags.damselGuessUsed) {
+    const by = picks.dgBy || [], on = picks.dgOn || [];
+    parts.push(`<div class="card"><details ${by.length || on.length ? 'open' : ''}><summary class="small"><b>Девица:</b> Приспешник публично угадывает, кто Девица</summary><div class="field" style="margin-top:8px">
+      ${boundsHtml([{ w: 'Игрок', t: 'Приспешник, публично; одна догадка на всех Приспешников за игру — неверная тратит её. Демон, притворяющийся Приспешником, не считается' },
+        { w: 'Итог', t: 'угадал живую Девицу (её способность работает) — победа зла' }])}
+      <div class="flabel"><span>Какой Приспешник угадывает</span></div>${chipsPlayers('dgBy', 1, p => E.realTeam(p) === 'minion', by, { act: 'dayPick', noRole: true })}
+      <div class="flabel"><span>Кого он называет Девицей</span></div>${chipsPlayers('dgOn', 1, () => true, on, { act: 'dayPick', noRole: true })}
+      <button class="btn danger" data-act="damselGuess" ${by.length && on.length ? '' : 'disabled'}>Записать догадку</button></div></details></div>`);
   }
   // Стрелок: сразу после подсчёта 1-го голосования может застрелить проголосовавшего (раз в день)
   for (const g of S.players.filter(p => p.role === 'gunslinger' && p.alive)) {
@@ -3795,10 +4015,26 @@ function viewTable() {
 /* ---------- Гримуар для Шпиона и Вдовы — как в игре: жетоны по кругу, напоминания — к центру ---------- */
 // жетон роли, как настоящий: светлый кружок, иконка, название роли дугой по низу. Пьяница — как в Гримуаре рассказчика:
 // жетон Горожанина, которым он себя считает, а рядом напоминание «Пьяница»
-const tokenRole = p => p.role === 'drunk' && p.believes ? p.believes : p.role;
+const realTokenRole = p => p.role === 'drunk' && p.believes ? p.believes : p.role;
+// искажённый Гримуар (пьяный или отравленный Шпион/Вдова) — роль на месте игрока подменена: S.night.data.fakeGrim.map
+const fakeGrimOn = () => !!(UI.grimShow && UI.grimFake && S.phase === 'night' && S.night && S.night.data.fakeGrim);
+const tokenRole = p => (fakeGrimOn() && S.night.data.fakeGrim.map[p.id]) || realTokenRole(p);
+const tokenAlign = p => fakeGrimOn() && S.night.data.fakeGrim.map[p.id] ? (isGoodRole(S.night.data.fakeGrim.map[p.id]) ? 'good' : 'evil') : p.align;
+// искажённый Гримуар: роли перемешаны между местами, примерно треть заменена ролями сценария того же типа, которых нет в игре.
+// Место смотрящего (Шпиона, Вдовы) и Странники — как есть: подмену там видно сразу
+function makeFakeGrim(viewer) {
+  const mix = a => { a = a.slice(); for (let i = a.length - 1; i > 0; i--) { const j = Math.floor(Math.random() * (i + 1)); [a[i], a[j]] = [a[j], a[i]]; } return a; };
+  const seats = S.players.filter(p => p.id !== viewer && !E.isTraveller(p) && p.role), roles = mix(seats.map(realTokenRole));
+  const used = new Set(S.players.flatMap(p => [p.role, p.believes]).concat(roles));
+  for (const i of mix([...roles.keys()]).slice(0, Math.max(1, Math.round(roles.length / 3)))) {
+    const spare = mix(S.script.roles.filter(r => DATA.roles[r] && team(r) === team(roles[i]) && !used.has(r)))[0];
+    if (spare) { used.add(spare); roles[i] = spare; }
+  }
+  return { viewer, map: Object.fromEntries(seats.map((p, i) => [p.id, roles[i]])) };
+}
 function roleTokenHtml(p, key) {
   const r = tokenRole(p), name = r ? E.rname(r) : '?', fit = name.length > 13 ? ' textLength="112" lengthAdjust="spacingAndGlyphs"' : '';
-  return `<span class="rtk ${p.alive ? '' : 'dead'}">${r ? ico(r, p.align, 'rtki') : ''}
+  return `<span class="rtk ${p.alive ? '' : 'dead'}">${r ? ico(r, tokenAlign(p), 'rtki') : ''}
     <svg class="rtkn" viewBox="0 0 100 100" aria-hidden="true"><path id="${key}" d="M13 56A37 37 0 0 0 87 56" fill="none"/><text><textPath href="#${key}" startOffset="50%" text-anchor="middle"${fit}>${esc(name)}</textPath></text></svg>
     ${shroudHtml(p)}</span>`;
 }
@@ -3831,7 +4067,8 @@ function grimCircle(opts) {
     const spacing = Math.hypot(rx * Math.cos(a), ry * Math.sin(a)) * 2 * Math.PI / n; // расстояние до соседа по кругу
     const vx = cx - x, vy = cy - y, len = Math.hypot(vx, vy) || 1;
     const lw = Math.max(t * 1.1, Math.min(t * 1.7, spacing * 0.96));
-    return { p, x, y, len, ux: vx / len, uy: vy / len, lw, ms: playerMarks(p, { noNotes: !opts.notes }), pos: [], j: 0 };
+    // в искажённом Гримуаре отметок нет — они выдали бы правду
+    return { p, x, y, len, ux: vx / len, uy: vy / len, lw, ms: fakeGrimOn() && !opts.names ? [] : playerMarks(p, { noNotes: !opts.notes }), pos: [], j: 0 };
   });
   // занятые места: жетоны (круги) и таблички с именами (прямоугольники)
   const discs = seats.map(s => ({ x: s.x, y: s.y, r: t / 2 + 0.3 }));
@@ -3866,10 +4103,10 @@ function grimCircle(opts) {
 // жетон крупно: нажатие на жетон в круге Шпиона и Вдовы (роль, способность и все напоминания словами; имени нет — как в Гримуаре)
 function grimZoomHtml() {
   const p = UI.grimZoom && E.P(S, UI.grimZoom); if (!p) return '';
-  const r = tokenRole(p), ms = playerMarks(p, { noNotes: true });
+  const r = tokenRole(p), ms = fakeGrimOn() ? [] : playerMarks(p, { noNotes: true });
   return `<div class="gzoom" data-act="grimZoom" role="dialog" aria-label="${esc(E.rname(r))}"><div class="gzbox">
     <div class="gztok">${roleTokenHtml(p, 'gcz-' + p.id)}</div>
-    <div class="gzrole side-${p.align}">${esc(E.rname(r))}${p.alive ? '' : ` · мёртв${p.ghost ? ', голос призрака есть' : ''}`}</div>
+    <div class="gzrole side-${tokenAlign(p)}">${esc(E.rname(r))}${p.alive ? '' : ` · мёртв${p.ghost ? ', голос призрака есть' : ''}`}</div>
     <div class="gzab">${esc(DATA.roles[r] ? DATA.roles[r].ability : '')}</div>
     ${ms.length ? `<div class="gzmarks">${ms.map(m => `<div class="gzm">${markIcon(m[0], m[2], m[3])}<span>${esc(m[1])}</span></div>`).join('')}</div>` : ''}
     <div class="shhint">Нажмите, чтобы вернуться к Гримуару</div></div></div>`;
@@ -4005,14 +4242,19 @@ const RUNES = [
 const CRACKS = ['M24 1L21 14L27 21L19 31L23 47M27 21L38 25L47 22M21 14L8 9', 'M1 18L14 21L20 30L31 27L47 34M20 30L17 47M31 27L34 3', 'M31 1L26 16L33 25L24 34L28 47M26 16L12 18L2 28M33 25L46 20'];
 function drawCard() {
   const core = S.players.filter(p => !E.isTraveller(p)), d = S.draw, ok = core.length >= 5 && core.length <= 15;
-  const left = d ? d.cells.filter(c => !c.pid).length : 0, dealt = core.every(p => p.role);
-  const src = dealt ? 'Роли уже выданы — стена закрепит их за игроками: какую ячейку игрок ни откроет, выпадет его роль.'
-    : E.validPool(S) ? 'В стене — выбранные «Роли на игру».' : 'Роли не выбраны — приложение наберёт их по раскладке случайно.';
+  const left = d ? d.cells.filter(c => !c.pid).length : 0, held = core.filter(p => p.role).length, prob = !d && E.drawProblem(S);
+  const src = (E.validPool(S) ? 'В мешочке — выбранные «Роли на игру».' : 'Роли на игру не выбраны — приложение наберёт их по раскладке случайно.')
+    + (held && !d ? ` Роли, уже выданные игрокам (${held}), останутся за ними.` : '');
+  // кто ещё не открыл ячейку: нажатие — карточка игрока, там можно назначить роль или тип роли
+  const waiting = d && !d.finished ? core.filter(p => !p.role) : [];
   return `<div class="card drawcard"><h3>Выдача ролей · каменная стена</h3>
-    <div class="small muted">Игроки по кругу открывают светящиеся ячейки — как тянут жетон из мешочка. ${src} Назначения из карточек игроков (роль или тип роли) соблюдаются. Пьяница увидит роль, которой себя считает.</div>
+    <div class="small muted">Игроки по кругу открывают светящиеся ячейки — как тянут жетон из мешочка: роль выпадает в момент открытия, заранее её не знает никто. ${src} Пока игрок не открыл ячейку, в его карточке можно назначить роль или тип роли. Пьяница увидит роль, которой себя считает.</div>
     ${!ok ? '<div class="warn">Нужно от 5 до 15 игроков (без Странников) — рассадку заполните на вкладке «Игра».</div>'
       : d && d.finished ? '<div class="note-ok">Роли выданы жребием. Заново их не раздать; роль можно сменить только на роль сценария, которой нет в игре.</div>'
-      : d ? `<div class="note-ok">Жребий идёт: осталось ячеек — ${left}. Очередь: ${esc(E.nm(S, d.turn))}</div><div class="row"><button class="btn primary" data-act="wallShow">Продолжить жребий</button><button class="btn danger" data-act="drawCancel">Отменить жребий</button></div>`
+      : d ? `<div class="note-ok">Жребий идёт: осталось ячеек — ${left}. Очередь: ${esc(E.nm(S, d.turn))}</div>
+        ${waiting.length ? `<div class="flabel"><span>Ещё не открыли — нажмите, чтобы назначить роль или тип</span></div><div class="seg">${waiting.map(p => `<button data-act="openP" data-arg="${p.id}">${esc(p.name)}${(S.assign || {})[p.id] ? ' → ' + esc(assignLabel(S.assign[p.id])) : ''}</button>`).join('')}</div>` : ''}
+        <div class="row"><button class="btn primary" data-act="wallShow">Продолжить жребий</button><button class="btn danger" data-act="drawCancel">Отменить жребий</button></div>`
+      : prob ? `<div class="warn">${esc(prob)}</div>`
       : '<button class="btn primary wide" data-act="drawStart">Выкатить стену</button>'}</div>`;
 }
 
@@ -4045,13 +4287,16 @@ const assignLabel = a => !a ? '' : a.role ? E.rname(a.role) : E.TEAM_RU[a.team];
 const assignBadge = p => { const a = (S.assign || {})[p.id]; return a ? `<span class="gassign">→ ${esc(assignLabel(a))}</span>` : ''; };
 function assignHtml(p) {
   const as = S.assign || {}, cur = as[p.id], taken = Object.entries(as).filter(([id, a]) => id !== p.id && a.role).map(([, a]) => a.role);
-  const roles = (E.validPool(S) ? S.pool : S.script.roles).filter(r => DATA.roles[r] && !taken.includes(r));
+  // только из «Ролей на игру» (во время жребия — из того, что осталось в мешочке); роли, выданные или назначенные другим, — нет
+  const src = S.draw && !S.draw.finished ? S.draw.bag : (S.pool && S.pool.length ? S.pool : S.script.roles);
+  const roles = src.filter(r => DATA.roles[r] && !taken.includes(r) && !S.players.some(q => q.role === r));
+  const teams = ['townsfolk', 'outsider', 'minion', 'demon'].filter(t => roles.some(r => team(r) === t));
   const opt = (v, l) => `<option value="${v}" ${(cur ? (cur.role ? 'r:' + cur.role : 't:' + cur.team) : '') === v ? 'selected' : ''}>${esc(l)}</option>`;
   return `<div class="editor"><div class="field"><label>Что выпадет игроку на жребии и при раздаче</label>
     <select data-act="assign" data-arg="${p.id}">${opt('', 'Случайно (по умолчанию)')}
-      <optgroup label="Тип роли">${['townsfolk', 'outsider', 'minion', 'demon'].map(t => opt('t:' + t, 'Любой: ' + E.TEAM_RU[t])).join('')}</optgroup>
+      ${teams.length ? `<optgroup label="Тип роли">${teams.map(t => opt('t:' + t, 'Любой: ' + E.TEAM_RU[t])).join('')}</optgroup>` : ''}
       ${['townsfolk', 'outsider', 'minion', 'demon'].map(t => { const rs = roles.filter(r => team(r) === t); return rs.length ? `<optgroup label="${TEAM_PL[t]}">${rs.map(r => opt('r:' + r, E.rname(r))).join('')}</optgroup>` : ''; }).join('')}
-    </select></div><div class="small muted">Какую ячейку стены игрок ни откроет — выпадет назначенное. Роль, назначенная другому игроку, здесь не предлагается.</div></div>`;
+    </select></div><div class="small muted">Какую ячейку стены игрок ни откроет — выпадет назначенное. Только из ролей на игру; роли, выданные или назначенные другим, здесь не предлагаются.</div></div>`;
 }
 function wallOverlay() {
   const d = S.draw; if (!UI.wall || !d) return '';
@@ -4309,6 +4554,7 @@ const A = {
   klutz: () => act(S => E.klutzChoose(S, S.day.picks.klutz[0])),
   slayReg: v => draft(S => { S.day.picks.slayReg = v === '1'; }),
   slay: id => act(S => { E.slayerShot(S, id, S.day.picks['slay_' + id][0], S.day.picks.slayReg); S.day.picks = {}; }),
+  damselGuess: () => { const by = (S.day.picks.dgBy || [])[0], on = (S.day.picks.dgOn || [])[0]; if (by && on) act(S => { E.damselGuess(S, by, on); S.day.picks.dgBy = []; S.day.picks.dgOn = []; }, 'догадка о Девице'); },
   jugAdd: () => { const pid = document.getElementById('jugP').value, role = document.getElementById('jugR').value; if (role) act(S => { (S.flags.jugglerGuesses = S.flags.jugglerGuesses || []).push({ pid, role }); }, 'догадка Жонглёра'); },
   jugDel: i => act(S => S.flags.jugglerGuesses.splice(+i, 1), 'убрана догадка'),
   exPick: arg => { const id = arg.split('|')[1]; draft(S => { const ex = S.day.picks.exile || { pid: null, voters: [] }; ex.pid = ex.pid === id ? null : id; ex.voters = []; S.day.picks.exile = ex; UI.pickOpen = ex.pid ? null : 'exPid'; }); },
@@ -4355,7 +4601,12 @@ const A = {
   // Гримуар: карточка игрока, показ роли на весь экран
   openP: id => { UI.open = UI.open === id ? null : id; render(); },
   legend: () => { UI.legend = !UI.legend; render(); },
-  grimShow: () => { UI.grimShow = !UI.grimShow; UI.grimZoom = null; render(); },
+  grimShow: () => { UI.grimShow = !UI.grimShow; UI.grimFake = false; UI.grimZoom = null; render(); },
+  // искажённый Гримуар: один и тот же на эту ночь (пока не «Перемешать заново»)
+  grimFake: () => { const st = E.currentStep(S), viewer = st && st.pid;
+    if (!S.night.data.fakeGrim || S.night.data.fakeGrim.viewer !== viewer) draft(S => { S.night.data.fakeGrim = makeFakeGrim(viewer); });
+    UI.grimShow = true; UI.grimFake = true; UI.grimZoom = null; render(); },
+  grimFakeNew: () => { const st = E.currentStep(S); draft(S => { S.night.data.fakeGrim = makeFakeGrim(st && st.pid); }); },
   grimZoom: id => { UI.grimZoom = UI.grimZoom ? null : id; render(); },
   // круг игроков: рассадка (подготовка) и номинация (день)
   ringSeat: () => { UI.ring = 'seat'; render(); },
@@ -4373,10 +4624,13 @@ const A = {
   }),
   showOpen: i => { const g = (UI.showGroups || [])[+i]; if (g) { UI.show = { screens: g.screens, i: 0 }; render(); } },
   showNext: () => { if (!UI.show) return; UI.show.i += 1; if (UI.show.i >= UI.show.screens.length) UI.show = null; render(); },
+  // горизонтальный показ (запоминается на устройстве); ⟲ — повернуть на 180°, если держат телефон другим боком
+  showLand: () => { UI.showLand = !UI.showLand; try { localStorage.setItem('botc-grimoire-showland', UI.showLand ? '1' : ''); } catch (e) { /* без хранилища — до перезагрузки */ } render(); },
+  showFlip: () => { UI.showFlip = !UI.showFlip; try { localStorage.setItem('botc-grimoire-showflip', UI.showFlip ? '1' : ''); } catch (e) { /* без хранилища */ } render(); },
   showRole: id => { const p = E.P(S, id), r = seenRole(p); UI.show = { screens: [{ caption: 'Ваша роль', items: [{ role: r, align: r === p.role ? p.align : undefined }] }], i: 0 }; render(); },
   showRef: rid => { UI.show = { screens: [{ caption: '', items: [{ role: rid, align: DATA.roles[rid].team === 'fabled' || DATA.roles[rid].team === 'loric' ? 'good' : undefined }] }], i: 0 }; render(); },
   // жребий: каменная стена
-  drawStart: () => { if (S.draw) return wallIn(); act(S => E.drawStart(S), 'жребий: стена'); wallIn(); },
+  drawStart: () => { if (S.draw) return wallIn(); const pr = E.drawProblem(S); if (pr) return alertNote(pr); act(S => E.drawStart(S), 'жребий: стена'); wallIn(); },
   // Савант, Рыбак, Мецефель (день)
   savGen: id => draft(S => { S.day.picks['sav_' + id] = IDEAS.savantPair(S, id); }),
   savLog: id => { const pair = S.day.picks['sav_' + id]; if (pair) act(S => E.log(S, `Савант (${E.nm(S, id)}): ${pair.map(x => `«${x.text}» — ${x.truth ? 'правда' : 'ложь'}`).join('; ')}`, 'day'), 'факты Саванта'); },
@@ -4530,6 +4784,8 @@ function boot(hotData) {
   }
   if (!S) S = sampleGame();
   S = upgrade(S);
+  // настройки этого устройства: показ игрокам горизонтально и каким боком
+  try { UI.showLand = localStorage.getItem('botc-grimoire-showland') === '1'; UI.showFlip = localStorage.getItem('botc-grimoire-showflip') === '1'; } catch (e) { /* по умолчанию — вертикально */ }
   if (!document.getElementById('artvars')) artVars();
   render();
   connectCloud();

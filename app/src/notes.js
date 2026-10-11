@@ -67,24 +67,28 @@ const noteDate = ts => new Date(ts).toLocaleString('ru-RU', { day: 'numeric', mo
 
 function notesCard() {
   const pend = NOTE_DRAFT.imgs.map((im, i) => `<span class="nthumb"><img src="${im.thumb}" alt="Скриншот ${i + 1}"><button class="nx" data-act="noteImgDel" data-arg="${i}" aria-label="Убрать скриншот">×</button></span>`).join('');
-  const open = NOTES.filter(n => !n.done).length;
-  const list = NOTES.map(n => `<div class="note ${n.done ? 'done' : ''}">
+  const work = NOTES.filter(n => !n.done), done = NOTES.filter(n => n.done);
+  const item = n => `<div class="note ${n.done ? 'done' : ''}">
       <div class="nhead"><span class="small muted">${esc(noteDate(n.created))}${n.ctx ? ' · ' + esc(n.ctx) : ''}</span></div>
       ${n.text ? `<div class="ntext">${esc(n.text)}</div>` : ''}
       ${(n.images || []).length ? `<div class="nthumbs">${n.images.map((im, i) => `<button class="nthumb" data-act="noteView" data-arg="${n.id}|${i}" aria-label="Открыть скриншот ${i + 1}"><img src="${im.thumb}" alt=""></button>`).join('')}</div>` : ''}
       <div class="row nact"><button class="linkish" data-act="noteDone" data-arg="${n.id}">${n.done ? 'Вернуть в работу' : 'Сделано'}</button>
         ${UI.noteDel === n.id ? `<span class="small">Удалить?</span><button class="linkish danger" data-act="noteDel" data-arg="${n.id}">Да, удалить</button><button class="linkish" data-act="noteDelAsk">Нет</button>`
-          : `<button class="linkish" data-act="noteDelAsk" data-arg="${n.id}">Удалить</button>`}</div></div>`).join('');
+          : `<button class="linkish" data-act="noteDelAsk" data-arg="${n.id}">Удалить</button>`}</div></div>`;
+  // по умолчанию виден только ввод; заметки в работе — по кнопке, выполненные — отдельно, тоже свёрнуты
   return `<div class="card notes"><h3>Заметки: что доработать</h3>
-    <div class="small muted">Пишите, что исправить или добавить, и прикладывайте скриншоты. Заметки хранятся на этом устройстве отдельно от игры. Чтобы передать их, нажмите «Поделиться» или «Скачать файлом».</div>
+    <div class="small muted">Пишите, что исправить или добавить, и прикладывайте скриншоты. Заметки хранятся на этом устройстве отдельно от игры.</div>
     <textarea id="noteText" data-act="noteText" placeholder="Например: в круге номинации не видно, кто уже голосовал">${esc(UI.noteText || '')}</textarea>
     ${pend ? `<div class="nthumbs">${pend}</div>` : ''}
     <div class="row"><label class="btn nfile">${NOTE_DRAFT.busy ? 'Обрабатываю…' : 'Добавить скриншоты'}<input type="file" accept="image/*" multiple data-act="noteFiles" hidden></label>
       <button class="btn primary" data-act="noteSave">Сохранить заметку</button></div>
     ${UI.noteMsg ? `<div class="note-ok">${esc(UI.noteMsg)}</div>` : ''}
-    ${NOTES.length ? `<div class="row"><span class="small muted">Заметок: ${NOTES.length}${open !== NOTES.length ? `, в работе: ${open}` : ''}</span></div>
+    ${NOTES.length ? `<div class="row ntoggles"><button class="btn ${UI.notesOpen ? 'on' : ''}" data-act="notesOpen" aria-expanded="${!!UI.notesOpen}">${UI.notesOpen ? '▴' : '▾'} В работе: ${work.length}</button>
+      ${done.length ? `<button class="btn ${UI.notesDoneOpen ? 'on' : ''}" data-act="notesDoneOpen" aria-expanded="${!!UI.notesDoneOpen}">${UI.notesDoneOpen ? '▴' : '▾'} Выполнено: ${done.length}</button>` : ''}</div>` : ''}
+    ${UI.notesOpen && work.length ? `<div class="small muted">Передать заметки в работе (выполненные не попадают):</div>
       <div class="row"><button class="btn" data-act="noteShare">Поделиться</button><button class="btn" data-act="noteExport">Скачать файлом</button><button class="btn" data-act="noteCopy">Скопировать текст</button></div>
-      <div class="nlist">${list}</div>` : ''}</div>`;
+      <div class="nlist">${work.map(item).join('')}</div>` : UI.notesOpen ? '<div class="small muted">Заметок в работе нет.</div>' : ''}
+    ${UI.notesDoneOpen && done.length ? `<div class="nlist">${done.map(item).join('')}</div>` : ''}</div>`;
 }
 // скриншот на весь экран (нажатие — закрыть)
 function noteViewOverlay() {
@@ -92,14 +96,16 @@ function noteViewOverlay() {
   if (!im) return '';
   return `<div class="ov noteov" data-act="noteView" role="dialog" aria-label="Скриншот"><img src="${im.full}" alt="Скриншот"><div class="shhint">Нажмите, чтобы закрыть</div></div>`;
 }
-// текст всех заметок (для копирования и «Поделиться»)
+// заметки в работе, старые — первыми (выполненные не копируются и не выгружаются)
+const notesWork = () => NOTES.filter(n => !n.done).reverse();
+// текст заметок в работе (для копирования и «Поделиться»)
 function notesPlain() {
-  return NOTES.slice().reverse().map((n, i) => `${i + 1}. ${noteDate(n.created)}${n.ctx ? ' — ' + n.ctx : ''}${n.done ? ' [сделано]' : ''}\n${n.text || '(без текста)'}${(n.images || []).length ? `\nСкриншотов: ${n.images.length}` : ''}`).join('\n\n');
+  return notesWork().map((n, i) => `${i + 1}. ${noteDate(n.created)}${n.ctx ? ' — ' + n.ctx : ''}${n.done ? ' [сделано]' : ''}\n${n.text || '(без текста)'}${(n.images || []).length ? `\nСкриншотов: ${n.images.length}` : ''}`).join('\n\n');
 }
 const noteFileName = ext => `Гримуар — заметки ${new Date().toISOString().slice(0, 10)}.${ext}`;
 // один HTML-файл: текст и скриншоты внутри — удобно переслать целиком
 function notesHtmlFile() {
-  const items = NOTES.slice().reverse().map((n, i) => `<section><h2>${i + 1}. ${esc(noteDate(n.created))}${n.done ? ' — сделано' : ''}</h2>${n.ctx ? `<p class="ctx">${esc(n.ctx)}</p>` : ''}
+  const items = notesWork().map((n, i) => `<section><h2>${i + 1}. ${esc(noteDate(n.created))}${n.done ? ' — сделано' : ''}</h2>${n.ctx ? `<p class="ctx">${esc(n.ctx)}</p>` : ''}
     <p>${esc(n.text || '(без текста)').replace(/\n/g, '<br>')}</p>${(n.images || []).map((im, k) => `<img src="${im.full}" alt="Скриншот ${k + 1}">`).join('')}</section>`).join('');
   return `<!doctype html><html lang="ru"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Гримуар — заметки</title>
 <style>body{font:16px/1.45 system-ui,sans-serif;max-width:760px;margin:0 auto;padding:16px;background:#F4EFE3;color:#1E1B18}h1{font-size:22px}h2{font-size:17px;margin:0 0 4px}
@@ -133,6 +139,8 @@ const NOTE_ACTS = {
   },
   noteDone: async id => { const n = NOTES.find(x => x.id === id); if (!n) return; n.done = !n.done; await notePut(n); render(); },
   noteDelAsk: id => { UI.noteDel = id || null; render(); },
+  notesOpen: () => { UI.notesOpen = !UI.notesOpen; render(); },
+  notesDoneOpen: () => { UI.notesDoneOpen = !UI.notesDoneOpen; render(); },
   noteDel: async id => { UI.noteDel = null; await noteDelete(id); render(); },
   noteView: arg => { if (UI.noteView) UI.noteView = null; else { const [id, i] = String(arg).split('|'); UI.noteView = { id, i: +i }; } render(); },
   noteCopy: async () => {
@@ -142,7 +150,7 @@ const NOTE_ACTS = {
   noteExport: () => { downloadFile(noteFileName('html'), notesHtmlFile(), 'text/html'); noteMsg('Файл с заметками и скриншотами сохранён'); },
   noteShare: async () => {
     const text = notesPlain(), imgs = [];
-    NOTES.slice().reverse().forEach((n, i) => (n.images || []).forEach((im, k) => imgs.push(dataUrlFile(im.full, `заметка-${i + 1}-скриншот-${k + 1}.jpg`))));
+    notesWork().forEach((n, i) => (n.images || []).forEach((im, k) => imgs.push(dataUrlFile(im.full, `заметка-${i + 1}-скриншот-${k + 1}.jpg`))));
     const files = [new File([text], noteFileName('txt'), { type: 'text/plain' })].concat(imgs);
     try {
       if (navigator.canShare && navigator.canShare({ files })) await navigator.share({ title: 'Гримуар — заметки', files });

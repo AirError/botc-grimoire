@@ -154,6 +154,105 @@ try {
   runNight(S, { exorcist: { t: ids(S, 'empath') } });
   ok('Экзорцист: «Выбран» только на последнем выбранном', E.hasTok(byRole(S, 'empath'), 'chosen', 'exorcist') && !E.hasTok(byRole(S, 'chef'), 'chosen', 'exorcist'));
 
+  // 18г. Смена ролей (проверка по вики, 2026-10-11): Яга, Цирюльник, Заклинатель змей + Философ, Фань Гу, Философ, Егерь и Девица
+  { // отдельный блок: свои имена переменных
+  // до шага роли id в текущей ночи (шаги до него — по умолчанию); возвращает спецификацию шага
+  const toStep = (S, id, inputs) => { let g = 0; while (S.phase === 'night' && g++ < 100) { const st = E.currentStep(S); if (st.id === id) return st;
+    const sp = E.stepSpec(S, st); if (!sp.active) { E.skipStep(S); continue; } const r = E.applyStep(S, st, Object.assign({}, sp.defaults, (inputs || {})[st.id] || {})); if (!r.ok) E.skipStep(S); } return null; };
+  const rest = S => S.night.steps.slice(S.night.i + 1);
+  // Яга: роль в игре — ничего; превращение — сторона прежняя, ночь перестраивается, эффекты старой роли кончаются
+  S = game(['clockmaker', 'dreamer', 'snakecharmer', 'mathematician', 'flowergirl', 'sweetheart', 'pithag', 'witch', 'vigormortis'], 'snv');
+  S.players.forEach(p => { if (p.role === 'witch') p.align = 'evil'; }); E.autoSetup(S, true); E.startGame(S);
+  runNight(S, { witch: { t: ids(S, 'clockmaker') } }); E.endDay(S); E.addTok(S, byRole(S, 'clockmaker'), 'cursed', 'witch', ['dusk', S.n + 1]);
+  let st = toStep(S, 'pithag'); E.applyStep(S, st, { t: ids(S, 'flowergirl'), r: 'dreamer' });
+  ok('Яга: роль уже в игре — ничего не происходит', byRole(S, 'flowergirl') && byRole(S, 'dreamer'));
+  E.endNight(S); E.endDay(S);
+  const fg = byRole(S, 'flowergirl'), wi = byRole(S, 'witch'); E.addTok(S, byRole(S, 'clockmaker'), 'cursed', 'witch', ['dusk', S.n + 1]);
+  st = toStep(S, 'pithag'); E.applyStep(S, st, { t: [wi.id], r: 'cerenovus' });
+  ok('Яга: Ведьма → Цереновус, сторона прежняя, проклятие Ведьмы снято', wi.role === 'cerenovus' && wi.align === 'evil' && !E.hasTok(byRole(S, 'clockmaker'), 'cursed'));
+  E.endNight(S); E.endDay(S);
+  // Математик и Оракул ходят после Яги: после превращения этой ночью просыпается Оракул, а не Математик
+  const ma = byRole(S, 'mathematician'); st = toStep(S, 'pithag'); E.applyStep(S, st, { t: [ma.id], r: 'oracle' });
+  ok('Яга: ночь перестроена — Математик не просыпается, Оракул — в свою очередь', ma.role === 'oracle' && !rest(S).some(s => s.pid === ma.id && s.id === 'mathematician') && rest(S).some(s => s.pid === ma.id && s.id === 'oracle'));
+  E.endNight(S); E.endDay(S);
+  st = toStep(S, 'pithag'); E.applyStep(S, st, { t: [fg.id], r: 'eviltwin' });
+  ok('Яга: созданный Злой Близнец знакомится с близнецом этой же ночью (способность «в 1-ю ночь»)', fg.role === 'eviltwin' && fg.align === 'good' && rest(S).some(s => s.pid === fg.id && s.id === 'eviltwin' && s.fresh));
+  E.endNight(S); E.endDay(S);
+  const dr = byRole(S, 'dreamer');
+  st = toStep(S, 'pithag'); E.applyStep(S, st, { t: [dr.id], r: 'fanggu', kill: [] });
+  ok('Яга: создан Демон — у Демона этой ночью пометка «смерти на ваше усмотрение»', dr.role === 'fanggu' && S.night.data.pithagDemon && rest(S).some(s => s.id === 'vigormortis' && E.stepSpec(S, s).warn.some(w => /Яга создала Демона/.test(w))));
+  // Яга создаёт Пьяницу — он считает себя Горожанином не из игры
+  S = game(['washerwoman', 'chef', 'empath', 'monk', 'slayer', 'pithag', 'imp'], 'tb'); S.script.roles = S.script.roles.concat('pithag');
+  S.players.forEach(p => { if (p.role === 'pithag') p.align = 'evil'; }); E.autoSetup(S, true); E.startGame(S); runNight(S, {}); E.endDay(S);
+  const ch = byRole(S, 'chef'); st = toStep(S, 'pithag'); E.applyStep(S, st, { t: [ch.id], r: 'drunk' });
+  ok('Яга: созданный Пьяница считает себя Горожанином не из игры', ch.role === 'drunk' && ch.believes && E.realTeam({ role: ch.believes }) === 'townsfolk' && !S.players.some(p => p.role === ch.believes) && !!E.abilityOff(S, ch));
+  // Цирюльник: умер днём — ночью Демон меняет двух игроков; стороны прежние, Пьяница уносит свой жетон, ночь перестраивается
+  S = game(['clockmaker', 'dreamer', 'snakecharmer', 'mathematician', 'barber', 'drunk', 'witch', 'vigormortis'], 'snv'); S.script.roles = S.script.roles.concat('drunk');
+  S.players.forEach(p => { if (['witch', 'vigormortis'].includes(p.role)) p.align = 'evil'; }); E.autoSetup(S, true); E.startGame(S);
+  const drk = byRole(S, 'drunk'), drB = drk.believes; runNight(S, { witch: { t: ids(S, 'clockmaker') } });
+  E.execute(S, byRole(S, 'barber').id); E.endDay(S);
+  const mat = byRole(S, 'mathematician'), vx = byRole(S, 'vigormortis');
+  st = toStep(S, 'barber', { vigormortis: { t: ids(S, 'clockmaker') } });
+  E.applyStep(S, st, { t: [mat.id, drk.id] });
+  ok('Цирюльник: роли обменялись, стороны прежние', mat.role === 'drunk' && drk.role === 'mathematician' && mat.align === 'good' && drk.align === 'good');
+  ok('Цирюльник: новый Пьяница считает себя той же ролью, что и прежний (жетон переходит вместе с ролью)', mat.believes === drB && !drk.believes);
+  E.endNight(S); E.endDay(S); runNight(S, { vigormortis: { t: ids(S, 'dreamer') } }); E.endDay(S);
+  // Демон меняется сам с добрым игроком: добрый Демон, злой не-Демон, игра продолжается
+  S = game(['clockmaker', 'dreamer', 'snakecharmer', 'mathematician', 'barber', 'sweetheart', 'witch', 'vigormortis'], 'snv');
+  S.players.forEach(p => { if (['witch', 'vigormortis'].includes(p.role)) p.align = 'evil'; }); E.autoSetup(S, true); E.startGame(S); runNight(S, { witch: { t: ids(S, 'clockmaker') } });
+  E.execute(S, byRole(S, 'barber').id); E.endDay(S);
+  const v0 = byRole(S, 'vigormortis'), cm = byRole(S, 'clockmaker');
+  st = toStep(S, 'barber', { vigormortis: { t: ids(S, 'dreamer') } }); E.applyStep(S, st, { t: [v0.id, cm.id] });
+  ok('Цирюльник: Демон меняется сам — добрый Демон, злой Часовщик, игра идёт', cm.role === 'vigormortis' && cm.align === 'good' && v0.role === 'clockmaker' && v0.align === 'evil' && !S.result);
+  // Заклинатель змей — способность у Философа: прежний Демон становится Философом, новый Демон просыпается Демоном
+  S = game(['clockmaker', 'dreamer', 'philosopher', 'mathematician', 'flowergirl', 'sweetheart', 'witch', 'nodashii'], 'snv');
+  S.players.forEach(p => { if (['witch', 'nodashii'].includes(p.role)) p.align = 'evil'; }); E.autoSetup(S, true); E.startGame(S);
+  const ph = byRole(S, 'philosopher'), nd = byRole(S, 'nodashii');
+  runNight(S, { philosopher: { r: 'snakecharmer' }, witch: { t: ids(S, 'clockmaker') } }); E.endDay(S);
+  st = toStep(S, 'snakecharmer'); E.applyStep(S, st, { t: [nd.id] });
+  ok('Заклинатель (Философ): Философ стал Но Даши и злым, прежний Демон — добрый отравленный Философ со способностью Заклинателя',
+    ph.role === 'nodashii' && ph.align === 'evil' && !ph.gained && E.actsAs(ph) === 'nodashii' && nd.role === 'philosopher' && nd.gained === 'snakecharmer' && nd.align === 'good' && !!E.abilityOff(S, nd));
+  ok('Заклинатель: дальше этой ночью Демоном просыпается новый Демон', rest(S).some(s => s.id === 'nodashii' && s.pid === ph.id) && !rest(S).some(s => s.id === 'nodashii' && s.pid === nd.id));
+  // Фань Гу: Изгой под защитой Монаха не умирает и не становится Фань Гу; без защиты — прыжок
+  S = game(['monk', 'chef', 'empath', 'washerwoman', 'recluse', 'saint', 'poisoner', 'fanggu'], 'tb'); S.script.roles = S.script.roles.concat('fanggu');
+  S.players.forEach(p => { if (['poisoner', 'fanggu'].includes(p.role)) p.align = 'evil'; }); E.autoSetup(S, true); E.startGame(S); runNight(S, { poisoner: { t: ids(S, 'chef') } }); E.endDay(S);
+  const rc = byRole(S, 'recluse'), fgu = byRole(S, 'fanggu');
+  runNight(S, { monk: { t: [rc.id] }, fanggu: { t: [rc.id] }, poisoner: { t: ids(S, 'chef') } });
+  ok('Фань Гу: Изгой под защитой Монаха — не умер и не стал Фань Гу', rc.alive && rc.role === 'recluse' && fgu.alive && fgu.role === 'fanggu' && !S.flags.fangguJumped);
+  E.endDay(S); runNight(S, { monk: { t: ids(S, 'chef') }, fanggu: { t: [rc.id] }, poisoner: { t: ids(S, 'chef') } });
+  ok('Фань Гу: без защиты — Изгой становится злым Фань Гу, прежний умирает', rc.role === 'fanggu' && rc.align === 'evil' && rc.alive && !fgu.alive && !S.result);
+  // Философ: игрок с выбранной ролью пьян, пока Философ жив; умер Философ — трезв снова
+  S = game(['philosopher', 'empath', 'chef', 'washerwoman', 'monk', 'poisoner', 'imp'], 'tb'); S.script.roles = S.script.roles.concat('philosopher');
+  S.players.forEach(p => { if (['poisoner', 'imp'].includes(p.role)) p.align = 'evil'; }); E.autoSetup(S, true); E.startGame(S);
+  runNight(S, { philosopher: { r: 'empath' }, poisoner: { t: ids(S, 'chef') } });
+  const empP = byRole(S, 'empath'), phi = byRole(S, 'philosopher'); const drunkWhile = !!E.abilityOff(S, empP);
+  E.execute(S, phi.id);
+  ok('Философ: обладатель выбранной роли пьян, пока Философ жив; после смерти Философа — трезв', drunkWhile && !E.abilityOff(S, empP));
+  // Егерь и Девица: Приспешники узнают Девицу; Егерь превращает Девицу в Горожанина; догадка Приспешника — одна на всех
+  const hd = ['huntsman', 'damsel', 'chef', 'empath', 'washerwoman', 'monk', 'poisoner', 'imp'];
+  S = game(hd, 'tb'); S.script.roles = S.script.roles.concat('huntsman', 'damsel');
+  S.players.forEach(p => { if (['poisoner', 'imp'].includes(p.role)) p.align = 'evil'; }); E.autoSetup(S, true); E.startGame(S);
+  const dm = byRole(S, 'damsel'), hu = byRole(S, 'huntsman');
+  const dst = S.night.steps.find(s => s.id === 'damsel'), dsp = E.stepSpec(S, dst), dinfo = dsp.info({});
+  ok('Девица: в 1-ю ночь Приспешникам показывают жетон Девицы', dsp.active && dinfo.tokens.some(t => t.role === 'damsel'));
+  runNight(S, { huntsman: { t: ids(S, 'chef') }, poisoner: { t: ids(S, 'chef') } });
+  ok('Егерь: выбрал не Девицу — ничего, способность потрачена', dm.role === 'damsel' && !E.stepSpec(S, { id: 'huntsman', pid: hu.id }).active);
+  S = game(hd, 'tb'); S.script.roles = S.script.roles.concat('huntsman', 'damsel');
+  S.players.forEach(p => { if (['poisoner', 'imp'].includes(p.role)) p.align = 'evil'; }); E.autoSetup(S, true); E.startGame(S);
+  const dm2 = byRole(S, 'damsel');
+  runNight(S, { huntsman: { t: [dm2.id], r: 'slayer' }, poisoner: { t: ids(S, 'chef') } });
+  ok('Егерь нашёл Девицу: она стала Горожанином не из игры (Истребитель), сторона добрая', dm2.role === 'slayer' && dm2.align === 'good');
+  S = game(hd, 'tb'); S.script.roles = S.script.roles.concat('huntsman', 'damsel');
+  S.players.forEach(p => { if (['poisoner', 'imp'].includes(p.role)) p.align = 'evil'; }); E.autoSetup(S, true); E.startGame(S); runNight(S, { huntsman: {}, poisoner: { t: ids(S, 'chef') } });
+  const r1 = E.damselGuess(S, byRole(S, 'poisoner').id, byRole(S, 'chef').id), r2 = E.damselGuess(S, byRole(S, 'poisoner').id, byRole(S, 'damsel').id);
+  ok('Девица: Приспешник не угадал — догадок больше нет, игра идёт', r1 && !r1.hit && r2 === null && !S.result);
+  S = game(hd, 'tb'); S.script.roles = S.script.roles.concat('huntsman', 'damsel');
+  S.players.forEach(p => { if (['poisoner', 'imp'].includes(p.role)) p.align = 'evil'; }); E.autoSetup(S, true); E.startGame(S); runNight(S, { huntsman: {}, poisoner: { t: ids(S, 'chef') } });
+  ok('Девица: Демон «угадывает» — не считается', E.damselGuess(S, byRole(S, 'imp').id, byRole(S, 'damsel').id) === null && !S.result);
+  E.damselGuess(S, byRole(S, 'poisoner').id, byRole(S, 'damsel').id);
+  ok('Девица: Приспешник угадал — победа зла', S.result && S.result.winner === 'evil');
+  }
+
   // 19. Девственница и Шпион — решение рассказчика
   S = game(['washerwoman', 'virgin', 'investigator', 'chef', 'empath', 'drunk', 'spy', 'imp'], 'tb');
   E.autoSetup(S, true); E.startGame(S);
@@ -539,23 +638,34 @@ try {
   ok('сценарии сообщества: раздача и две ночи без ошибок', !commErr.length, commErr.slice(0, 3).join(' | '));
   ok('сценарий со Сказочниками: Джинн и Ловец Бури в игре', E.newGame('reptiles2').fabled.join() === 'stormcatcher,djinn');
 
-  // 31. жребий: каменная стена — роли закреплены за игроками до жребия, какую ячейку ни открой — выпадет своя
-  S = game(['washerwoman', 'librarian', 'investigator', 'chef', 'empath', 'drunk', 'poisoner', 'imp'], 'tb'); E.autoSetup(S, true);
-  const mine = Object.fromEntries(S.players.map(p => [p.id, p.role])), drunkSees = byRole(S, 'drunk').believes;
+  // 31. жребий: каменная стена — роль выпадает в момент открытия ячейки, строго из «Ролей на игру»
+  const drawAll = (S, before) => { let g = 0; while (S.draw.turn && g++ < 30) { if (before) before(S); const k = S.draw.cells.findIndex(c => !c.pid); E.drawOpen(S, k); E.drawClose(S); } };
+  const POOL8 = ['washerwoman', 'librarian', 'investigator', 'chef', 'empath', 'drunk', 'poisoner', 'imp'];
+  S = E.newGame('tb'); for (let i = 0; i < 8; i++) S.players.push(E.newPlayer('W' + i)); S.pool = POOL8.slice();
   E.drawStart(S);
-  ok('жребий: роли закреплены за игроками, жребий не закончен', S.players.every(p => p.role === mine[p.id]) && S.draw.cells.length === 8 && E.setupProblems(S).some(t => /Жребий не закончен/.test(t)));
-  ok('жребий: во время жребия случайная раздача недоступна', E.randomDeal(S) === false && S.players.every(p => p.role === mine[p.id]));
-  let guardDraw = 0, cellOk = true;
-  while (S.draw.turn && guardDraw++ < 20) { const pl = E.P(S, S.draw.turn), k = S.draw.cells.map((c, i) => c.pid ? -1 : i).filter(i => i >= 0).pop();
-    E.drawOpen(S, k); if (S.draw.cells[k].role !== pl.role) cellOk = false; E.drawClose(S); }
-  ok('жребий: какую ячейку ни открой — выпадает своя роль', cellOk && S.draw.finished && S.players.every(p => p.role === mine[p.id]) && E.setupProblems(S).length === 0, E.setupProblems(S).join('; '));
-  ok('жребий: Пьяница видит роль, которой себя считает', E.drawShown(S.draw.cells.find(c => c.role === 'drunk')) === drunkSees && byRole(S, 'drunk').believes === drunkSees);
-  ok('жребий: после стены роли не раздать заново', E.drawLocked(S) && E.randomDeal(S) === false && S.players.every(p => p.role === mine[p.id]));
-  // назначения: конкретная роль и тип роли
-  S = E.newGame('tb'); for (let i = 0; i < 8; i++) S.players.push(E.newPlayer('N' + i));
-  S.assign = { [S.players[0].id]: { role: 'imp' }, [S.players[1].id]: { team: 'outsider' }, [S.players[2].id]: { role: 'washerwoman' } };
+  ok('жребий: до открытия ячеек ролей ни у кого нет, жребий не закончен', S.players.every(p => !p.role) && S.draw.cells.length === 8 && S.draw.bag.length === 8 && E.setupProblems(S).some(t => /Жребий не закончен/.test(t)));
+  ok('жребий: во время жребия случайная раздача недоступна', E.randomDeal(S) === false && S.players.every(p => !p.role));
+  const k0 = S.draw.cells.findIndex(c => !c.pid); E.drawOpen(S, 0); E.drawClose(S);
+  ok('жребий: роль выпадает только открывшему ячейку', S.players.filter(p => p.role).length === 1 && S.draw.bag.length === 7, k0);
+  drawAll(S);
+  ok('жребий: роли — ровно «Роли на игру», без повторов, раскладка в порядке', S.draw.finished && S.players.map(p => p.role).sort().join() === POOL8.slice().sort().join() && E.setupProblems(S).length === 0, E.setupProblems(S).join('; '));
+  const dr = byRole(S, 'drunk');
+  ok('жребий: Пьяница видит Горожанина не из игры и не из блефов', dr.believes && E.realTeam({ role: dr.believes }) === 'townsfolk' && !S.players.some(p => p.role === dr.believes) && !S.bluffs.includes(dr.believes) && E.drawShown(S.draw.cells.find(c => c.pid === dr.id)) === dr.believes);
+  ok('жребий: после стены роли не раздать заново', E.drawLocked(S) && E.randomDeal(S) === false && S.bluffs.filter(Boolean).length === 3);
+  // назначения: конкретная роль и тип роли — в том числе назначенные во время жребия
+  S = E.newGame('tb'); for (let i = 0; i < 8; i++) S.players.push(E.newPlayer('N' + i)); S.pool = POOL8.slice();
+  S.assign = { [S.players[5].id]: { role: 'imp' }, [S.players[6].id]: { team: 'minion' } };
   E.drawStart(S);
-  ok('жребий: назначенные роль и тип роли выпадают нужным игрокам', S.players[0].role === 'imp' && E.realTeam(S.players[1]) === 'outsider' && S.players[2].role === 'washerwoman', S.players.slice(0, 3).map(p => p.role).join());
+  let midRole = null; // посреди жребия назначаем последнему игроку роль, которая ещё в мешочке
+  drawAll(S, S => { if (S.draw.turn === S.players[2].id && !midRole) { midRole = S.draw.bag.find(r => !['imp', 'poisoner'].includes(r)); S.assign[S.players[7].id] = { role: midRole }; } });
+  ok('жребий: назначенные роль и тип роли выпадают нужным игрокам (и назначенное посреди жребия)', S.players[5].role === 'imp' && S.players[6].role === 'poisoner' && !!midRole && S.players[7].role === midRole, S.players.map(p => p.role).join() + ' / ' + midRole);
+  // выбрано не по числу игроков — стена не выкатывается (раньше молча брались случайные роли)
+  S = E.newGame('tb'); for (let i = 0; i < 8; i++) S.players.push(E.newPlayer('B' + i)); S.pool = POOL8.slice(0, 7);
+  ok('жребий: ролей на игру не по числу игроков — стена не выкатывается', E.drawStart(S) === false && !S.draw && /отметьте ровно 8/.test(E.drawProblem(S)));
+  // роли, выданные до стены, остаются за игроками
+  S = game(['washerwoman', 'librarian', 'investigator', 'chef', 'empath', 'monk', 'poisoner', 'imp'], 'tb'); S.players[3].role = null; S.players[4].role = null;
+  E.drawStart(S); drawAll(S);
+  ok('жребий: роли, выданные до стены, остаются; остальным — из случайного набора', S.players[0].role === 'washerwoman' && S.players[7].role === 'imp' && S.players.every(p => p.role) && E.setupProblems(S).length === 0, E.setupProblems(S).join('; '));
   // набор ролей на игру (S.pool) — раздача берёт только его
   S = E.newGame('tb'); for (let i = 0; i < 7; i++) S.players.push(E.newPlayer('P' + i));
   S.pool = ['chef', 'empath', 'monk', 'slayer', 'soldier', 'poisoner', 'imp']; E.randomDeal(S);

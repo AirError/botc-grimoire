@@ -745,3 +745,44 @@ img.shroud { object-fit: contain; }
 /* кнопки в шапке вкладки «Гримуар»: «Кругом» и «Значки» */
 .gbtns { flex-wrap: nowrap; gap: 6px; flex: none; }
 .gbtns .btn { min-height: 34px; padding: 4px 10px; }
+
+/* ---------- показ игрокам горизонтально: карточка слева, роли и имена справа ----------
+   Телефон держат боком. Экран не повернулся сам (портрет) — содержимое повёрнуто на 90° и растянуто на весь экран
+   (.flip — на −90°, если держат другим боком); повернулся (альбом) — без поворота. --long/--short — длинная и короткая сторона */
+.shrot { position: fixed; z-index: 31; right: calc(10px + env(safe-area-inset-right, 0px)); top: calc(10px + env(safe-area-inset-top, 0px));
+  width: 44px; height: 44px; border-radius: 50%; border: 1px solid rgba(255, 255, 255, .18); background: rgba(0, 0, 0, .5); color: #CFC6B4;
+  font-size: 20px; font-weight: 800; line-height: 1; cursor: pointer; }
+.shrot.flipb { right: auto; left: calc(10px + env(safe-area-inset-left, 0px)); }
+.showov.land { display: block; padding: 0; overflow: hidden; }
+.showov.land .shwrap { position: absolute; display: flex; flex-direction: row; align-items: center; justify-content: center; gap: 4vmin; padding: 5vmin 7vmin 9vmin; }
+@media (orientation: portrait) {
+  .showov.land { --long: 100vh; --short: 100vw; }
+  .showov.land .shwrap { width: 100vh; height: 100vw; left: 50%; top: 50%; transform: translate(-50%, -50%) rotate(90deg); }
+  .showov.land.flip .shwrap { transform: translate(-50%, -50%) rotate(-90deg); }
+}
+@media (orientation: landscape) {
+  .showov.land { --long: 100vw; --short: 100vh; }
+  .showov.land .shwrap { left: 0; top: 0; width: 100vw; height: 100vh; }
+}
+.showov.land .shmain { flex: none; display: flex; align-items: center; justify-content: center; }
+.showov.land .shcard { width: min(calc(var(--long) * .82), calc(var(--short) * .76 * 1.58)); }
+.showov.land .two .shcard { width: min(calc(var(--long) * .5), calc(var(--short) * .8 * 1.58)); }
+.showov.land .shside { flex: 1 1 auto; min-width: 0; max-height: 100%; display: flex; align-items: center; justify-content: center; }
+.showov.land .shic { width: calc(var(--short) * .5); height: calc(var(--short) * .5); }
+.showov.land .two .shic { width: calc(var(--short) * .4); height: calc(var(--short) * .4); }
+.showov.land .shroles.n2 .shic, .showov.land .shroles.n3 .shic, .showov.land .shroles.stack .shic { width: calc(var(--short) * .25); height: calc(var(--short) * .25); }
+.showov.land .shroles.n2 .shrole, .showov.land .shroles.n3 .shrole { min-width: 0; }
+.showov.land .shname { font-size: calc(var(--short) * .07); }
+.showov.land .shroles.n2 .shname, .showov.land .shroles.n3 .shname { font-size: calc(var(--short) * .05); }
+.showov.land .shpl span { font-size: calc(var(--short) * .09); }
+.showov.land .shtext { font-size: calc(var(--short) * .24); }
+.showov.land .shtext.long { font-size: calc(var(--short) * .09); }
+.showov.land .shdig img { height: calc(var(--short) * .34); }
+.showov.land .shab { font-size: calc(var(--short) * .045); max-width: 44ch; }
+.showov.land .shsub { font-size: calc(var(--short) * .06); max-width: 24ch; }
+.showov.land .shcap, .showov.land .shthumb { font-size: calc(var(--short) * .08); }
+.showov.land .shhint { position: absolute; left: 0; right: 0; bottom: 2.5vmin; margin: 0; }
+/* заметки: кнопки «В работе» и «Выполнено» */
+.ntoggles .btn { min-height: 38px; padding: 6px 12px; font-weight: 700; }
+.ntoggles .btn.on { border-color: var(--gold); background: var(--goldbg); }
+@media (orientation: landscape) { .shrot.flipb { display: none; } } /* экран повернулся сам — переворачивать не нужно */

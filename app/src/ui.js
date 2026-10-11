@@ -154,6 +154,7 @@ const MARK_DEFS = [
   { id: 'herring', role: 'fortuneteller', i: 10, red: true, t: 'Ложная цель Гадалки', d: 'Красная полоска — ложная цель: для Гадалки определяется как Демон' },
   { id: 'shown', role: 'washerwoman', t: 'Показан Прачкой, Библиотекарем, Сыщиком', d: 'У него роль, которую показали; с красной полоской — второй игрок, ложная цель (или вся информация ложная)' },
   { id: 'chosen', role: 'exorcist', t: 'Выбран Экзорцистом', d: 'Следующей ночью Экзорцист не может выбрать его снова' },
+  { id: 'guessused', role: 'damsel', t: 'Догадка о Девице использована', d: 'Приспешники больше не могут угадать Девицу' },
   { id: 'know', role: 'widow', i: 11, t: 'Знает о Вдове', d: 'Знает, что Вдова в игре' },
   { id: 'lunch', role: 'cannibal', i: 12, t: 'Обед Каннибала', d: 'Каннибал получил способность этого казнённого' },
   { id: 'votes3', role: 'bureaucrat', i: 13, t: 'Голос за троих', d: 'Бюрократ: завтра его голос считается трижды' },
@@ -343,10 +344,17 @@ function showOverlay() {
     return `<div class="shrole side-${al} ${t.small ? 'small' : ''}">${t.pre ? `<div class="shpre">${esc(t.pre)}</div>` : ''}${r ? `${ico(t.role, al, 'shic')}<div class="shname">${esc(E.rname(t.role))}</div>` : ''}${t.players ? names(t.players) : ''}
       ${t.text ? numText(t.text) : ''}${t.sub ? `<div class="shsub">${esc(t.sub)}</div>` : ''}${ab ? `<div class="shab">${esc(r.ability)}</div>` : ''}</div>`;
   };
-  return `<div class="ov showov" data-act="showNext" role="dialog" aria-label="Показ игроку">
-    ${sc.caption ? cardHtml(sc.caption, sc.thumb) : yn ? cardHtml(yn) : ''}
-    ${sc.items.length && !yn ? `<div class="shroles ${sc.stack ? 'stack' : 'n' + Math.min(sc.items.length, 3)}">${sc.items.map(roleBox).join('')}</div>` : ''}
-    <div class="shhint">${sh.i + 1 < sh.screens.length ? `Нажмите — дальше (${sh.i + 1} из ${sh.screens.length})` : 'Нажмите, чтобы закрыть'}</div></div>`;
+  const card = sc.caption ? cardHtml(sc.caption, sc.thumb) : yn ? cardHtml(yn) : '';
+  const roles = sc.items.length && !yn ? `<div class="shroles ${sc.stack ? 'stack' : 'n' + Math.min(sc.items.length, 3)}">${sc.items.map(roleBox).join('')}</div>` : '';
+  const hint = `<div class="shhint">${sh.i + 1 < sh.screens.length ? `Нажмите — дальше (${sh.i + 1} из ${sh.screens.length})` : 'Нажмите, чтобы закрыть'}</div>`;
+  // кнопка поворота — отдельно от слоя показа (нажатие на слой листает дальше)
+  const rot = `<button class="shrot" data-act="showLand" aria-label="${UI.showLand ? 'Показывать вертикально' : 'Показать горизонтально'}">${UI.showLand ? '↕' : '↔'}</button>`;
+  // горизонтально: карточка слева, роли и имена справа. Телефон держат боком: если экран сам не повернулся (портрет),
+  // содержимое повёрнуто на 90° и растянуто на весь экран; если повернулся (альбом) — без поворота (CSS @media orientation)
+  if (UI.showLand) return `<div class="ov showov land ${UI.showFlip ? 'flip' : ''}" data-act="showNext" role="dialog" aria-label="Показ игроку">
+    <div class="shwrap ${card && roles ? 'two' : ''}">${card ? `<div class="shmain">${card}</div>` : ''}${roles ? `<div class="shside">${roles}</div>` : ''}${hint}</div></div>${rot}
+    <button class="shrot flipb" data-act="showFlip" aria-label="Перевернуть на 180°">⟲</button>`;
+  return `<div class="ov showov" data-act="showNext" role="dialog" aria-label="Показ игроку">${card}${roles}${hint}</div>${rot}`;
 }
 // роль игрока, которую он видит (Пьяница — кем себя считает, Безумец — своего «Демона»)
 const seenRole = p => (p.role === 'drunk' || p.role === 'lunatic') && p.believes ? p.believes : p.role;
@@ -447,7 +455,9 @@ function dealButtons() {
   if (d && d.finished) return '<div class="note-ok">Роли выданы жребием (стена). Заново не раздаются; роль можно сменить только на роль сценария, которой нет в игре.</div>';
   if (d) return `<div class="row"><button class="btn primary" data-act="wallShow">Продолжить жребий</button><button class="btn danger" data-act="drawCancel">Отменить жребий</button></div>
     <div class="small muted">Пока идёт жребий, роли закреплены за игроками — случайная раздача недоступна.</div>`;
-  return `<div class="row"><button class="btn" data-act="deal">${E.validPool(S) ? 'Раздать выбранные роли случайно' : 'Раздать роли случайно'}</button><button class="btn" data-act="drawStart">Жребий: каменная стена</button></div>`;
+  const prob = E.drawProblem(S);
+  return `<div class="row"><button class="btn" data-act="deal">${E.validPool(S) ? 'Раздать выбранные роли случайно' : 'Раздать роли случайно'}</button><button class="btn" data-act="drawStart" ${prob ? 'disabled' : ''}>Жребий: каменная стена</button></div>
+    ${prob && S.pool && S.pool.length ? `<div class="small muted">${esc(prob)}</div>` : ''}`;
 }
 // подсказки (ideas.js): нажатие подставляет текст в поле
 const ideaChips = (list, act, key, title) => typeof IDEAS === 'undefined' || !IDEAS[list] ? '' : `<details class="ideas"><summary class="small">${esc(title)} (${IDEAS[list].length})</summary>
@@ -526,7 +536,9 @@ function revealHtml(info, dist) {
   return `<div class="reveal ${info.secret ? 'secret' : ''} ${dist ? 'poison' : ''}">${dist ? DRIP_SVG : ''}${tag}
     <div class="lab">${info.secret ? 'Только для вас — не показывайте' : 'Покажите / объявите'}</div>${info.show ? `<div class="big">${esc(info.show)}</div>` : ''}
     ${(info.lines || []).filter(Boolean).map(l => `<div class="ln">${esc(l)}</div>`).join('')}
-    ${info.grim ? `<div class="showbtns"><button class="btn showbtn" data-act="grimShow">${art('eye', 'bg')}Показать Гримуар на весь экран</button></div>` : ''}${info.secret ? '' : showButtons(info.tokens)}</div>`;
+    ${info.grim ? `<div class="showbtns"><button class="btn showbtn" data-act="grimShow">${art('eye', 'bg')}Показать Гримуар на весь экран</button>
+      ${dist ? `<button class="btn showbtn" data-act="grimFake">${art('eye', 'bg')}Показать искажённый Гримуар</button>
+        <div class="small muted">Пьяному или отравленному можно дать ложную информацию (вики, «Пьян»): роли перемешаны, часть заменена ролями сценария того же типа; его место, саваны и Странники — как есть, отметок нет.${S.night.data.fakeGrim ? ' <button class="linkish" data-act="grimFakeNew">Перемешать заново</button>' : ''}</div>` : ''}</div>` : ''}${info.secret ? '' : showButtons(info.tokens)}</div>`;
 }
 
 function viewNight() {
@@ -615,6 +627,16 @@ function viewDay() {
     parts.push(`<div class="card"><h3>Истребитель: ${esc(s.name)}</h3>${boundsHtml([{ w: 'Игрок выбирает', t: 'публично, 1 игрока, раз за игру' }])}${chipsPlayers('slay_' + s.id, 1, p => p.alive, sel, { act: 'dayPick' })}
       ${t && t.role === 'recluse' ? `<div class="field"><label>Ваше решение: Затворник определяется Демоном?</label><div class="seg"><button class="${picks.slayReg ? '' : 'on'}" data-act="slayReg" data-arg="0">Нет</button><button class="${picks.slayReg ? 'on' : ''}" data-act="slayReg" data-arg="1">Да — он умрёт</button></div></div>` : ''}
       <button class="btn" data-act="slay" data-arg="${s.id}" ${sel.length ? '' : 'disabled'}>Выстрел</button></div>`);
+  }
+  // Девица: Приспешник публично называет игрока Девицей — одна догадка на всех Приспешников за игру (вики)
+  if (S.players.some(p => p.role === 'damsel') && !S.flags.damselGuessUsed) {
+    const by = picks.dgBy || [], on = picks.dgOn || [];
+    parts.push(`<div class="card"><details ${by.length || on.length ? 'open' : ''}><summary class="small"><b>Девица:</b> Приспешник публично угадывает, кто Девица</summary><div class="field" style="margin-top:8px">
+      ${boundsHtml([{ w: 'Игрок', t: 'Приспешник, публично; одна догадка на всех Приспешников за игру — неверная тратит её. Демон, притворяющийся Приспешником, не считается' },
+        { w: 'Итог', t: 'угадал живую Девицу (её способность работает) — победа зла' }])}
+      <div class="flabel"><span>Какой Приспешник угадывает</span></div>${chipsPlayers('dgBy', 1, p => E.realTeam(p) === 'minion', by, { act: 'dayPick', noRole: true })}
+      <div class="flabel"><span>Кого он называет Девицей</span></div>${chipsPlayers('dgOn', 1, () => true, on, { act: 'dayPick', noRole: true })}
+      <button class="btn danger" data-act="damselGuess" ${by.length && on.length ? '' : 'disabled'}>Записать догадку</button></div></details></div>`);
   }
   // Стрелок: сразу после подсчёта 1-го голосования может застрелить проголосовавшего (раз в день)
   for (const g of S.players.filter(p => p.role === 'gunslinger' && p.alive)) {
@@ -753,10 +775,26 @@ function viewTable() {
 /* ---------- Гримуар для Шпиона и Вдовы — как в игре: жетоны по кругу, напоминания — к центру ---------- */
 // жетон роли, как настоящий: светлый кружок, иконка, название роли дугой по низу. Пьяница — как в Гримуаре рассказчика:
 // жетон Горожанина, которым он себя считает, а рядом напоминание «Пьяница»
-const tokenRole = p => p.role === 'drunk' && p.believes ? p.believes : p.role;
+const realTokenRole = p => p.role === 'drunk' && p.believes ? p.believes : p.role;
+// искажённый Гримуар (пьяный или отравленный Шпион/Вдова) — роль на месте игрока подменена: S.night.data.fakeGrim.map
+const fakeGrimOn = () => !!(UI.grimShow && UI.grimFake && S.phase === 'night' && S.night && S.night.data.fakeGrim);
+const tokenRole = p => (fakeGrimOn() && S.night.data.fakeGrim.map[p.id]) || realTokenRole(p);
+const tokenAlign = p => fakeGrimOn() && S.night.data.fakeGrim.map[p.id] ? (isGoodRole(S.night.data.fakeGrim.map[p.id]) ? 'good' : 'evil') : p.align;
+// искажённый Гримуар: роли перемешаны между местами, примерно треть заменена ролями сценария того же типа, которых нет в игре.
+// Место смотрящего (Шпиона, Вдовы) и Странники — как есть: подмену там видно сразу
+function makeFakeGrim(viewer) {
+  const mix = a => { a = a.slice(); for (let i = a.length - 1; i > 0; i--) { const j = Math.floor(Math.random() * (i + 1)); [a[i], a[j]] = [a[j], a[i]]; } return a; };
+  const seats = S.players.filter(p => p.id !== viewer && !E.isTraveller(p) && p.role), roles = mix(seats.map(realTokenRole));
+  const used = new Set(S.players.flatMap(p => [p.role, p.believes]).concat(roles));
+  for (const i of mix([...roles.keys()]).slice(0, Math.max(1, Math.round(roles.length / 3)))) {
+    const spare = mix(S.script.roles.filter(r => DATA.roles[r] && team(r) === team(roles[i]) && !used.has(r)))[0];
+    if (spare) { used.add(spare); roles[i] = spare; }
+  }
+  return { viewer, map: Object.fromEntries(seats.map((p, i) => [p.id, roles[i]])) };
+}
 function roleTokenHtml(p, key) {
   const r = tokenRole(p), name = r ? E.rname(r) : '?', fit = name.length > 13 ? ' textLength="112" lengthAdjust="spacingAndGlyphs"' : '';
-  return `<span class="rtk ${p.alive ? '' : 'dead'}">${r ? ico(r, p.align, 'rtki') : ''}
+  return `<span class="rtk ${p.alive ? '' : 'dead'}">${r ? ico(r, tokenAlign(p), 'rtki') : ''}
     <svg class="rtkn" viewBox="0 0 100 100" aria-hidden="true"><path id="${key}" d="M13 56A37 37 0 0 0 87 56" fill="none"/><text><textPath href="#${key}" startOffset="50%" text-anchor="middle"${fit}>${esc(name)}</textPath></text></svg>
     ${shroudHtml(p)}</span>`;
 }
@@ -789,7 +827,8 @@ function grimCircle(opts) {
     const spacing = Math.hypot(rx * Math.cos(a), ry * Math.sin(a)) * 2 * Math.PI / n; // расстояние до соседа по кругу
     const vx = cx - x, vy = cy - y, len = Math.hypot(vx, vy) || 1;
     const lw = Math.max(t * 1.1, Math.min(t * 1.7, spacing * 0.96));
-    return { p, x, y, len, ux: vx / len, uy: vy / len, lw, ms: playerMarks(p, { noNotes: !opts.notes }), pos: [], j: 0 };
+    // в искажённом Гримуаре отметок нет — они выдали бы правду
+    return { p, x, y, len, ux: vx / len, uy: vy / len, lw, ms: fakeGrimOn() && !opts.names ? [] : playerMarks(p, { noNotes: !opts.notes }), pos: [], j: 0 };
   });
   // занятые места: жетоны (круги) и таблички с именами (прямоугольники)
   const discs = seats.map(s => ({ x: s.x, y: s.y, r: t / 2 + 0.3 }));
@@ -824,10 +863,10 @@ function grimCircle(opts) {
 // жетон крупно: нажатие на жетон в круге Шпиона и Вдовы (роль, способность и все напоминания словами; имени нет — как в Гримуаре)
 function grimZoomHtml() {
   const p = UI.grimZoom && E.P(S, UI.grimZoom); if (!p) return '';
-  const r = tokenRole(p), ms = playerMarks(p, { noNotes: true });
+  const r = tokenRole(p), ms = fakeGrimOn() ? [] : playerMarks(p, { noNotes: true });
   return `<div class="gzoom" data-act="grimZoom" role="dialog" aria-label="${esc(E.rname(r))}"><div class="gzbox">
     <div class="gztok">${roleTokenHtml(p, 'gcz-' + p.id)}</div>
-    <div class="gzrole side-${p.align}">${esc(E.rname(r))}${p.alive ? '' : ` · мёртв${p.ghost ? ', голос призрака есть' : ''}`}</div>
+    <div class="gzrole side-${tokenAlign(p)}">${esc(E.rname(r))}${p.alive ? '' : ` · мёртв${p.ghost ? ', голос призрака есть' : ''}`}</div>
     <div class="gzab">${esc(DATA.roles[r] ? DATA.roles[r].ability : '')}</div>
     ${ms.length ? `<div class="gzmarks">${ms.map(m => `<div class="gzm">${markIcon(m[0], m[2], m[3])}<span>${esc(m[1])}</span></div>`).join('')}</div>` : ''}
     <div class="shhint">Нажмите, чтобы вернуться к Гримуару</div></div></div>`;
@@ -963,14 +1002,19 @@ const RUNES = [
 const CRACKS = ['M24 1L21 14L27 21L19 31L23 47M27 21L38 25L47 22M21 14L8 9', 'M1 18L14 21L20 30L31 27L47 34M20 30L17 47M31 27L34 3', 'M31 1L26 16L33 25L24 34L28 47M26 16L12 18L2 28M33 25L46 20'];
 function drawCard() {
   const core = S.players.filter(p => !E.isTraveller(p)), d = S.draw, ok = core.length >= 5 && core.length <= 15;
-  const left = d ? d.cells.filter(c => !c.pid).length : 0, dealt = core.every(p => p.role);
-  const src = dealt ? 'Роли уже выданы — стена закрепит их за игроками: какую ячейку игрок ни откроет, выпадет его роль.'
-    : E.validPool(S) ? 'В стене — выбранные «Роли на игру».' : 'Роли не выбраны — приложение наберёт их по раскладке случайно.';
+  const left = d ? d.cells.filter(c => !c.pid).length : 0, held = core.filter(p => p.role).length, prob = !d && E.drawProblem(S);
+  const src = (E.validPool(S) ? 'В мешочке — выбранные «Роли на игру».' : 'Роли на игру не выбраны — приложение наберёт их по раскладке случайно.')
+    + (held && !d ? ` Роли, уже выданные игрокам (${held}), останутся за ними.` : '');
+  // кто ещё не открыл ячейку: нажатие — карточка игрока, там можно назначить роль или тип роли
+  const waiting = d && !d.finished ? core.filter(p => !p.role) : [];
   return `<div class="card drawcard"><h3>Выдача ролей · каменная стена</h3>
-    <div class="small muted">Игроки по кругу открывают светящиеся ячейки — как тянут жетон из мешочка. ${src} Назначения из карточек игроков (роль или тип роли) соблюдаются. Пьяница увидит роль, которой себя считает.</div>
+    <div class="small muted">Игроки по кругу открывают светящиеся ячейки — как тянут жетон из мешочка: роль выпадает в момент открытия, заранее её не знает никто. ${src} Пока игрок не открыл ячейку, в его карточке можно назначить роль или тип роли. Пьяница увидит роль, которой себя считает.</div>
     ${!ok ? '<div class="warn">Нужно от 5 до 15 игроков (без Странников) — рассадку заполните на вкладке «Игра».</div>'
       : d && d.finished ? '<div class="note-ok">Роли выданы жребием. Заново их не раздать; роль можно сменить только на роль сценария, которой нет в игре.</div>'
-      : d ? `<div class="note-ok">Жребий идёт: осталось ячеек — ${left}. Очередь: ${esc(E.nm(S, d.turn))}</div><div class="row"><button class="btn primary" data-act="wallShow">Продолжить жребий</button><button class="btn danger" data-act="drawCancel">Отменить жребий</button></div>`
+      : d ? `<div class="note-ok">Жребий идёт: осталось ячеек — ${left}. Очередь: ${esc(E.nm(S, d.turn))}</div>
+        ${waiting.length ? `<div class="flabel"><span>Ещё не открыли — нажмите, чтобы назначить роль или тип</span></div><div class="seg">${waiting.map(p => `<button data-act="openP" data-arg="${p.id}">${esc(p.name)}${(S.assign || {})[p.id] ? ' → ' + esc(assignLabel(S.assign[p.id])) : ''}</button>`).join('')}</div>` : ''}
+        <div class="row"><button class="btn primary" data-act="wallShow">Продолжить жребий</button><button class="btn danger" data-act="drawCancel">Отменить жребий</button></div>`
+      : prob ? `<div class="warn">${esc(prob)}</div>`
       : '<button class="btn primary wide" data-act="drawStart">Выкатить стену</button>'}</div>`;
 }
 
@@ -1003,13 +1047,16 @@ const assignLabel = a => !a ? '' : a.role ? E.rname(a.role) : E.TEAM_RU[a.team];
 const assignBadge = p => { const a = (S.assign || {})[p.id]; return a ? `<span class="gassign">→ ${esc(assignLabel(a))}</span>` : ''; };
 function assignHtml(p) {
   const as = S.assign || {}, cur = as[p.id], taken = Object.entries(as).filter(([id, a]) => id !== p.id && a.role).map(([, a]) => a.role);
-  const roles = (E.validPool(S) ? S.pool : S.script.roles).filter(r => DATA.roles[r] && !taken.includes(r));
+  // только из «Ролей на игру» (во время жребия — из того, что осталось в мешочке); роли, выданные или назначенные другим, — нет
+  const src = S.draw && !S.draw.finished ? S.draw.bag : (S.pool && S.pool.length ? S.pool : S.script.roles);
+  const roles = src.filter(r => DATA.roles[r] && !taken.includes(r) && !S.players.some(q => q.role === r));
+  const teams = ['townsfolk', 'outsider', 'minion', 'demon'].filter(t => roles.some(r => team(r) === t));
   const opt = (v, l) => `<option value="${v}" ${(cur ? (cur.role ? 'r:' + cur.role : 't:' + cur.team) : '') === v ? 'selected' : ''}>${esc(l)}</option>`;
   return `<div class="editor"><div class="field"><label>Что выпадет игроку на жребии и при раздаче</label>
     <select data-act="assign" data-arg="${p.id}">${opt('', 'Случайно (по умолчанию)')}
-      <optgroup label="Тип роли">${['townsfolk', 'outsider', 'minion', 'demon'].map(t => opt('t:' + t, 'Любой: ' + E.TEAM_RU[t])).join('')}</optgroup>
+      ${teams.length ? `<optgroup label="Тип роли">${teams.map(t => opt('t:' + t, 'Любой: ' + E.TEAM_RU[t])).join('')}</optgroup>` : ''}
       ${['townsfolk', 'outsider', 'minion', 'demon'].map(t => { const rs = roles.filter(r => team(r) === t); return rs.length ? `<optgroup label="${TEAM_PL[t]}">${rs.map(r => opt('r:' + r, E.rname(r))).join('')}</optgroup>` : ''; }).join('')}
-    </select></div><div class="small muted">Какую ячейку стены игрок ни откроет — выпадет назначенное. Роль, назначенная другому игроку, здесь не предлагается.</div></div>`;
+    </select></div><div class="small muted">Какую ячейку стены игрок ни откроет — выпадет назначенное. Только из ролей на игру; роли, выданные или назначенные другим, здесь не предлагаются.</div></div>`;
 }
 function wallOverlay() {
   const d = S.draw; if (!UI.wall || !d) return '';
@@ -1267,6 +1314,7 @@ const A = {
   klutz: () => act(S => E.klutzChoose(S, S.day.picks.klutz[0])),
   slayReg: v => draft(S => { S.day.picks.slayReg = v === '1'; }),
   slay: id => act(S => { E.slayerShot(S, id, S.day.picks['slay_' + id][0], S.day.picks.slayReg); S.day.picks = {}; }),
+  damselGuess: () => { const by = (S.day.picks.dgBy || [])[0], on = (S.day.picks.dgOn || [])[0]; if (by && on) act(S => { E.damselGuess(S, by, on); S.day.picks.dgBy = []; S.day.picks.dgOn = []; }, 'догадка о Девице'); },
   jugAdd: () => { const pid = document.getElementById('jugP').value, role = document.getElementById('jugR').value; if (role) act(S => { (S.flags.jugglerGuesses = S.flags.jugglerGuesses || []).push({ pid, role }); }, 'догадка Жонглёра'); },
   jugDel: i => act(S => S.flags.jugglerGuesses.splice(+i, 1), 'убрана догадка'),
   exPick: arg => { const id = arg.split('|')[1]; draft(S => { const ex = S.day.picks.exile || { pid: null, voters: [] }; ex.pid = ex.pid === id ? null : id; ex.voters = []; S.day.picks.exile = ex; UI.pickOpen = ex.pid ? null : 'exPid'; }); },
@@ -1313,7 +1361,12 @@ const A = {
   // Гримуар: карточка игрока, показ роли на весь экран
   openP: id => { UI.open = UI.open === id ? null : id; render(); },
   legend: () => { UI.legend = !UI.legend; render(); },
-  grimShow: () => { UI.grimShow = !UI.grimShow; UI.grimZoom = null; render(); },
+  grimShow: () => { UI.grimShow = !UI.grimShow; UI.grimFake = false; UI.grimZoom = null; render(); },
+  // искажённый Гримуар: один и тот же на эту ночь (пока не «Перемешать заново»)
+  grimFake: () => { const st = E.currentStep(S), viewer = st && st.pid;
+    if (!S.night.data.fakeGrim || S.night.data.fakeGrim.viewer !== viewer) draft(S => { S.night.data.fakeGrim = makeFakeGrim(viewer); });
+    UI.grimShow = true; UI.grimFake = true; UI.grimZoom = null; render(); },
+  grimFakeNew: () => { const st = E.currentStep(S); draft(S => { S.night.data.fakeGrim = makeFakeGrim(st && st.pid); }); },
   grimZoom: id => { UI.grimZoom = UI.grimZoom ? null : id; render(); },
   // круг игроков: рассадка (подготовка) и номинация (день)
   ringSeat: () => { UI.ring = 'seat'; render(); },
@@ -1331,10 +1384,13 @@ const A = {
   }),
   showOpen: i => { const g = (UI.showGroups || [])[+i]; if (g) { UI.show = { screens: g.screens, i: 0 }; render(); } },
   showNext: () => { if (!UI.show) return; UI.show.i += 1; if (UI.show.i >= UI.show.screens.length) UI.show = null; render(); },
+  // горизонтальный показ (запоминается на устройстве); ⟲ — повернуть на 180°, если держат телефон другим боком
+  showLand: () => { UI.showLand = !UI.showLand; try { localStorage.setItem('botc-grimoire-showland', UI.showLand ? '1' : ''); } catch (e) { /* без хранилища — до перезагрузки */ } render(); },
+  showFlip: () => { UI.showFlip = !UI.showFlip; try { localStorage.setItem('botc-grimoire-showflip', UI.showFlip ? '1' : ''); } catch (e) { /* без хранилища */ } render(); },
   showRole: id => { const p = E.P(S, id), r = seenRole(p); UI.show = { screens: [{ caption: 'Ваша роль', items: [{ role: r, align: r === p.role ? p.align : undefined }] }], i: 0 }; render(); },
   showRef: rid => { UI.show = { screens: [{ caption: '', items: [{ role: rid, align: DATA.roles[rid].team === 'fabled' || DATA.roles[rid].team === 'loric' ? 'good' : undefined }] }], i: 0 }; render(); },
   // жребий: каменная стена
-  drawStart: () => { if (S.draw) return wallIn(); act(S => E.drawStart(S), 'жребий: стена'); wallIn(); },
+  drawStart: () => { if (S.draw) return wallIn(); const pr = E.drawProblem(S); if (pr) return alertNote(pr); act(S => E.drawStart(S), 'жребий: стена'); wallIn(); },
   // Савант, Рыбак, Мецефель (день)
   savGen: id => draft(S => { S.day.picks['sav_' + id] = IDEAS.savantPair(S, id); }),
   savLog: id => { const pair = S.day.picks['sav_' + id]; if (pair) act(S => E.log(S, `Савант (${E.nm(S, id)}): ${pair.map(x => `«${x.text}» — ${x.truth ? 'правда' : 'ложь'}`).join('; ')}`, 'day'), 'факты Саванта'); },
@@ -1488,6 +1544,8 @@ function boot(hotData) {
   }
   if (!S) S = sampleGame();
   S = upgrade(S);
+  // настройки этого устройства: показ игрокам горизонтально и каким боком
+  try { UI.showLand = localStorage.getItem('botc-grimoire-showland') === '1'; UI.showFlip = localStorage.getItem('botc-grimoire-showflip') === '1'; } catch (e) { /* по умолчанию — вертикально */ }
   if (!document.getElementById('artvars')) artVars();
   render();
   connectCloud();
