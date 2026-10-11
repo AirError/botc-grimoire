@@ -42,6 +42,11 @@ guide = {}
 for f in sorted((D / "guide").glob("*.json")):
     guide.update(json.loads(f.read_text(encoding="utf-8")))
 
+# текст способности по решению пользователя — поверх официального перевода (как на его жетонах)
+USER_ABILITY = {
+    "mutant": "Если вы внушаете, что вы Изгой, вас могут казнить.",  # 2026-10-11: «внушаете» вместо «помешаны»
+}
+
 # В данные идут все роли: базовая коробка, экспериментальные (Carousel), Странники, Сказочники и Лорики —
 # справочник и свои сценарии. Встроенные сценарии — только из коробки (+ Catfishing). box — роль из базовой коробки.
 roles = {}
@@ -55,7 +60,7 @@ for r in roles_en:
         "team": r["team"],
         "edition": r["edition"],
         "box": r["edition"] in EDITIONS or r["team"] == "fabled" and r["edition"] == "fabled",
-        "ability": t.get("ability") or g.get("ability") or r["ability"],
+        "ability": USER_ABILITY.get(rid) or t.get("ability") or g.get("ability") or r["ability"],
         "unofficial": not t.get("name"),  # нет официального перевода — название и способность переведены нами
         "first": (t.get("first") or r.get("firstNightReminder")) if r.get("firstNightReminder") else None,
         "other": (t.get("other") or r.get("otherNightReminder")) if r.get("otherNightReminder") else None,

@@ -786,3 +786,9 @@ img.shroud { object-fit: contain; }
 .ntoggles .btn { min-height: 38px; padding: 6px 12px; font-weight: 700; }
 .ntoggles .btn.on { border-color: var(--gold); background: var(--goldbg); }
 @media (orientation: landscape) { .shrot.flipb { display: none; } } /* экран повернулся сам — переворачивать не нужно */
+/* горизонтально роли — отдельным экраном: крупнее (2–3 роли в ряд) */
+.showov.land .shroles.n2 .shic, .showov.land .shroles.n3 .shic { width: calc(var(--short) * .36); height: calc(var(--short) * .36); }
+.showov.land .shroles.n2 .shname, .showov.land .shroles.n3 .shname { font-size: calc(var(--short) * .06); }
+/* безумие нарушено (Цереновус, Уродец, Гарпия) */
+.madrow { display: flex; flex-direction: column; gap: 6px; padding: 8px 0; border-top: 1px solid var(--line); }
+.madrow .btn { align-self: flex-start; }

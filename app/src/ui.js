@@ -155,6 +155,7 @@ const MARK_DEFS = [
   { id: 'shown', role: 'washerwoman', t: 'Показан Прачкой, Библиотекарем, Сыщиком', d: 'У него роль, которую показали; с красной полоской — второй игрок, ложная цель (или вся информация ложная)' },
   { id: 'chosen', role: 'exorcist', t: 'Выбран Экзорцистом', d: 'Следующей ночью Экзорцист не может выбрать его снова' },
   { id: 'guessused', role: 'damsel', t: 'Догадка о Девице использована', d: 'Приспешники больше не могут угадать Девицу' },
+  { id: 'second', role: 'harpy', t: 'Второй игрок Гарпии', d: 'Первый выбранный завтра «помешан» на том, что этот игрок злой' },
   { id: 'know', role: 'widow', i: 11, t: 'Знает о Вдове', d: 'Знает, что Вдова в игре' },
   { id: 'lunch', role: 'cannibal', i: 12, t: 'Обед Каннибала', d: 'Каннибал получил способность этого казнённого' },
   { id: 'votes3', role: 'bureaucrat', i: 13, t: 'Голос за троих', d: 'Бюрократ: завтра его голос считается трижды' },
@@ -330,6 +331,12 @@ const numText = s => {
   if (/^\d{1,3}$/.test(s) && HAS_ART('digit0')) return `<div class="shdig" role="img" aria-label="${s}">${[...s].map(c => `<img src="${ART['digit' + c]}" alt="">`).join('')}</div>`;
   return `<div class="shtext ${s.length > 4 ? 'long' : ''}">${esc(s)}</div>`;
 };
+// на экране показа есть и карточка (жетон информации, ДА/НЕТ), и роли/имена/числа
+function showHasBoth(sc) {
+  if (!sc) return false;
+  const one = sc.items.length === 1, yn = !sc.caption && one && !sc.items[0].role && !sc.items[0].players && /^(ДА|НЕТ)$/.test(sc.items[0].text || '');
+  return !!(sc.caption || yn) && sc.items.length > 0 && !yn;
+}
 function showOverlay() {
   const sh = UI.show; if (!sh) return '';
   const sc = sh.screens[sh.i]; if (!sc) return '';
@@ -349,11 +356,17 @@ function showOverlay() {
   const hint = `<div class="shhint">${sh.i + 1 < sh.screens.length ? `Нажмите — дальше (${sh.i + 1} из ${sh.screens.length})` : 'Нажмите, чтобы закрыть'}</div>`;
   // кнопка поворота — отдельно от слоя показа (нажатие на слой листает дальше)
   const rot = `<button class="shrot" data-act="showLand" aria-label="${UI.showLand ? 'Показывать вертикально' : 'Показать горизонтально'}">${UI.showLand ? '↕' : '↔'}</button>`;
-  // горизонтально: карточка слева, роли и имена справа. Телефон держат боком: если экран сам не повернулся (портрет),
-  // содержимое повёрнуто на 90° и растянуто на весь экран; если повернулся (альбом) — без поворота (CSS @media orientation)
-  if (UI.showLand) return `<div class="ov showov land ${UI.showFlip ? 'flip' : ''}" data-act="showNext" role="dialog" aria-label="Показ игроку">
-    <div class="shwrap ${card && roles ? 'two' : ''}">${card ? `<div class="shmain">${card}</div>` : ''}${roles ? `<div class="shside">${roles}</div>` : ''}${hint}</div></div>${rot}
+  // горизонтально: карточка — на весь экран, роли и имена — следующим экраном, крупно (просьба пользователя).
+  // Телефон держат боком: если экран сам не повернулся (портрет), содержимое повёрнуто на 90° и растянуто на весь экран;
+  // если повернулся (альбом) — без поворота (CSS @media orientation)
+  if (UI.showLand) {
+    const part = card && roles ? (sh.sub || 0) : null; // 0 — карточка, 1 — роли
+    const more = sh.i + 1 < sh.screens.length || part === 0;
+    const lhint = `<div class="shhint">${more ? 'Нажмите — дальше' : 'Нажмите, чтобы закрыть'}</div>`;
+    return `<div class="ov showov land ${UI.showFlip ? 'flip' : ''}" data-act="showNext" role="dialog" aria-label="Показ игроку">
+    <div class="shwrap">${card && part !== 1 ? `<div class="shmain">${card}</div>` : ''}${roles && part !== 0 ? `<div class="shside">${roles}</div>` : ''}${lhint}</div></div>${rot}
     <button class="shrot flipb" data-act="showFlip" aria-label="Перевернуть на 180°">⟲</button>`;
+  }
   return `<div class="ov showov" data-act="showNext" role="dialog" aria-label="Показ игроку">${card}${roles}${hint}</div>${rot}`;
 }
 // роль игрока, которую он видит (Пьяница — кем себя считает, Безумец — своего «Демона»)
@@ -637,6 +650,23 @@ function viewDay() {
       <div class="flabel"><span>Какой Приспешник угадывает</span></div>${chipsPlayers('dgBy', 1, p => E.realTeam(p) === 'minion', by, { act: 'dayPick', noRole: true })}
       <div class="flabel"><span>Кого он называет Девицей</span></div>${chipsPlayers('dgOn', 1, () => true, on, { act: 'dayPick', noRole: true })}
       <button class="btn danger" data-act="damselGuess" ${by.length && on.length ? '' : 'disabled'}>Записать догадку</button></div></details></div>`);
+  }
+  // Безумие (вики): Цереновус и Уродец — нарушил, можно казнить (казнь за день, потом ночь); Гарпия — убить одного или обоих
+  const madOf = src => S.players.filter(p => p.tokens.some(t => t.k === 'mad' && t.src === src));
+  const madC = madOf('cerenovus'), madH = madOf('harpy'), mutants = S.players.filter(p => p.role === 'mutant' && p.alive && !E.abilityOff(S, p));
+  if (madC.length || madH.length || mutants.length) {
+    const exeOk = !d.executed, tok = (p, src) => p.tokens.find(t => t.k === 'mad' && t.src === src);
+    const exeBtn = (p, src, label) => `<button class="btn danger" data-act="madExe" data-arg="${p.id}|${src}" ${exeOk ? '' : 'disabled'}>${label}</button>`;
+    const rows = [
+      ...madC.map(p => `<div class="madrow"><div><b>${esc(p.name)}</b> — помешан на роли «${esc(tok(p, 'cerenovus').note || '')}» (Цереновус)</div>${exeBtn(p, 'cerenovus', 'Не помешан — казнить')}</div>`),
+      ...mutants.map(p => `<div class="madrow"><div><b>${esc(p.name)}</b> — Уродец</div>${exeBtn(p, 'mutant', 'Внушает, что он Изгой, — казнить')}</div>`),
+      ...madH.map(p => { const b = E.P(S, tok(p, 'harpy').by);
+        return `<div class="madrow"><div><b>${esc(p.name)}</b> — помешан на том, что ${esc(b ? b.name : '?')} злой (Гарпия)</div>
+          <div class="seg"><button data-act="harpyKill" data-arg="${p.id}">Умирает ${esc(p.name)}</button>${b ? `<button data-act="harpyKill" data-arg="${b.id}">Умирает ${esc(b.name)}</button><button data-act="harpyKill" data-arg="${p.id},${b.id}">Умирают оба</button>` : ''}</div></div>`; })];
+    parts.push(`<div class="card"><details><summary class="small"><b>Безумие</b> нарушено? — решение рассказчика</summary><div class="field" style="margin-top:8px">
+      ${boundsHtml([{ w: 'Цереновус, Уродец', t: 'не изображал безумие — можете казнить. Это казнь за день: после неё сразу ночь; если сегодня уже казнили — нельзя' },
+        { w: 'Гарпия', t: 'первый не «помешан», что второй злой, — можете убить одного, обоих или никого (это смерть, не казнь)' }])}
+      ${rows.join('')}${exeOk ? '' : '<div class="small muted">Сегодня казнь уже была — казнить за безумие больше нельзя</div>'}</div></details></div>`);
   }
   // Стрелок: сразу после подсчёта 1-го голосования может застрелить проголосовавшего (раз в день)
   for (const g of S.players.filter(p => p.role === 'gunslinger' && p.alive)) {
@@ -1314,6 +1344,8 @@ const A = {
   klutz: () => act(S => E.klutzChoose(S, S.day.picks.klutz[0])),
   slayReg: v => draft(S => { S.day.picks.slayReg = v === '1'; }),
   slay: id => act(S => { E.slayerShot(S, id, S.day.picks['slay_' + id][0], S.day.picks.slayReg); S.day.picks = {}; }),
+  madExe: arg => { const [pid, src] = arg.split('|'); act(S => E.madnessExecute(S, pid, src), 'казнь за нарушенное безумие'); window.scrollTo(0, 0); },
+  harpyKill: arg => act(S => E.harpyKill(S, arg.split(',')), 'Гарпия: смерть'),
   damselGuess: () => { const by = (S.day.picks.dgBy || [])[0], on = (S.day.picks.dgOn || [])[0]; if (by && on) act(S => { E.damselGuess(S, by, on); S.day.picks.dgBy = []; S.day.picks.dgOn = []; }, 'догадка о Девице'); },
   jugAdd: () => { const pid = document.getElementById('jugP').value, role = document.getElementById('jugR').value; if (role) act(S => { (S.flags.jugglerGuesses = S.flags.jugglerGuesses || []).push({ pid, role }); }, 'догадка Жонглёра'); },
   jugDel: i => act(S => S.flags.jugglerGuesses.splice(+i, 1), 'убрана догадка'),
@@ -1383,9 +1415,12 @@ const A = {
     else if (onOk(p)) d.on = id;
   }),
   showOpen: i => { const g = (UI.showGroups || [])[+i]; if (g) { UI.show = { screens: g.screens, i: 0 }; render(); } },
-  showNext: () => { if (!UI.show) return; UI.show.i += 1; if (UI.show.i >= UI.show.screens.length) UI.show = null; render(); },
+  showNext: () => { if (!UI.show) return;
+    // горизонтально экран с карточкой и ролями — в два нажатия: сначала карточка, потом роли
+    if (UI.showLand && !UI.show.sub && showHasBoth(UI.show.screens[UI.show.i])) { UI.show.sub = 1; render(); return; }
+    UI.show.sub = 0; UI.show.i += 1; if (UI.show.i >= UI.show.screens.length) UI.show = null; render(); },
   // горизонтальный показ (запоминается на устройстве); ⟲ — повернуть на 180°, если держат телефон другим боком
-  showLand: () => { UI.showLand = !UI.showLand; try { localStorage.setItem('botc-grimoire-showland', UI.showLand ? '1' : ''); } catch (e) { /* без хранилища — до перезагрузки */ } render(); },
+  showLand: () => { UI.showLand = !UI.showLand; if (UI.show) UI.show.sub = 0; try { localStorage.setItem('botc-grimoire-showland', UI.showLand ? '1' : ''); } catch (e) { /* без хранилища — до перезагрузки */ } render(); },
   showFlip: () => { UI.showFlip = !UI.showFlip; try { localStorage.setItem('botc-grimoire-showflip', UI.showFlip ? '1' : ''); } catch (e) { /* без хранилища */ } render(); },
   showRole: id => { const p = E.P(S, id), r = seenRole(p); UI.show = { screens: [{ caption: 'Ваша роль', items: [{ role: r, align: r === p.role ? p.align : undefined }] }], i: 0 }; render(); },
   showRef: rid => { UI.show = { screens: [{ caption: '', items: [{ role: rid, align: DATA.roles[rid].team === 'fabled' || DATA.roles[rid].team === 'loric' ? 'good' : undefined }] }], i: 0 }; render(); },

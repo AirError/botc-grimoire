@@ -60,7 +60,7 @@ function rmTok(p, k, src) { p.tokens = p.tokens.filter(t => !(t.k === k && (!src
 const TOK_RU = {
   poisoned: 'Отравлен', drunk: 'Пьян', protected: 'Защищён', cursed: 'Проклят', safe: 'Не умрёт при казни',
   master: 'Хозяин', mad: 'Помешан', hasability: 'Сохранил способность', twin: 'Близнец', grandchild: 'Внук',
-  herring: 'Ложная цель', chosen: 'Выбран', note: 'Заметка', know: 'Раскрытый', lunch: 'Обед', shown: 'Показан', guessused: 'Догадка использована',
+  herring: 'Ложная цель', chosen: 'Выбран', note: 'Заметка', know: 'Раскрытый', lunch: 'Обед', shown: 'Показан', guessused: 'Догадка использована', second: 'Второй (Гарпия)',
   votes3: '3 голоса', voteneg: 'Голос против', sober: 'Трезв и здоров', twice: 'Действует дважды', bad: 'Что-то плохое',
 };
 
@@ -210,7 +210,7 @@ function saved(S, p, by) { log(S, `${p.name} не умирает: ${by}`, 'save'
 // reason — примечание рассказчика (видно в журнале и в «Гримуаре», в объявлении на рассвете не звучит)
 /* ---------- смена роли посреди игры: Яга, Цирюльник, Заклинатель змей, Фань Гу, Егерь, Блудница, Чёрт ---------- */
 // эффекты, которые держатся, пока у кого-то есть способность-источник: роль сменилась — эффект кончается (яд Отравителя и т. п.)
-const ENDS_WITH_ROLE = ['poisoned', 'drunk', 'protected', 'safe', 'cursed', 'mad', 'hasability', 'votes3', 'voteneg', 'sober', 'twice', 'chosen', 'master'];
+const ENDS_WITH_ROLE = ['poisoned', 'drunk', 'protected', 'safe', 'cursed', 'mad', 'second', 'hasability', 'votes3', 'voteneg', 'sober', 'twice', 'chosen', 'master'];
 function endOrphanEffects(S) {
   const held = new Set(S.players.flatMap(q => [q.role, q.gained]).filter(Boolean));
   for (const q of S.players) q.tokens = q.tokens.filter(t => !(ENDS_WITH_ROLE.includes(t.k) && t.src && R(t.src) && !held.has(t.src)));
@@ -848,6 +848,21 @@ function damselGuess(S, byId, onId) {
   return { hit };
 }
 
+// Безумие нарушено (вики, Цереновус и Уродец): рассказчик может казнить игрока — это казнь за день (их не больше одной),
+// днём после неё сразу наступает ночь. Мёртвого тоже можно «казнить» — тогда сегодня больше никого не казнят
+function madnessExecute(S, pid, src) {
+  if (S.phase !== 'day' || S.day.executed || !P(S, pid)) return false;
+  log(S, `${nm(S, pid)}: безумие нарушено — рассказчик казнит (${rname(src)})`, 'day');
+  execute(S, pid);
+  if (!S.result) endDay(S, { skipExecution: true });
+  return true;
+}
+// Гарпия (вики): первый игрок не «помешан», что второй злой, — рассказчик может убить одного, обоих или никого (это смерть, не казнь)
+function harpyKill(S, ids) {
+  for (const id of ids) { const q = P(S, id); if (q && q.alive) attemptKill(S, q, 'ability', 'harpy'); }
+  S.players.forEach(q => { rmTok(q, 'mad', 'harpy'); rmTok(q, 'second', 'harpy'); });
+}
+
 // Мясник: казнить сейчас — после этого Мясник может номинировать ещё раз
 function executeNow(S, opts) {
   const b = block(S);
@@ -1161,7 +1176,7 @@ function infoPair(team) {
     const cands = S.players.filter(q => q.id !== p.id && realTeam(q) === team);
     const def = stable(S, `pair:${team}:${p.id}:${dist ? 'f' : 't'}`, () => {
       if (dist) { // ложная: роль этого типа из сценария, которой нет ни у одного из двоих показанных
-        const r = pick(scriptRoles(S, x => R(x).team === team)) || null;
+        const r = pick(scriptRoles(S, x => R(x).team === team && x !== actsAs(p) && x !== p.role)) || null; // не своя роль
         return { t: shuffle(S.players.filter(q => q.id !== p.id && q.role !== r)).slice(0, 2).map(q => q.id), r, none: '' };
       }
       const real = cands.length ? pick(cands) : null;
@@ -1259,7 +1274,8 @@ const LOGIC = {
     const ex = S.day && S.day.executionDeath && P(S, S.day.executionDeath);
     if (!ex) return { active: false, reason: 'Сегодня днём никто не умер от казни' };
     const dist = distortion(S, p);
-    const fake = stable(S, 'under:' + p.id, () => pick(scriptRoles(S, r => r !== ex.role && R(r).team === realTeam(ex))) || pick(scriptRoles(S, r => r !== ex.role)) || ex.role);
+    const own = r => r === actsAs(p) || r === p.role; // свою роль Гробовщику не предлагаем
+    const fake = stable(S, 'under:' + p.id, () => pick(scriptRoles(S, r => r !== ex.role && !own(r) && R(r).team === realTeam(ex))) || pick(scriptRoles(S, r => r !== ex.role && !own(r))) || ex.role);
     return { inputs: [ROLE('r', 'Какую роль показать (по умолчанию — рекомендация)', () => true)], defaults: { r: dist ? fake : ex.role },
       info: inp => ({ show: `Покажите жетон: ${rname(inp.r)}`, lines: [`Казнён ${ex.name} — ${rname(ex.role)}`, inp.r !== ex.role ? 'Показываете ложную роль' : '',
         dist && dist.must && inp.r === ex.role ? 'Вортокс: нужна ЛОЖНАЯ роль' : ''], tokens: inp.r ? [{ role: inp.r }] : [] }),
@@ -1277,7 +1293,7 @@ const LOGIC = {
   ravenkeeper: (S, p, first, off) => {
     if (S.flags.ravenWake !== p.id || !S.night.deaths.some(d => d.pid === p.id)) return { active: false, reason: 'Смотритель не умер этой ночью', deadOk: true };
     const dist = distortion(S, p);
-    const shown = inp => { const t = inp.t && P(S, inp.t[0]); if (!t) return null; return inp.r || (dist ? stable(S, 'raven:' + t.id, () => pick(scriptRoles(S, r => r !== t.role && R(r).team === realTeam(t))) || t.role) : t.role); };
+    const shown = inp => { const t = inp.t && P(S, inp.t[0]); if (!t) return null; return inp.r || (dist ? stable(S, 'raven:' + t.id, () => pick(scriptRoles(S, r => r !== t.role && r !== actsAs(p) && r !== p.role && R(r).team === realTeam(t))) || t.role) : t.role); };
     return { deadOk: true, inputs: [PL('t', 1, 'Чью роль узнать')],
       more: inp => inp.t && inp.t.length ? [ROLE('r', 'Какую роль показать (не выбрано — рекомендация)', () => true, { optional: true })] : [],
       info: inp => { const t = inp.t && P(S, inp.t[0]); if (!t) return null; const r = shown(inp);
@@ -1482,16 +1498,53 @@ const LOGIC = {
     ps.forEach((q, i) => { if (realTeam(q) === 'minion') { const k = Math.abs(i - d); best = Math.min(best, k, n - k); } });
     return { n: best === n ? '—' : best, lines: regNote(S, ps.map(q => q.id)) };
   }, 'Шагов от Демона до ближайшего Приспешника'),
-  dreamer: (S, p, first, off) => ({
-    inputs: [PL('t', 1, 'Сновидец выбирает игрока', notSelf(p))],
-    info: inp => {
-      const t = inp.t && P(S, inp.t[0]); if (!t) return null;
-      const goodSide = isGoodTeam(realTeam(t));
-      const fake = stable(S, `dream:${p.id}:${t.id}`, () => pick(scriptRoles(S, r => isGoodTeam(R(r).team) !== goodSide && r !== t.role)) || null);
-      return { show: `${rname(t.role)} или ${rname(fake)}`, lines: ['Покажите 1 добрую и 1 злую роль, одна из них — его', ...regNote(S, [t.id])],
-        tokens: shuffle([t.role, fake].filter(Boolean)).map(role => ({ role })) };
-    },
-    apply: inp => log(S, `Сновидец (${p.name}) смотрит на ${nm(S, inp.t[0])}`, 'info'),
+  // Сновидец (вики): игрок не он сам и не Странник; 1 добрая и 1 злая роль, одна из них — его. Роли выбирает рассказчик
+  // (по умолчанию — рекомендация); своя роль Сновидцу не предлагается. Доброму игроку ложной лучше показать Приспешника
+  // из игры (вики: «почти всегда показывайте Приспешников из игры»). Пьян, отравлен, Вортокс — рекомендация: обе ложные
+  dreamer: (S, p, first, off) => {
+    const dist = distortion(S, p), mine = new Set([p.role, actsAs(p)]);
+    const side = good => r => R(r) && isGoodTeam(R(r).team) === good && !mine.has(r);
+    const fakeFor = (t, good) => { const pool = scriptRoles(S, r => side(good)(r) && r !== t.role);
+      const minIn = good ? [] : pool.filter(r => R(r).team === 'minion' && inPlay(S, r));
+      return pick(minIn.length ? minIn : pool) || null; };
+    const rec = t => stable(S, `dream:${p.id}:${t.id}:${dist ? 'f' : 't'}`, () => {
+      const tg = isGoodTeam(realTeam(t));
+      if (dist) return { g: fakeFor(t, true), e: fakeFor(t, false) };
+      return tg ? { g: t.role, e: fakeFor(t, false) } : { g: fakeFor(t, true), e: t.role };
+    });
+    const pickT = inp => inp.t && P(S, inp.t[0]);
+    const shown = inp => { const t = pickT(inp); if (!t) return null; const d = rec(t); return { g: inp.g || d.g, e: inp.e || d.e }; };
+    return {
+      inputs: [PL('t', 1, 'Сновидец выбирает игрока (не себя и не Странника)', q => q.id !== p.id && !isTraveller(q))],
+      more: inp => { const t = pickT(inp); if (!t) return []; const d = rec(t);
+        return [ROLE('g', `Добрая роль (не выбрано — рекомендация: ${rname(d.g)})`, side(true), { optional: true }),
+          ROLE('e', `Злая роль (не выбрано — рекомендация: ${rname(d.e)})`, side(false), { optional: true })]; },
+      info: inp => {
+        const t = pickT(inp), s = shown(inp); if (!t || !s) return null;
+        const ok = s.g === t.role || s.e === t.role;
+        const order = stable(S, `dreamOrd:${p.id}:${t.id}`, () => Math.random() < 0.5);
+        return { show: `${rname(s.g)} или ${rname(s.e)}`, lines: [ok ? 'Одна из ролей — его: информация верная' : `Обе роли ложные (на самом деле ${rname(t.role)})`,
+            dist && dist.must && ok ? 'Вортокс: нужна ЛОЖНАЯ информация — обе роли не его' : '', ...regNote(S, [t.id])],
+          tokens: (order ? [s.g, s.e] : [s.e, s.g]).filter(Boolean).map(role => ({ role })) };
+      },
+      apply: inp => { const t = pickT(inp), s = shown(inp); const ok = s.g === t.role || s.e === t.role;
+        log(S, `Сновидец (${p.name}) смотрит на ${t.name}: ${rname(s.g)} или ${rname(s.e)}${ok ? '' : ' (обе ложные)'}`, 'info');
+        if (dist && !ok) recordAbn(S, p, 'ложная информация', dist.src); },
+    };
+  },
+  // Гарпия (вики): выбирает 2 игроков по очереди; будят только первого — «ОБЛАДАТЕЛЬ ЭТОЙ РОЛИ ВЫБРАЛ ВАС», жетон Гарпии,
+  // указать на второго. Второго не будят. Завтра первый «помешан», что второй злой, иначе рассказчик может убить одного или обоих
+  harpy: (S, p, first, off) => ({
+    inputs: [PL('m', 1, 'Гарпия выбирает первого игрока (он будет «помешан»)'), PL('s', 1, 'и второго игрока')],
+    info: inp => { const a = inp.m && P(S, inp.m[0]), b = inp.s && P(S, inp.s[0]); if (!a || !b) return null;
+      return { show: `Разбудите ${a.name}: «ОБЛАДАТЕЛЬ ЭТОЙ РОЛИ ВЫБРАЛ ВАС», жетон Гарпии, затем укажите на ${b.name}`,
+        lines: [`Второго игрока (${b.name}) не будят — он ничего не узнаёт`, off ? 'Гарпия пьяна или отравлена: показать можно, но безумие не действует' : ''],
+        tokens: [{ label: a.name, caption: CARD.selected, role: 'harpy', players: [b.id] }] }; },
+    apply: inp => { const a = P(S, inp.m[0]), b = P(S, inp.s[0]);
+      S.players.forEach(q => { rmTok(q, 'mad', 'harpy'); rmTok(q, 'second', 'harpy'); }); // действует до следующего выбора Гарпии
+      if (!off) { addTok(S, a, 'mad', 'harpy', ['dusk', S.n + 1], { note: `${b.name} злой`, by: b.id }); addTok(S, b, 'second', 'harpy', ['dusk', S.n + 1]); }
+      else recordAbn(S, p, 'безумие не наложено', abnSource(S, p));
+      log(S, `Гарпия (${p.name}): ${a.name} должен быть помешан на том, что ${b.name} злой`, 'action'); },
   }),
   snakecharmer: (S, p, first, off) => ({
     inputs: [PL('t', 1, 'Заклинатель змей выбирает живого игрока', both(aliveOnly, notSelf(p)))],
@@ -1937,7 +1990,8 @@ const BOUNDS = {
   po: { other: [I('1 игрока или никого; после «никого» в следующую ночь — 3 игроков')] },
   lunatic: { all: [I('как будто он Демон — ничего не происходит'), Y('Что показать Безумцу; настоящий Демон узнаёт его выбор')] },
   clockmaker: { first: [Y('Число шагов от Демона до ближайшего Приспешника')] },
-  dreamer: { all: [I('1 игрока, не себя'), Y('1 добрую и 1 злую роль, одна из них — его')] },
+  dreamer: { all: [I('1 игрока, не себя и не Странника'), Y('1 добрую и 1 злую роль, одна из них — его; доброму игроку ложной лучше показать Приспешника из игры')] },
+  harpy: { all: [I('2 игроков по очереди'), Y('Будите только первого: «ОБЛАДАТЕЛЬ ЭТОЙ РОЛИ ВЫБРАЛ ВАС», жетон Гарпии, укажите на второго. Завтра первый «помешан», что второй злой, — иначе можете убить одного или обоих')] },
   snakecharmer: { all: [I('1 живого игрока: если это Демон — они меняются ролями и сторонами')] },
   mathematician: { all: [Y('Число игроков, чьи способности сработали неправильно из-за чужих способностей')] },
   flowergirl: { other: [Y('Голосовал ли сегодня Демон')] },
@@ -2069,7 +2123,7 @@ function klutzChoose(S, pid) {
 
 const ENGINE = { newGame, newPlayer, P, nm, rname, realTeam, actsAs, aliveCount, aliveAll, coreCount, isTraveller, exile, exileThreshold, addTraveller, meetingBlocker, isDemon, distribution, setupDistribution, distCheck, unknownSetup, countTeams, randomDeal,
   amnesiacGuess, AMNESIAC_ANSWERS, storytellerKill, voteCount, voteWeight, voudonActive, bishopActive, travellerWorks, executeNow,
-  judgeRuling, gunslingerShot, tinkerDies, doomsayerKill, fiddlerEnd, swapSeats, goonWarn, damselGuess, changeRole,
+  judgeRuling, gunslingerShot, tinkerDies, doomsayerKill, fiddlerEnd, swapSeats, goonWarn, damselGuess, changeRole, madnessExecute, harpyKill,
   finishRoles, autoSetup, setupProblems, drawStart, drawOpen, drawClose, drawCancel, drawShown, drawLocked, drawProblem, distortion,
   randomPool, dealPool, validPool, scriptOutsiders, CARD, jinxesInPlay, startGame, startNight, currentStep, stepSpec, applyStep, skipStep,
   stepInputs, missingInputs, endNight,

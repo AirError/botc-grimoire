@@ -251,6 +251,40 @@ try {
   ok('Девица: Демон «угадывает» — не считается', E.damselGuess(S, byRole(S, 'imp').id, byRole(S, 'damsel').id) === null && !S.result);
   E.damselGuess(S, byRole(S, 'poisoner').id, byRole(S, 'damsel').id);
   ok('Девица: Приспешник угадал — победа зла', S.result && S.result.winner === 'evil');
+  // Сновидец: своя роль не показывается; доброму игроку ложной — Приспешник из игры; роли можно выбрать самому
+  let dreamOwn = false, dreamMin = true;
+  for (let k = 0; k < 40; k++) {
+    S = game(['dreamer', 'clockmaker', 'oracle', 'seamstress', 'mathematician', 'sweetheart', 'eviltwin', 'nodashii'], 'snv');
+    S.players.forEach(p => { if (['eviltwin', 'nodashii'].includes(p.role)) p.align = 'evil'; }); E.autoSetup(S, true); E.startGame(S);
+    const dst2 = S.night.steps.find(s => s.id === 'dreamer'), dsp2 = E.stepSpec(S, dst2);
+    const onEvil = dsp2.info({ t: ids(S, 'eviltwin') }).tokens.map(t => t.role), onGood = dsp2.info({ t: ids(S, 'oracle') }).tokens.map(t => t.role);
+    if (onEvil.includes('dreamer') || onGood.includes('dreamer')) dreamOwn = true;
+    if (!onGood.includes('eviltwin')) dreamMin = false; // Приспешник в игре — Злой Близнец
+  }
+  ok('Сновидец: своя роль не показывается ни разу (40 игр)', !dreamOwn);
+  ok('Сновидец: доброму игроку ложной показывается Приспешник из игры', dreamMin);
+  { const dsp3 = E.stepSpec(S, S.night.steps.find(s => s.id === 'dreamer')), inf = dsp3.info({ t: ids(S, 'oracle'), g: 'oracle', e: 'witch' });
+    ok('Сновидец: роли можно выбрать самому', inf.tokens.map(t => t.role).sort().join() === 'oracle,witch'); }
+  // Гарпия: будят только первого; второй — отметка; день: убить одного или обоих
+  S = game(['dreamer', 'clockmaker', 'oracle', 'seamstress', 'mathematician', 'sweetheart', 'harpy', 'nodashii'], 'snv'); S.script.roles = S.script.roles.concat('harpy');
+  S.players.forEach(p => { if (['harpy', 'nodashii'].includes(p.role)) p.align = 'evil'; }); E.autoSetup(S, true); E.startGame(S);
+  const hst = S.night.steps.find(s => s.id === 'harpy'), hinfo = E.stepSpec(S, hst).info({ m: ids(S, 'oracle'), s: ids(S, 'clockmaker') });
+  ok('Гарпия: показ только первому игроку (жетон Гарпии и второй игрок)', hinfo.tokens.length === 1 && hinfo.tokens[0].label === byRole(S, 'oracle').name && hinfo.tokens[0].players[0] === byRole(S, 'clockmaker').id);
+  runNight(S, { harpy: { m: ids(S, 'oracle'), s: ids(S, 'clockmaker') } });
+  ok('Гарпия: первый «помешан», у второго отметка', E.hasTok(byRole(S, 'oracle'), 'mad', 'harpy') && E.hasTok(byRole(S, 'clockmaker'), 'second', 'harpy'));
+  E.harpyKill(S, ids(S, 'oracle', 'clockmaker'));
+  ok('Гарпия: рассказчик убил обоих — это смерть, не казнь, день идёт', !byRole(S, 'oracle').alive && !byRole(S, 'clockmaker').alive && S.phase === 'day' && !S.day.executed);
+  // Цереновус и Уродец: нарушил безумие — казнь за день, сразу ночь
+  S = game(['dreamer', 'clockmaker', 'oracle', 'seamstress', 'mathematician', 'mutant', 'cerenovus', 'nodashii'], 'snv');
+  S.players.forEach(p => { if (['cerenovus', 'nodashii'].includes(p.role)) p.align = 'evil'; }); E.autoSetup(S, true); E.startGame(S);
+  runNight(S, { cerenovus: { t: ids(S, 'oracle'), r: 'clockmaker' } });
+  const orc = byRole(S, 'oracle'); E.madnessExecute(S, orc.id, 'cerenovus');
+  ok('Цереновус: нарушил безумие — казнён, это казнь дня, наступила ночь', !orc.alive && S.phase === 'night' && S.n === 2 && S.log.some(l => /Казнь: /.test(l.t) && l.t.includes(orc.name)));
+  runNight(S, {});
+  const mu = byRole(S, 'mutant'); E.execute(S, byRole(S, 'clockmaker').id); // казнь сегодня уже была
+  ok('Уродец: если сегодня казнь уже была — казнить за безумие нельзя', S.phase === 'day' && E.madnessExecute(S, mu.id, 'mutant') === false && mu.alive);
+  E.endDay(S); runNight(S, {});
+  ok('Уродец: внушает, что он Изгой, — казнён, сразу ночь', S.phase === 'day' && E.madnessExecute(S, mu.id, 'mutant') === true && !mu.alive && S.phase === 'night');
   }
 
   // 19. Девственница и Шпион — решение рассказчика
