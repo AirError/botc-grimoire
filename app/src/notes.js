@@ -4,6 +4,8 @@
    К заметке само добавляется, где вы были: фаза, шаг ночи, сценарий. Выгрузка: «Поделиться», файл со всем, текст. */
 let NOTES = [];                      // [{ id, created, text, done, ctx, images: [{ full, thumb }] }], новые — первыми
 const NOTE_DRAFT = { imgs: [], busy: false };
+// правка заметки в работе (заметка пользователя 2026-10-12): текст и скриншоты — копия, сохраняется кнопкой
+const NOTE_EDIT = { id: null, text: '', imgs: [], busy: false };
 const NOTES_DB = 'botc-grimoire-notes', NOTES_LS = 'botc-grimoire-notes-v1';
 let notesIdb = null;
 
@@ -68,11 +70,16 @@ const noteDate = ts => new Date(ts).toLocaleString('ru-RU', { day: 'numeric', mo
 function notesCard() {
   const pend = NOTE_DRAFT.imgs.map((im, i) => `<span class="nthumb"><img src="${im.thumb}" alt="Скриншот ${i + 1}"><button class="nx" data-act="noteImgDel" data-arg="${i}" aria-label="Убрать скриншот">×</button></span>`).join('');
   const work = NOTES.filter(n => !n.done), done = NOTES.filter(n => n.done);
-  const item = n => `<div class="note ${n.done ? 'done' : ''}">
-      <div class="nhead"><span class="small muted">${esc(noteDate(n.created))}${n.ctx ? ' · ' + esc(n.ctx) : ''}</span></div>
+  const head = n => `<div class="nhead"><span class="small muted">${esc(noteDate(n.created))}${n.ctx ? ' · ' + esc(n.ctx) : ''}</span></div>`;
+  const editing = n => `<div class="note editing">${head(n)}
+      <textarea data-act="noteEditText" aria-label="Текст заметки">${esc(NOTE_EDIT.text)}</textarea>
+      ${NOTE_EDIT.imgs.length ? `<div class="nthumbs">${NOTE_EDIT.imgs.map((im, i) => `<span class="nthumb"><img src="${im.thumb}" alt="Скриншот ${i + 1}"><button class="nx" data-act="noteEditImgDel" data-arg="${i}" aria-label="Убрать скриншот">×</button></span>`).join('')}</div>` : ''}
+      <div class="row"><label class="btn nfile">${NOTE_EDIT.busy ? 'Обрабатываю…' : 'Добавить скриншоты'}<input type="file" accept="image/*" multiple data-act="noteEditFiles" hidden></label>
+        <button class="btn primary" data-act="noteEditSave">Сохранить</button><button class="btn" data-act="noteEditCancel">Отмена</button></div></div>`;
+  const item = n => NOTE_EDIT.id === n.id ? editing(n) : `<div class="note ${n.done ? 'done' : ''}">${head(n)}
       ${n.text ? `<div class="ntext">${esc(n.text)}</div>` : ''}
       ${(n.images || []).length ? `<div class="nthumbs">${n.images.map((im, i) => `<button class="nthumb" data-act="noteView" data-arg="${n.id}|${i}" aria-label="Открыть скриншот ${i + 1}"><img src="${im.thumb}" alt=""></button>`).join('')}</div>` : ''}
-      <div class="row nact"><button class="linkish" data-act="noteDone" data-arg="${n.id}">${n.done ? 'Вернуть в работу' : 'Сделано'}</button>
+      <div class="row nact">${n.done ? '' : `<button class="linkish" data-act="noteEdit" data-arg="${n.id}">Изменить</button>`}<button class="linkish" data-act="noteDone" data-arg="${n.id}">${n.done ? 'Вернуть в работу' : 'Сделано'}</button>
         ${UI.noteDel === n.id ? `<span class="small">Удалить?</span><button class="linkish danger" data-act="noteDel" data-arg="${n.id}">Да, удалить</button><button class="linkish" data-act="noteDelAsk">Нет</button>`
           : `<button class="linkish" data-act="noteDelAsk" data-arg="${n.id}">Удалить</button>`}</div></div>`;
   // по умолчанию виден только ввод; заметки в работе — по кнопке, выполненные — отдельно, тоже свёрнуты
@@ -136,6 +143,25 @@ const NOTE_ACTS = {
     NOTES.unshift(n);
     if (!(await notePut(n))) { NOTES.shift(); noteMsg('Не удалось сохранить: на устройстве не хватает места. Удалите старые заметки или скриншоты.'); return; }
     UI.noteText = ''; NOTE_DRAFT.imgs = []; noteMsg('Заметка сохранена');
+  },
+  noteEdit: id => { const n = NOTES.find(x => x.id === id); if (!n) return; Object.assign(NOTE_EDIT, { id, text: n.text || '', imgs: (n.images || []).slice(), busy: false }); render(); },
+  noteEditText: (a, el) => { NOTE_EDIT.text = el.value; },
+  noteEditImgDel: i => { NOTE_EDIT.imgs.splice(+i, 1); render(); },
+  noteEditFiles: async (a, el) => {
+    const files = [...(el.files || [])]; el.value = ''; if (!files.length) return;
+    NOTE_EDIT.busy = true; render();
+    for (const f of files) { try { NOTE_EDIT.imgs.push(await noteImage(f)); } catch (e) { /* не картинка — пропускаем */ } }
+    NOTE_EDIT.busy = false; render();
+  },
+  noteEditCancel: () => { NOTE_EDIT.id = null; NOTE_EDIT.imgs = []; render(); },
+  noteEditSave: async () => {
+    const n = NOTES.find(x => x.id === NOTE_EDIT.id); if (!n) { NOTE_EDIT.id = null; render(); return; }
+    const text = NOTE_EDIT.text.trim();
+    if (!text && !NOTE_EDIT.imgs.length) { noteMsg('Заметка пустая — напишите текст, добавьте скриншот или удалите её'); return; }
+    const old = { text: n.text, images: n.images };
+    n.text = text; n.images = NOTE_EDIT.imgs.slice();
+    if (!(await notePut(n))) { Object.assign(n, old); noteMsg('Не удалось сохранить: на устройстве не хватает места.'); return; }
+    NOTE_EDIT.id = null; NOTE_EDIT.imgs = []; noteMsg('Заметка изменена');
   },
   noteDone: async id => { const n = NOTES.find(x => x.id === id); if (!n) return; n.done = !n.done; await notePut(n); render(); },
   noteDelAsk: id => { UI.noteDel = id || null; render(); },

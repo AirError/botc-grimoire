@@ -16,12 +16,16 @@ const fmtInstr = t => esc(t).replace(/\*([^*]+)\*/g, '<b class="tok">$1</b>').re
 const isGoodRole = rid => E.isGoodTeam(team(rid));
 
 /* ------------------------------------------------------------ действия, история, автосохранение */
-// Любое изменение партии идёт через act: снимок → изменение → автопропуск → сохранение → подсказка с отменой
-function act(fn, label) {
+// Любое изменение партии идёт через act: снимок → изменение → автопропуск → сохранение → подсказка с отменой.
+// С заката до следующего заката изменения, кроме шагов ночи, пишутся в запись ночи (E.recPatch) — чтобы правка выбора
+// из журнала переиграла ночь и сохранила всё, что рассказчик делал потом. kind 'step' — шаг ночи (его пишет движок)
+function act(fn, label, kind) {
   HISTORY.push({ s: JSON.stringify(S), label: label || '' });
   if (HISTORY.length > HIST_MAX) HISTORY.shift();
-  const logLen = S.log.length;
-  fn(S); autoSkip(); S.updated = Date.now();
+  const logLen = S.log.length, rp = S.rp && kind !== 'step' ? { id: S.rp.id, before: E.rpStrip(S) } : null;
+  fn(S);
+  if (rp && S.rp && S.rp.id === rp.id) E.recPatch(S, rp.before, logLen); // новая ночь началась — её запись чистая
+  autoSkip(); S.updated = Date.now();
   const last = S.log.length > logLen ? S.log[S.log.length - 1].t : '';
   HISTORY[HISTORY.length - 1].label = label || last || 'изменение';
   persist(); render();
@@ -29,18 +33,30 @@ function act(fn, label) {
 }
 function undo() {
   const h = HISTORY.pop(); if (!h) return;
+  UI.edit = null; UI.editRes = null;
   S = JSON.parse(h.s); S.updated = Date.now();
   persist(); render(); toast('Отменено: ' + h.label, false);
 }
 // изменение черновика (выбор игроков до «Готово») — сохраняем без записи в историю
 function draft(fn) { fn(S); S.updated = Date.now(); persist(); render(); }
+// поля шага, в котором сейчас выбирают: текущий шаг ночи или шаг, который правят из журнала (UI.edit)
+function curFields() {
+  if (UI.edit) return E.stepInputs(UI.edit.spec, UI.edit.inp);
+  const st = S.phase === 'night' && E.currentStep(S); if (!st || !S.draft) return [];
+  return E.stepInputs(E.stepSpec(S, st), S.draft.inp);
+}
+// изменение выбора; bind — связанное поле подстраивается само (Прачка/Библиотекарь/Сыщик: роль ↔ игроки)
+function inpDraft(key, fn) {
+  const run = inp => { fn(inp); const f = curFields().find(x => x.key === key); if (f && f.bind) f.bind(inp); };
+  if (UI.edit) { run(UI.edit.inp); UI.editRes = null; render(); } else draft(S => run(S.draft.inp));
+}
 function autoSkip() {
   if (!S || S.phase !== 'night' || !UI.hideInactive) return;
   let guard = 0;
   while (S.phase === 'night' && guard++ < 100) {
     const st = E.currentStep(S); if (!st) break;
     if (E.stepSpec(S, st).active) break;
-    E.skipStep(S);
+    E.skipStep(S, 'auto');
   }
 }
 
@@ -322,8 +338,9 @@ function cardHtml(text, thumb) {
 }
 function showButtons(tokens) {
   const groups = tokenGroups(tokens); if (!groups.length) return '';
-  UI.showGroups = groups;
-  return `<div class="showbtns">${groups.map((g, i) => `<button class="btn showbtn" data-act="showOpen" data-arg="${i}">${art('eye', 'bg')}${g.label ? 'Показать: ' + esc(g.label) : 'Показать игроку на экране'}</button>`).join('')}</div>`;
+  // кнопки показа со всего экрана (шаг ночи и форма правки из журнала) — в одном списке, render() очищает его
+  const base = (UI.showGroups = UI.showGroups || []).length; UI.showGroups.push(...groups);
+  return `<div class="showbtns">${groups.map((g, i) => `<button class="btn showbtn" data-act="showOpen" data-arg="${base + i}">${art('eye', 'bg')}${g.label ? 'Показать: ' + esc(g.label) : 'Показать игроку на экране'}</button>`).join('')}</div>`;
 }
 // число — рисованными золотыми цифрами (если они есть в сборке), остальное — шрифтом
 const numText = s => {
@@ -348,7 +365,8 @@ function showOverlay() {
     const r = t.role && DATA.roles[t.role], al = t.align || (t.thumb === 'down' ? 'evil' : t.thumb === 'up' ? 'good' : (r && isGoodRole(t.role) ? 'good' : 'evil'));
     // способность — только когда игрок получает роль («ТЕПЕРЬ ВЫ», показ своей роли) или роль одна без имён и чисел
     const ab = r && one && !t.players && !t.text && (sc.caption === 'ТЕПЕРЬ ВЫ' || sc.caption === 'Ваша роль' || !sc.caption);
-    return `<div class="shrole side-${al} ${t.small ? 'small' : ''}">${t.pre ? `<div class="shpre">${esc(t.pre)}</div>` : ''}${r ? `${ico(t.role, al, 'shic')}<div class="shname">${esc(E.rname(t.role))}</div>` : ''}${t.players ? names(t.players) : ''}
+    // lead — надпись между ролью и именами («Эта роль — один из этих игроков:» — Прачка, Библиотекарь, Сыщик)
+    return `<div class="shrole side-${al} ${t.small ? 'small' : ''}">${t.pre ? `<div class="shpre">${esc(t.pre)}</div>` : ''}${r ? `${ico(t.role, al, 'shic')}<div class="shname">${esc(E.rname(t.role))}</div>` : ''}${t.lead ? `<div class="shsub shlead">${esc(t.lead)}</div>` : ''}${t.players ? names(t.players) : ''}
       ${t.text ? numText(t.text) : ''}${t.sub ? `<div class="shsub">${esc(t.sub)}</div>` : ''}${ab ? `<div class="shab">${esc(r.ability)}</div>` : ''}</div>`;
   };
   const card = sc.caption ? cardHtml(sc.caption, sc.thumb) : yn ? cardHtml(yn) : '';
@@ -395,6 +413,12 @@ function roleOptions(filter, selected, opts) {
   }
   return `<option value="">${opts.placeholder || '— выберите —'}</option>` + groups + extra;
 }
+// список ролей группами от движка — только то, что можно показать (группы с подписями «В игре», «Нет в игре — ложная…»)
+function roleGroupOptions(groups, selected, placeholder) {
+  const gs = groups.filter(g => g.roles.length), all = gs.flatMap(g => g.roles);
+  if (selected && !all.includes(selected)) gs.push({ label: 'Выбрано раньше', roles: [selected] });
+  return `<option value="">${placeholder || '— выберите —'}</option>` + gs.map(g => `<optgroup label="${esc(g.label)}">${g.roles.map(r => `<option value="${r}" ${r === selected ? 'selected' : ''}>${esc(E.rname(r))}</option>`).join('')}</optgroup>`).join('');
+}
 const plainOptions = (ids, selected, placeholder) => `<option value="">${placeholder || '— выберите —'}</option>` + ids.map(r => `<option value="${r}" ${r === selected ? 'selected' : ''}>${esc(E.rname(r))}</option>`).join('');
 
 function fieldHtml(f, inp) {
@@ -403,7 +427,8 @@ function fieldHtml(f, inp) {
     const sel = v || [];
     return `<div class="field"><div class="flabel"><span>${esc(f.label)}</span><span>${sel.length}/${f.n > 50 ? '…' : f.n}</span></div>${chipsPlayers(f.key, f.n, f.filter, sel)}</div>`;
   }
-  if (f.type === 'role') return `<div class="field"><label>${esc(f.label)}</label><select data-act="pickR" data-arg="${f.key}">${roleOptions(r => f.filter(r), v, { all: f.all, placeholder: f.optional ? '— не выбирать —' : undefined })}</select></div>`;
+  if (f.type === 'role') return `<div class="field"><label>${esc(f.label)}</label><select data-act="pickR" data-arg="${f.key}">${f.groups ? roleGroupOptions(f.groups, v, f.optional ? '— не выбирать —' : undefined)
+    : roleOptions(r => f.filter(r), v, { all: f.all, placeholder: f.optional ? '— не выбирать —' : undefined })}</select></div>`;
   if (f.type === 'choice') return `<div class="field"><label>${esc(f.label)}</label><div class="seg">${f.options.map(o => `<button class="${(v ?? f.def) === o.v ? 'on' : ''}" data-act="pickC" data-arg="${f.key}|${o.v}">${esc(o.l)}</button>`).join('')}</div></div>`;
   if (f.type === 'number') { const nv = v ?? f.def ?? 0;
     return `<div class="field"><label>${esc(f.label)}</label><div class="stepper"><button class="btn" data-act="num" data-arg="${f.key}|-1|${nv}">−</button><b>${nv}</b><button class="btn" data-act="num" data-arg="${f.key}|1|${nv}">+</button></div></div>`; }
@@ -551,7 +576,7 @@ function revealHtml(info, dist) {
     ${(info.lines || []).filter(Boolean).map(l => `<div class="ln">${esc(l)}</div>`).join('')}
     ${info.grim ? `<div class="showbtns"><button class="btn showbtn" data-act="grimShow">${art('eye', 'bg')}Показать Гримуар на весь экран</button>
       ${dist ? `<button class="btn showbtn" data-act="grimFake">${art('eye', 'bg')}Показать искажённый Гримуар</button>
-        <div class="small muted">Пьяному или отравленному можно дать ложную информацию (вики, «Пьян»): роли перемешаны, часть заменена ролями сценария того же типа; его место, саваны и Странники — как есть, отметок нет.${S.night.data.fakeGrim ? ' <button class="linkish" data-act="grimFakeNew">Перемешать заново</button>' : ''}</div>` : ''}</div>` : ''}${info.secret ? '' : showButtons(info.tokens)}</div>`;
+        <div class="small muted">Пьяному или отравленному можно дать ложную информацию (вики, «Пьян»): роли добрых перемешаны, часть заменена ролями сценария того же типа, отметки состояний переезжают вместе с ролью; его место, Демон и Приспешники (злые знают друг друга), саваны и Странники — как есть.${S.night.data.fakeGrim ? ' <button class="linkish" data-act="grimFakeNew">Перемешать заново</button>' : ''}</div>` : ''}</div>` : ''}${info.secret ? '' : showButtons(info.tokens)}</div>`;
 }
 
 function viewNight() {
@@ -748,6 +773,7 @@ function viewDay() {
   const second = d.executed && d.noms.find(x => x.butcher && x.count >= th);
   const scapegoat = blk && !d.executed ? S.players.find(p => p.role === 'scapegoat' && p.alive && p.id !== blk && p.align === E.P(S, blk).align) : null;
   const endLabel = d.executed ? (second ? `Завершить день и казнить: ${esc(E.nm(S, second.on))} (Мясник)` : 'Завершить день') : blk ? `Завершить день и казнить: ${esc(E.nm(S, blk))}` : 'Завершить день без казни';
+  parts.push(fateCard(second ? second.on : d.executed || blk)); // казнь на выбор — над «Завершить день», когда есть казнь
   parts.push(`<div class="card"><button class="btn primary wide" data-act="endDay">${art('execute', 'bg')}${endLabel}</button>
     ${blk && !d.executed && E.travellerWorks(S, 'butcher') ? `<button class="btn wide" data-act="executeNow">Казнить ${esc(E.nm(S, blk))} сейчас — Мясник номинирует ещё раз</button>` : ''}
     ${scapegoat ? `<div class="seg"><button class="${picks.scapegoat ? 'on' : ''}" data-act="scapegoat" data-arg="${scapegoat.id}">Козёл Отпущения (${esc(scapegoat.name)}) казнён вместо ${esc(E.nm(S, blk))}</button></div>` : ''}
@@ -811,16 +837,32 @@ const fakeGrimOn = () => !!(UI.grimShow && UI.grimFake && S.phase === 'night' &&
 const tokenRole = p => (fakeGrimOn() && S.night.data.fakeGrim.map[p.id]) || realTokenRole(p);
 const tokenAlign = p => fakeGrimOn() && S.night.data.fakeGrim.map[p.id] ? (isGoodRole(S.night.data.fakeGrim.map[p.id]) ? 'good' : 'evil') : p.align;
 // искажённый Гримуар: роли перемешаны между местами, примерно треть заменена ролями сценария того же типа, которых нет в игре.
-// Место смотрящего (Шпиона, Вдовы) и Странники — как есть: подмену там видно сразу
+// Место смотрящего (Шпиона, Вдовы) и Странники — как есть: подмену там видно сразу. Демон и Приспешники тоже на своих местах:
+// злые знают друг друга с первой ночи (заметка пользователя 2026-10-12)
 function makeFakeGrim(viewer) {
   const mix = a => { a = a.slice(); for (let i = a.length - 1; i > 0; i--) { const j = Math.floor(Math.random() * (i + 1)); [a[i], a[j]] = [a[j], a[i]]; } return a; };
-  const seats = S.players.filter(p => p.id !== viewer && !E.isTraveller(p) && p.role), roles = mix(seats.map(realTokenRole));
+  // from — чья роль (и чьи отметки состояний) теперь показана на этом месте: состояния переезжают вместе с ролью
+  const seats = S.players.filter(p => p.id !== viewer && !E.isTraveller(p) && p.role && !['minion', 'demon'].includes(team(p.role)));
+  const from = mix(seats.map(p => p.id)), roles = from.map(id => realTokenRole(E.P(S, id)));
   const used = new Set(S.players.flatMap(p => [p.role, p.believes]).concat(roles));
   for (const i of mix([...roles.keys()]).slice(0, Math.max(1, Math.round(roles.length / 3)))) {
     const spare = mix(S.script.roles.filter(r => DATA.roles[r] && team(r) === team(roles[i]) && !used.has(r)))[0];
     if (spare) { used.add(spare); roles[i] = spare; }
   }
-  return { viewer, map: Object.fromEntries(seats.map((p, i) => [p.id, roles[i]])) };
+  return { viewer, map: Object.fromEntries(seats.map((p, i) => [p.id, roles[i]])), from: Object.fromEntries(seats.map((p, i) => [p.id, from[i]])) };
+}
+// отметки на месте в круге Шпиона и Вдовы. В искажённом Гримуаре — отметки того игрока, чья роль здесь показана
+// (отравлен, пьян, защищён… переезжают вместе с ролью — заметка пользователя 2026-10-12: «нужны метки состояний»);
+// отметки добрых ролей, которых в искажённом Гримуаре нет (их заменили), убираем — иначе видна подмена
+function seatMarks(p) {
+  if (!fakeGrimOn()) return playerMarks(p, { noNotes: true });
+  const fg = S.night.data.fakeGrim, src = fg.map[p.id] ? fg.from && E.P(S, fg.from[p.id]) : p;
+  if (!src) return [];
+  const onBoard = new Set(S.players.map(tokenRole));
+  // «Прачка: Повар» — показанной роли тоже нет на поле (заменена) — убираем
+  const gone = new Set(src.tokens.filter(t => t.k === 'shown' && t.note && !onBoard.has(t.note)).map(shownTitle));
+  return playerMarks(src, { noNotes: true }).filter(m => !(m[0] === 'shown' && gone.has(m[1]))
+    && (!m[2] || !DATA.roles[m[2]] || m[2] === 'drunk' || !isGoodRole(m[2]) || onBoard.has(m[2])));
 }
 function roleTokenHtml(p, key) {
   const r = tokenRole(p), name = r ? E.rname(r) : '?', fit = name.length > 13 ? ' textLength="112" lengthAdjust="spacingAndGlyphs"' : '';
@@ -858,7 +900,7 @@ function grimCircle(opts) {
     const vx = cx - x, vy = cy - y, len = Math.hypot(vx, vy) || 1;
     const lw = Math.max(t * 1.1, Math.min(t * 1.7, spacing * 0.96));
     // в искажённом Гримуаре отметок нет — они выдали бы правду
-    return { p, x, y, len, ux: vx / len, uy: vy / len, lw, ms: fakeGrimOn() && !opts.names ? [] : playerMarks(p, { noNotes: !opts.notes }), pos: [], j: 0 };
+    return { p, x, y, len, ux: vx / len, uy: vy / len, lw, ms: opts.names ? playerMarks(p, { noNotes: !opts.notes }) : seatMarks(p), pos: [], j: 0 };
   });
   // занятые места: жетоны (круги) и таблички с именами (прямоугольники)
   const discs = seats.map(s => ({ x: s.x, y: s.y, r: t / 2 + 0.3 }));
@@ -893,7 +935,7 @@ function grimCircle(opts) {
 // жетон крупно: нажатие на жетон в круге Шпиона и Вдовы (роль, способность и все напоминания словами; имени нет — как в Гримуаре)
 function grimZoomHtml() {
   const p = UI.grimZoom && E.P(S, UI.grimZoom); if (!p) return '';
-  const r = tokenRole(p), ms = fakeGrimOn() ? [] : playerMarks(p, { noNotes: true });
+  const r = tokenRole(p), ms = seatMarks(p);
   return `<div class="gzoom" data-act="grimZoom" role="dialog" aria-label="${esc(E.rname(r))}"><div class="gzbox">
     <div class="gztok">${roleTokenHtml(p, 'gcz-' + p.id)}</div>
     <div class="gzrole side-${tokenAlign(p)}">${esc(E.rname(r))}${p.alive ? '' : ` · мёртв${p.ghost ? ', голос призрака есть' : ''}`}</div>
@@ -912,20 +954,22 @@ function nomRules() {
 }
 const ringBtn = () => '<button class="btn ringbtn" data-act="ringNom">◯ Кругом</button>';
 // место за столом: кружок с номером и именем (без ролей — экран может видеть стол); мёртвый — саван (белый контур — голос есть)
-function seatHtml(p, i, g, cls, attrs) {
+function seatHtml(p, i, g, cls, attrs, extra) {
   const { x, y } = g.pos(i), longest = Math.max(3, ...p.name.split(/\s+/).map(w => w.length));
   const fs = Math.min(g.t * 0.22, g.t * 0.84 / (longest * 0.6)); // самое длинное слово — в одну строку
   return `<button class="rseat ${p.alive ? '' : 'dead'} ${cls || ''}" ${attrs || ''} style="left:${(x - g.t / 2).toFixed(2)}cqw;top:${(y - g.t / 2).toFixed(2)}cqw;width:${g.t}cqw;height:${g.t}cqw;font-size:${fs.toFixed(2)}cqw" aria-label="${i + 1}. ${esc(p.name)}${p.alive ? '' : ', мёртв'}">
-    <span class="rno">${i + 1}</span><span class="rnm">${esc(p.name)}</span>${E.isTraveller(p) ? '<span class="rtr">Странник</span>' : ''}${shroudHtml(p)}</button>`;
+    <span class="rno">${i + 1}</span><span class="rnm">${esc(p.name)}</span>${E.isTraveller(p) ? '<span class="rtr">Странник</span>' : ''}${extra || ''}${shroudHtml(p)}</button>`;
 }
 const ringStyle = g => `aspect-ratio:100 / ${g.H.toFixed(1)}`;
 // рассадка кругом: перетащить игрока на другое место (pointer-события внизу файла: data-rdrag)
 function seatRing() {
   const n = S.players.length, g = ringGeom(Math.max(n, 1), false, 250);
-  const seats = S.players.map((p, i) => seatHtml(p, i, g, 'drag', `data-rdrag="${p.id}"`)).join('');
+  // назначение для жребия и раздачи (роль или тип) — под именем; нажатие на место открывает карточку игрока, там его и меняют
+  const asg = p => { const a = !p.role && !E.isTraveller(p) && (S.assign || {})[p.id]; return a ? `<span class="rasg">→ ${esc(assignLabel(a))}</span>` : ''; };
+  const seats = S.players.map((p, i) => seatHtml(p, i, g, 'drag', `data-rdrag="${p.id}"`, asg(p))).join('');
   return `<div class="ov ringov" role="dialog" aria-label="Рассадка по кругу">
     <div class="ringtop"><span></span><b>Рассадка</b><button class="wbtn" data-act="ringClose" aria-label="Закрыть">×</button></div>
-    <div class="ringbox"><div class="small muted ringhint">Зажмите игрока и перетащите на другое место — остальные сдвинутся. Первый — внизу, у вас; номера идут ${dirName()} — как за столом.</div>
+    <div class="ringbox"><div class="small muted ringhint">Нажмите на игрока — назначить роль или тип роли. Зажмите и перетащите на другое место — остальные сдвинутся. Первый — внизу, у вас; номера идут ${dirName()} — как за столом.</div>
       ${dirSeg()}
       ${n ? `<div class="ring" data-geom="${esc(JSON.stringify({ t: g.t, rx: g.rx, ry: g.ry, H: g.H, dir: g.dir }))}" style="${ringStyle(g)}">${seats}<div class="ringmid" style="top:${(g.H / 2).toFixed(2)}cqw"><b>${n}</b><span>игроков</span></div></div>`
         : '<div class="muted">Игроков пока нет — добавьте их в списке.</div>'}
@@ -945,10 +989,16 @@ function nomRing() {
   // стрелка «кто → кого»
   const bi = S.players.findIndex(p => p.id === nm.by), oi = S.players.findIndex(p => p.id === nm.on);
   let arrow = '';
-  if (bi >= 0 && oi >= 0) {
-    const a = g.pos(bi), b = g.pos(oi), dx = b.x - a.x, dy = b.y - a.y, len = Math.hypot(dx, dy) || 1, k0 = (g.t / 2 + 1) / len, k1 = (g.t / 2 + 2.2) / len;
+  if (bi >= 0 && oi >= 0 && bi !== oi) {
+    // дуга через точку, сдвинутую к центру круга: у соседей прямая между краями кружков вывернулась бы
+    // и стрелка смотрела бы на номинирующего — поэтому чем ближе места, тем сильнее изгиб внутрь
+    const a = g.pos(bi), b = g.pos(oi), len = Math.hypot(b.x - a.x, b.y - a.y) || 1;
+    const mx = (a.x + b.x) / 2, my = (a.y + b.y) / 2, ox = 50 - mx, oy = g.H / 2 - my, ol = Math.hypot(ox, oy) || 1;
+    const pull = Math.max(0, 2.6 * g.t - len) * 0.75, cx = mx + ox / ol * pull, cy = my + oy / ol * pull;
+    const edge = (p, r) => { const vx = cx - p.x, vy = cy - p.y, l = Math.hypot(vx, vy) || 1; return { x: p.x + vx / l * r, y: p.y + vy / l * r }; };
+    const s = edge(a, g.t / 2 + 1), e = edge(b, g.t / 2 + 2.2), f = v => v.toFixed(2);
     arrow = `<svg class="ringsvg" viewBox="0 0 100 ${g.H.toFixed(1)}" aria-hidden="true"><defs><marker id="rarr" viewBox="0 0 10 10" refX="7" refY="5" markerWidth="4" markerHeight="4" orient="auto"><path d="M0 0L10 5L0 10Z"/></marker></defs>
-      <line x1="${(a.x + dx * k0).toFixed(2)}" y1="${(a.y + dy * k0).toFixed(2)}" x2="${(b.x - dx * k1).toFixed(2)}" y2="${(b.y - dy * k1).toFixed(2)}" marker-end="url(#rarr)"/></svg>`;
+      <path class="arr" d="M${f(s.x)} ${f(s.y)}Q${f(cx)} ${f(cy)} ${f(e.x)} ${f(e.y)}" marker-end="url(#rarr)"/></svg>`;
   }
   const by = nm.by === 'st' ? null : nm.by && E.P(S, nm.by), on = nm.on && E.P(S, nm.on);
   const mid = vote ? `<b class="${E.voteCount(S, nm.voters) >= th ? 'enough' : ''}">${E.voteCount(S, nm.voters)}</b><span>из ${th} для казни</span><span class="small">за: ${esc(on ? on.name : '')}</span>`
@@ -1138,10 +1188,76 @@ function editorHtml(p) {
   </div>`;
 }
 
+/* ---------- казнь на выбор (заметки пользователя 2026-10-12): казнённый выбирает из трёх, рассказчик читает историю ---------- */
+const fateStory = (i, name) => esc(EXECUTIONS[i].s).split('{name}').join(`<b>${esc(name)}</b>`);
+function fateCard(pid) {
+  const p = pid && E.P(S, pid); if (!p || S.result || typeof EXECUTIONS === 'undefined') return '';
+  const f = S.day.picks.fate, ch = f && f.pid === pid && f.pick != null ? f.pick : null;
+  return `<div class="card fatecard"><h3>Казнь на выбор</h3>
+    <div class="small muted">${S.day.executed === pid ? 'Казнён' : 'На плахе'}: <b>${esc(p.name)}</b>. Пусть игрок выберет из трёх вариантов, какой казни удостоиться, — а вы прочитаете историю вслух.</div>
+    ${ch != null ? `<div class="tale"><div class="lab">${esc(EXECUTIONS[ch].t)}</div><p>${fateStory(ch, p.name)}</p></div>
+      <div class="row"><button class="btn" data-act="fateShow">Открыть на весь экран</button><button class="btn" data-act="fateOpen" data-arg="${p.id}">Выбрать заново</button></div>`
+      : `<button class="btn showbtn" data-act="fateOpen" data-arg="${p.id}">${art('eye', 'bg')}Показать игроку три казни</button>`}</div>`;
+}
+// на весь экран: сначала три названия (выбирает казнённый), потом история — крупно, чтобы прочитать вслух
+function fateOverlay() {
+  const f = UI.fate && S.phase === 'day' && S.day.picks && S.day.picks.fate, p = f && E.P(S, f.pid);
+  if (!p) return '';
+  const close = '<button class="wbtn fatex" data-act="fateClose" aria-label="Закрыть">×</button>';
+  if (f.pick == null) return `<div class="ov fateov" role="dialog" aria-label="Выбор казни">${close}<div class="fatebox">
+    <div class="fatename">${esc(p.name)}</div><div class="fateq">Как вас казнить?</div>
+    <div class="fateopts">${f.opts.map(i => `<button class="fateopt" data-act="fatePick" data-arg="${i}">${esc(EXECUTIONS[i].t)}</button>`).join('')}</div></div></div>`;
+  return `<div class="ov fateov" role="dialog" aria-label="${esc(EXECUTIONS[f.pick].t)}">${close}<div class="fatebox">
+    <div class="fatet">${esc(EXECUTIONS[f.pick].t)}</div><p class="fatestory">${fateStory(f.pick, p.name)}</p>
+    <button class="btn wide" data-act="fateClose">Готово</button></div></div>`;
+}
+// записи шагов последней ночи (с ✎) — кнопки: выбор можно изменить, приложение переиграет ночь и покажет, что изменится
+const logEditable = e => !!(S.rp && e.w === S.rp.id && e.r != null && S.phase !== 'setup');
 function viewLog() {
   const groups = [];
   for (const e of S.log) { const g = groups[groups.length - 1]; if (!g || g.p !== e.p) groups.push({ p: e.p, items: [e] }); else g.items.push(e); }
-  return `<div class="card"><h3>Журнал</h3><div class="log">${groups.slice().reverse().map(g => `<div class="ph">${esc(phaseName(g.p))}</div>${g.items.map(e => `<div class="e ${e.k}">${esc(e.t)}</div>`).join('')}`).join('') || '<div class="muted">Пока пусто</div>'}</div></div>`;
+  const any = S.log.some(logEditable);
+  const row = e => logEditable(e) ? `<button class="e ${e.k} edit" data-act="logEdit" data-arg="${e.r}"><span>${esc(e.t)}</span><span class="ed" aria-hidden="true">✎</span></button>` : `<div class="e ${e.k}">${esc(e.t)}</div>`;
+  return `<div class="card"><h3>Журнал</h3>${any ? '<div class="small muted">Записи с ✎ — выбор последней ночи: нажмите, чтобы изменить (игрок не понял, шаг пропущен, ошибка). Сначала приложение покажет, что это изменит.</div>' : ''}
+    <div class="log">${groups.slice().reverse().map(g => `<div class="ph">${esc(phaseName(g.p))}</div>${g.items.map(row).join('')}`).join('') || '<div class="muted">Пока пусто</div>'}</div></div>`;
+}
+// правка выбора шага из журнала: поля шага в том состоянии, в каком он был (до него); «Что изменится» — переигрывание ночи
+function editOverlay() {
+  const ed = UI.edit; if (!ed) return '';
+  const now = S.log.filter(e => e.w === ed.w && e.r === ed.k).map(e => `<div class="ln">${esc(e.t)}</div>`).join('');
+  const S0 = S; let body = '';
+  S = ed.pre; // игроки, подсказки и фильтры — как перед этим шагом
+  try {
+    const spec = ed.spec, inp = ed.inp, fields = spec.active ? E.stepInputs(spec, inp) : [], missing = spec.active ? E.missingInputs(spec, inp) : [];
+    let info = null; try { info = spec.active ? spec.info(inp) : null; } catch (e) { info = null; }
+    const icon = ed.st.pid ? ico(ed.st.fakeCannibal ? 'cannibal' : ed.st.id, null, 'si') : ed.st.fabled ? ico(ed.st.id, 'good', 'si') : art(ed.st.id, 'si');
+    body = `<div class="sheethead">${icon}<div class="sht"><div class="shp">Изменить выбор · Ночь ${ed.pre.n}</div><div class="pr t-${spec.team || ''}">${esc(spec.title)}${spec.who ? ' · ' + esc(spec.who) : ''}</div></div>
+        <button class="btn sq" data-act="editClose" aria-label="Закрыть">×</button></div>
+      <div class="edwas"><div class="lab">Сейчас в журнале</div>${now || '<div class="ln muted">Шаг был пропущен</div>'}</div>
+      ${spec.active ? '' : `<div class="warn">Не просыпается: ${esc(spec.reason)}</div>`}
+      ${(spec.warn || []).map(w => `<div class="warn">${esc(w)}</div>`).join('')}
+      ${fields.map(f => fieldHtml(f, inp)).join('')}
+      ${info && (info.show || (info.lines || []).filter(Boolean).length) ? revealHtml(Object.assign({}, info, { grim: false }), spec.dist) : ''}
+      ${missing.length ? `<div class="small muted">Осталось выбрать: ${missing.map(esc).join('; ')}</div>` : ''}
+      <div class="actions"><button class="btn primary" data-act="editCheck" ${missing.length || !spec.active ? 'disabled' : ''}>Что изменится →</button>
+        ${ed.rec.t === 'step' ? '<button class="btn" data-act="editSkip">Сделать шаг пропущенным</button>' : ''}</div>`;
+  } finally { S = S0; }
+  return `<div class="ov sheetov editov" role="dialog" aria-label="Изменить выбор"><div class="sheetbg" data-act="editClose"></div><div class="sheet">${body}</div></div>${editResHtml()}`;
+}
+// отдельное уведомление: что повлечёт правка — «Принять» или «Отмена» (просьба пользователя)
+function editResHtml() {
+  const r = UI.editRes; if (!r) return '';
+  const li = a => a.map(t => `<li>${esc(t)}</li>`).join('');
+  const c = r.changes, empty = !r.notes.length && !c.list.length && !c.logGone.length && !c.logNew.length;
+  return `<div class="ov editres" role="alertdialog" aria-label="Что изменится"><div class="erbox">
+    <h3>Что изменится${r.skip ? ' · шаг станет пропущенным' : ''}</h3>
+    ${r.notes.map(t => `<div class="warn">${esc(t)}</div>`).join('')}
+    ${c.list.length ? `<ul class="erlist">${li(c.list)}</ul>` : ''}
+    ${c.logGone.length ? `<div class="lab">Уйдёт из журнала</div><ul class="erlist gone">${li(c.logGone)}</ul>` : ''}
+    ${c.logNew.length ? `<div class="lab">Появится в журнале</div><ul class="erlist new">${li(c.logNew)}</ul>` : ''}
+    ${empty ? '<div class="muted">Ничего не меняется — выбор тот же.</div>' : ''}
+    <div class="small muted">Всё, что вы делали после этого шага, сохранится. Принятую правку можно отменить кнопкой ↶.</div>
+    ${confirmRow('editAccept', 'Принять', true, 'editBack', 'Отмена')}</div></div>`;
 }
 /* ------------------------------------------------------------ справочник ролей */
 const EDITION_RU = { tb: 'Trouble Brewing', bmr: 'Bad Moon Rising', snv: 'Sects & Violets', carousel: 'экспериментальная (Carousel), не из базовой коробки',
@@ -1245,6 +1361,9 @@ function render() {
   // днём и на остальных экранах — всегда светлая тема, даже если телефон переключился на тёмную
   document.documentElement.dataset.theme = 'light';
   const ph = S.phase === 'setup' ? 'Подготовка' : S.phase === 'night' ? `Ночь ${S.n} · ${S.night.i + 1}/${S.night.steps.length}` : S.phase === 'day' ? `День ${S.n}` : 'Игра окончена';
+  UI.showGroups = [];
+  // правка из журнала открыта, а запись ночи с тех пор изменилась (отмена, новая ночь) — форма устарела, закрываем
+  if (UI.edit && (!S.rp || S.rp.id !== UI.edit.w || S.rp.recs.length !== UI.edit.n)) { UI.edit = null; UI.editRes = null; }
   let body = '';
   if (UI.tab === 'game') body = S.phase === 'setup' ? viewSetup() : S.phase === 'night' ? viewNight() : S.phase === 'day' ? viewDay() : viewOver();
   if (UI.tab === 'table') body = viewTable();
@@ -1259,11 +1378,12 @@ function render() {
       <button class="hundo" data-act="undo" ${last ? '' : 'disabled'} aria-label="${last ? esc('Отменить: ' + last.label) : 'Нечего отменять'}" title="${last ? esc('Отменить: ' + last.label) : ''}">↶</button><span class="save"></span></header>
     <main>${body}</main>
     <nav class="tabs">${[['game', S.phase === 'night' ? 'Ночь' : S.phase === 'day' ? 'День' : 'Игра'], ['table', 'Гримуар'], ['log', 'Журнал'], ['roles', 'Роли'], ['menu', 'Ещё']].map(([k, l]) => `<button class="${UI.tab === k ? 'on' : ''}" data-act="tab" data-arg="${k}">${l}</button>`).join('')}</nav>
-    ${legendOverlay()}${wallOverlay()}${grimOverlay()}${ringOverlay()}${sheetOverlay()}${showOverlay()}${noteViewOverlay()}`;
+    ${legendOverlay()}${wallOverlay()}${grimOverlay()}${ringOverlay()}${sheetOverlay()}${editOverlay()}${fateOverlay()}${showOverlay()}${noteViewOverlay()}`;
   // круг рассадки — только на подготовке, круг номинации — только днём, Гримуар кругом — во время игры (после смены фазы закрываются сами)
   if ((UI.ring === 'seat' && S.phase !== 'setup') || (UI.ring === 'nom' && S.phase !== 'day') || (UI.ring === 'grim' && S.phase === 'setup')) UI.ring = null;
   // под полноэкранными слоями страница не прокручивается
-  document.documentElement.classList.toggle('locked', !!(UI.show || UI.legend || UI.ring || UI.noteView || (UI.open && E.P(S, UI.open)) || (UI.wall && S.draw) || (UI.grimShow && S.phase === 'night')));
+  if (UI.fate && !(S.phase === 'day' && S.day.picks && S.day.picks.fate)) UI.fate = false; // день кончился — выбор казни закрыт
+  document.documentElement.classList.toggle('locked', !!(UI.show || UI.legend || UI.ring || UI.noteView || UI.edit || UI.fate || (UI.open && E.P(S, UI.open)) || (UI.wall && S.draw) || (UI.grimShow && S.phase === 'night')));
   app.querySelectorAll('details > summary').forEach(s => { if (opened.has(s.textContent)) s.parentElement.open = true; });
   if (UI.tab === 'roles') filterRefs();
   paintSave();
@@ -1320,24 +1440,24 @@ const A = {
   // ночь: выбор — черновик (без истории), «Готово» — действие (в истории)
   pickP: arg => {
     const [key, id, n] = arg.split('|');
-    draft(S => { const inp = S.draft.inp, sel = (inp[key] || []).slice(), max = +n;
+    inpDraft(key, inp => { const sel = (inp[key] || []).slice(), max = +n;
       if (sel.includes(id)) sel.splice(sel.indexOf(id), 1); else { if (sel.length >= max) sel.shift(); sel.push(id); }
       inp[key] = sel; });
   },
-  pickR: (key, el) => draft(S => { S.draft.inp[key] = el.value || null; }),
-  pickC: arg => { const [key, v] = arg.split('|'); draft(S => { S.draft.inp[key] = v; }); },
-  num: arg => { const [key, d, base] = arg.split('|'); draft(S => { S.draft.inp[key] = Math.max(0, (S.draft.inp[key] ?? (+base || 0)) + (+d)); }); },
+  pickR: (key, el) => inpDraft(key, inp => { inp[key] = el.value || null; }),
+  pickC: arg => { const [key, v] = arg.split('|'); inpDraft(key, inp => { inp[key] = v; }); },
+  num: arg => { const [key, d, base] = arg.split('|'); inpDraft(key, inp => { inp[key] = Math.max(0, (inp[key] ?? (+base || 0)) + (+d)); }); },
   // текст печатается — сохраняем без перерисовки, иначе поле теряет фокус
-  pickT: (key, el) => { S.draft.inp[key] = el.value; S.updated = Date.now(); persist(); },
+  pickT: (key, el) => { if (UI.edit) { UI.edit.inp[key] = el.value; UI.editRes = null; return; } S.draft.inp[key] = el.value; S.updated = Date.now(); persist(); },
   mornNext: i => draft(S => { S.night.data.morn = +i + 1; }),
   amnText: (id, el) => { S.flags['amnesiac_' + id] = el.value; S.updated = Date.now(); persist(); },
   // подсказка из ideas.js: в поле способности Амнезиака (подготовка) или в поле шага ночи
   amnIdea: arg => { const [id, list, i] = arg.split('|'); act(S => { S.flags['amnesiac_' + id] = IDEAS[list][+i]; }, 'способность Амнезиака'); },
-  pickIdea: arg => { const [key, list, i] = arg.split('|'); draft(S => { S.draft.inp[key] = IDEAS[list][+i]; }); },
+  pickIdea: arg => { const [key, list, i] = arg.split('|'); inpDraft(key, inp => { inp[key] = IDEAS[list][+i]; }); },
   amnGuessText: (id, el) => { S.day.picks['amnGuess_' + id] = el.value; S.updated = Date.now(); persist(); },
   amnAnswer: arg => { const [id, ans] = arg.split('|'), guess = (S.day.picks['amnGuess_' + id] || '').trim(); act(S => { E.amnesiacGuess(S, id, guess, ans); delete S.day.picks['amnGuess_' + id]; }); },
-  stepDone: () => { const st = E.currentStep(S), spec = E.stepSpec(S, st), inp = clone(S.draft.inp); UI.notes = []; act(S => { if (spec.active) E.applyStep(S, st, inp); else E.skipStep(S); }, spec.title + (spec.who ? ' (' + spec.who + ')' : '')); window.scrollTo(0, 0); },
-  stepSkip: () => { const spec = E.stepSpec(S, E.currentStep(S)); act(S => E.skipStep(S), 'пропущен шаг: ' + spec.title); window.scrollTo(0, 0); },
+  stepDone: () => { const st = E.currentStep(S), spec = E.stepSpec(S, st), inp = clone(S.draft.inp); UI.notes = []; act(S => { if (spec.active) E.applyStep(S, st, inp); else E.skipStep(S, 'auto'); }, spec.title + (spec.who ? ' (' + spec.who + ')' : ''), 'step'); window.scrollTo(0, 0); },
+  stepSkip: () => { const spec = E.stepSpec(S, E.currentStep(S)); act(S => E.skipStep(S, 'manual'), 'пропущен шаг: ' + spec.title, 'step'); window.scrollTo(0, 0); },
   // день
   dayPick: arg => { const [key, id] = arg.split('|'); draft(S => { S.day.picks[key] = sel1(S.day.picks[key], id); }); },
   moonchild: () => act(S => E.moonchildChoose(S, S.day.picks.moonchild[0])),
@@ -1390,6 +1510,34 @@ const A = {
   pacifist: () => draft(S => { S.day.picks.pacifist = !S.day.picks.pacifist; }),
   endDay: () => { const pac = S.day.picks.pacifist, sg = S.day.picks.scapegoat; UI.notes = []; act(S => E.endDay(S, { pacifist: pac, scapegoat: sg }), 'конец дня ' + S.n); window.scrollTo(0, 0); },
   manualExe: () => { const id = S.day.picks.manualExe[0]; act(S => { E.execute(S, id); if (!S.result) E.endDay(S, { skipExecution: true }); }); window.scrollTo(0, 0); },
+  // казнь на выбор: три случайных, без повторов за игру (пока хватает); выбор — в журнал
+  fateOpen: pid => {
+    const all = EXECUTIONS.map((_, i) => i), used = S.flags.fateUsed || [], free = all.filter(i => !used.includes(i));
+    UI.fate = true; draft(S => { S.day.picks.fate = { pid, opts: E.shuffle(free.length >= 3 ? free : all).slice(0, 3), pick: null }; });
+  },
+  fatePick: i => { const f = S.day.picks.fate, p = f && E.P(S, f.pid); if (!p) return;
+    act(S => { S.day.picks.fate.pick = +i; S.flags.fateUsed = (S.flags.fateUsed || []).concat(+i); E.log(S, `${p.name} выбирает казнь: ${EXECUTIONS[+i].t}`, 'day'); }, 'казнь на выбор'); },
+  fateShow: () => { UI.fate = true; render(); },
+  fateClose: () => { UI.fate = false; render(); },
+  // журнал: изменить выбор шага последней ночи → «Что изменится» (переигрывание ночи) → «Принять» или «Отмена»
+  logEdit: k => {
+    const tg = E.editTarget(S, +k); if (!tg) return alertNote('Этот шаг уже нельзя изменить.');
+    const spec = E.stepSpec(tg.pre, tg.st);
+    UI.edit = { k: +k, w: S.rp.id, n: S.rp.recs.length, pre: tg.pre, st: tg.st, spec, rec: tg.rec, inp: clone(tg.rec.t === 'step' ? tg.rec.inp : (spec.defaults || {})) };
+    UI.editRes = null; render();
+  },
+  editClose: () => { UI.edit = null; UI.editRes = null; render(); },
+  editCheck: () => { const ed = UI.edit; if (!ed || E.missingInputs(ed.spec, ed.inp).length) return; UI.editRes = E.editNight(S, ed.k, { inp: clone(ed.inp) }); render(); },
+  editSkip: () => { const ed = UI.edit; if (!ed) return; UI.editRes = Object.assign(E.editNight(S, ed.k, { skip: true }), { skip: true }); render(); },
+  editBack: () => { UI.editRes = null; render(); },
+  editAccept: () => {
+    const ed = UI.edit, res = UI.editRes; if (!ed || !res) return;
+    const what = ed.spec.title + (ed.spec.who ? ` (${ed.spec.who})` : '');
+    HISTORY.push({ s: JSON.stringify(S), label: 'изменён выбор: ' + what }); if (HISTORY.length > HIST_MAX) HISTORY.shift();
+    S = E.acceptEdit(res.T, `Рассказчик изменил выбор, ночь ${ed.pre.n}: ${what}${res.skip ? ' — шаг пропущен' : ''}`);
+    UI.edit = null; UI.editRes = null; autoSkip(); S.updated = Date.now();
+    persist(); render(); toast('Готово: изменён выбор — ' + what, true);
+  },
   // Гримуар: карточка игрока, показ роли на весь экран
   openP: id => { UI.open = UI.open === id ? null : id; render(); },
   legend: () => { UI.legend = !UI.legend; render(); },
@@ -1538,15 +1686,15 @@ const ringXY = (G, n, i) => { const a = Math.PI + G.dir * 2 * Math.PI * i / n; r
 document.addEventListener('pointerdown', ev => {
   const el = ev.target.closest('[data-rdrag]'); if (!el) return;
   const board = el.closest('.ring'), seats = [...board.querySelectorAll('[data-rdrag]')];
-  if (seats.length < 2) return;
   ev.preventDefault(); try { el.setPointerCapture(ev.pointerId); } catch (e) { /* без захвата тоже работает */ }
   const from = seats.indexOf(el);
-  ringS = { el, board, seats, from, to: from, G: JSON.parse(board.dataset.geom), rect: board.getBoundingClientRect() };
-  el.classList.add('dragging');
+  ringS = { el, board, seats, from, to: from, G: JSON.parse(board.dataset.geom), rect: board.getBoundingClientRect(), x0: ev.clientX, y0: ev.clientY, moved: false };
 });
 document.addEventListener('pointermove', ev => {
   if (!ringS) return; ev.preventDefault();
   const { el, seats, G, rect } = ringS, n = seats.length;
+  // нажатие без движения — открыть карточку игрока (назначить роль или тип); тянуть — от 8 px
+  if (!ringS.moved) { if (n < 2 || Math.hypot(ev.clientX - ringS.x0, ev.clientY - ringS.y0) < 8) return; ringS.moved = true; el.classList.add('dragging'); }
   const px = (ev.clientX - rect.left) / rect.width * 100, py = (ev.clientY - rect.top) / rect.width * 100; // в cqw
   // угол от верха по часовой → номер места: первое — внизу (π), дальше в сторону G.dir
   const a = Math.atan2(px - 50, G.H / 2 - py), step = 2 * Math.PI / n;
@@ -1561,9 +1709,10 @@ document.addEventListener('pointermove', ev => {
     const c = ringXY(G, n, i); s.style.left = (c.x - G.t / 2) + 'cqw'; s.style.top = (c.y - G.t / 2) + 'cqw';
   });
 }, { passive: false });
-const ringEnd = () => {
-  if (!ringS) return; const { el, from, to } = ringS, id = el.dataset.rdrag; ringS = null;
+const ringEnd = ev => {
+  if (!ringS) return; const { el, from, to, moved } = ringS, id = el.dataset.rdrag; ringS = null;
   el.classList.remove('dragging');
+  if (!moved) { if (ev.type === 'pointerup') { UI.open = id; render(); } return; }
   if (from !== to) act(S => { const i = S.players.findIndex(p => p.id === id); const [p] = S.players.splice(i, 1); S.players.splice(to, 0, p); }, 'порядок мест');
   else render();
 };

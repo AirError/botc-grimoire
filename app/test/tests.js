@@ -746,6 +746,73 @@ try {
   ok('утро: «трое»/«троих» для трёх смертей', MORNING.many.map((_, k) => morningText(['А', 'Б', 'В'], false, k).text).some(t => /трое|троих/.test(t)));
 
   // 22. сценарии: все роли известны, ночные порядки строятся
+  // 28. Прачка, Библиотекарь, Сыщик: в списке только то, что можно показать; роль и игроки связаны (заметка 2026-10-12)
+  {
+    const G = game(['librarian', 'washerwoman', 'investigator', 'chef', 'butler', 'saint', 'poisoner', 'imp'], 'tb'); E.autoSetup(G, true); E.startGame(G);
+    const spL = E.stepSpec(G, G.night.steps.find(s => s.id === 'librarian')), fl = E.stepInputs(spL, { none: '' });
+    const rf = fl.find(f => f.key === 'r'), tf = fl.find(f => f.key === 't'), gl = rf.groups.flatMap(g => g.roles);
+    ok('Библиотекарь: в списке только Изгои в игре', gl.length === 2 && gl.includes('butler') && gl.includes('saint'), JSON.stringify(rf.groups));
+    const in1 = { none: '', t: [byRole(G, 'chef').id, byRole(G, 'saint').id], r: 'butler' }; tf.bind(in1);
+    ok('Библиотекарь: выбрали игроков — роль берётся у Изгоя среди них', in1.r === 'saint');
+    const in2 = { none: '', t: [byRole(G, 'chef').id], r: 'butler' }; rf.bind(in2);
+    ok('Библиотекарь: выбрали роль — её обладатель встаёт в пару', in2.t.includes(byRole(G, 'butler').id) && in2.t.includes(byRole(G, 'chef').id));
+    ok('Сыщик: в списке только Приспешники в игре', E.stepInputs(E.stepSpec(G, G.night.steps.find(s => s.id === 'investigator')), {}).find(f => f.key === 'r').groups.flatMap(g => g.roles).join() === 'poisoner');
+    ok('показ: «Эта роль — один из этих игроков:» — над именами', /Эта роль — один из этих игроков/.test(spL.info({ none: '', t: in1.t, r: 'saint' }).tokens[0].lead || ''));
+    const G2 = game(['investigator', 'recluse', 'chef', 'empath', 'monk', 'soldier', 'poisoner', 'imp'], 'tb'); E.autoSetup(G2, true); E.startGame(G2);
+    const gi = E.stepInputs(E.stepSpec(G2, G2.night.steps.find(s => s.id === 'investigator')), {}).find(f => f.key === 'r').groups;
+    ok('Сыщик и Затворник: остальные Приспешники — отдельной группой', gi.length === 2 && gi[1].roles.includes('scarletwoman') && /Затворник/.test(gi[1].label), JSON.stringify(gi));
+  }
+
+  // 29. правка ночного выбора из журнала: переигрывание ночи, что изменится, дневные действия сохраняются (заметка 2026-10-12)
+  {
+    const G = game(['empath', 'monk', 'chef', 'soldier', 'washerwoman', 'butler', 'poisoner', 'imp'], 'tb'); E.autoSetup(G, true); E.startGame(G);
+    const em = byRole(G, 'empath'), mo = byRole(G, 'monk'), ch = byRole(G, 'chef');
+    runNight(G, { poisoner: { t: [em.id] }, butler: { t: [ch.id] } });
+    const k = G.rp.recs.findIndex(r => r.t === 'step' && r.key.startsWith('poisoner'));
+    ok('правка: шаги ночи записаны, записи журнала помечены', k >= 0 && G.log.some(e => e.r === k && e.w === G.rp.id && /Отравитель/.test(e.t)));
+    const b0 = E.rpStrip(G), l0 = G.log.length; E.nominate(G, mo.id, ch.id); E.recPatch(G, b0, l0); // как act() в интерфейсе
+    const res = E.editNight(G, k, { inp: { t: [mo.id] } });
+    ok('правка: яд переходит на другого игрока', E.hasTok(E.P(res.T, mo.id), 'poisoned', 'poisoner') && !E.hasTok(E.P(res.T, em.id), 'poisoned'));
+    ok('правка: изменения перечислены словами', res.changes.list.some(t => t.includes(mo.name) && /Отравлен/.test(t)) && res.changes.list.some(t => t.includes(em.name) && /снято/.test(t)), res.changes.list.join(' | '));
+    ok('правка: дневная номинация после ночи сохранилась', res.T.phase === 'day' && res.T.day.nominated.includes(ch.id) && res.T.log.some(e => /номинирует/.test(e.t)));
+    ok('правка: заметка — Эмпат больше не отравлен', res.notes.some(t => /Эмпат/.test(t) && /больше не/.test(t)), res.notes.join(' | '));
+    ok('правка: журнал — что уйдёт и что появится', res.changes.logGone.some(t => t.includes(em.name)) && res.changes.logNew.some(t => t.includes(mo.name)));
+    ok('правка: исходная игра не тронута', E.hasTok(em, 'poisoned', 'poisoner') && !E.hasTok(mo, 'poisoned'));
+    // ночь 2: Монах защитил того, в кого бил Чёрт; правка Монаха — игрок умирает
+    E.endDay(G);
+    runNight(G, { poisoner: { t: [byRole(G, 'washerwoman').id] }, monk: { t: [ch.id] }, imp: { t: [ch.id] }, butler: { t: [mo.id] } });
+    const km = G.rp.recs.findIndex(r => r.t === 'step' && r.key.startsWith('monk'));
+    const r3 = E.editNight(G, km, { inp: { t: [byRole(G, 'soldier').id] } });
+    ok('правка Монаха: Повар спасён, а после правки умирает', ch.alive && !E.P(r3.T, ch.id).alive && r3.changes.list.some(t => t.includes(ch.name) && /умирает/.test(t)), r3.changes.list.join(' | '));
+    // пропущенный шаг выполняют задним числом
+    const G3 = game(['empath', 'monk', 'chef', 'soldier', 'washerwoman', 'butler', 'poisoner', 'imp'], 'tb'); E.autoSetup(G3, true); E.startGame(G3);
+    let guard = 0;
+    while (G3.phase === 'night' && guard++ < 60) { const st = E.currentStep(G3), sp = E.stepSpec(G3, st);
+      if (st.id === 'poisoner') E.skipStep(G3, 'manual'); else if (!sp.active) E.skipStep(G3, 'auto'); else E.applyStep(G3, st, Object.assign({}, sp.defaults)); }
+    const ks = G3.rp.recs.findIndex(r => r.t === 'skip' && r.key.startsWith('poisoner'));
+    ok('пропуск: в журнале «Пропущен шаг» со ссылкой на запись', G3.log.some(e => /Пропущен шаг: Отравитель/.test(e.t) && e.r === ks && e.w === G3.rp.id));
+    const tg = E.editTarget(G3, ks);
+    ok('пропуск: форма правки — состояние перед шагом', !!tg && tg.st.id === 'poisoner' && tg.pre.phase === 'night' && tg.pre.night.i === G3.night.steps.findIndex(s => s.id === 'poisoner'));
+    const r4 = E.editNight(G3, ks, { inp: { t: [byRole(G3, 'chef').id] } });
+    ok('пропуск: выполнен задним числом — Повар отравлен', E.hasTok(E.P(r4.T, byRole(G3, 'chef').id), 'poisoned', 'poisoner'));
+    const T4 = E.acceptEdit(r4.T, 'Рассказчик изменил выбор');
+    const k4 = T4.rp.recs.findIndex(r => r.t === 'step' && r.key.startsWith('poisoner'));
+    ok('пропуск: после принятия шаг снова можно изменить', k4 >= 0 && !!E.editTarget(T4, k4) && T4.log.some(e => /Отравитель/.test(e.t) && e.r === k4));
+    // правка посреди ночи: текущий шаг и черновик его выбора остаются
+    const G5 = game(['empath', 'monk', 'chef', 'soldier', 'washerwoman', 'butler', 'poisoner', 'imp'], 'tb'); E.autoSetup(G5, true); E.startGame(G5);
+    for (let g = 0; g < 40 && E.currentStep(G5).id !== 'empath'; g++) { const st = E.currentStep(G5), sp = E.stepSpec(G5, st);
+      if (!sp.active) E.skipStep(G5, 'auto'); else E.applyStep(G5, st, Object.assign({}, sp.defaults, st.id === 'poisoner' ? { t: [byRole(G5, 'empath').id] } : {})); }
+    G5.draft = { key: G5.n + ':' + G5.night.i + ':' + E.currentStep(G5).key, inp: { n: 3 } };
+    const k5 = G5.rp.recs.findIndex(r => r.t === 'step' && r.key.startsWith('poisoner')), r6 = E.editNight(G5, k5, { inp: { t: [byRole(G5, 'chef').id] } });
+    ok('правка ночью: остаёмся на том же шаге, черновик цел, Эмпат больше не отравлен', r6.T.phase === 'night' && E.currentStep(r6.T).id === 'empath' && r6.T.draft.inp.n === 3 && !E.abilityOff(r6.T, E.P(r6.T, byRole(G5, 'empath').id)));
+    const r5 = E.editNight(T4, k4, { skip: true });
+    ok('правка: «сделать шаг пропущенным» снимает яд', !E.hasTok(E.P(r5.T, byRole(G3, 'chef').id), 'poisoned') && r5.T.log.some(e => /Пропущен шаг/.test(e.t)));
+  }
+
+  // 30. казнь на выбор: 30 одобренных текстов, у каждого — имя казнённого и своё название
+  ok('казни: 30 историй, названия разные, в каждой есть имя', EXECUTIONS.length === 30 && new Set(EXECUTIONS.map(x => x.t)).size === 30
+    && EXECUTIONS.every(x => x.t && x.s.includes('{name}') && !/\[Имя\]/.test(x.s)));
+
   for (const k of Object.keys(DATA.scripts)) ok('сценарий ' + k + ' — все роли в данных', DATA.scripts[k].roles.every(r => DATA.roles[r]));
 } catch (e) { results.push('ERROR ' + e.message + '\n' + e.stack); }
 

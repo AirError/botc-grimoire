@@ -638,6 +638,7 @@ function startNight(S) {
   S.night = { i: 0, deaths: [], woke: [], data: {}, steps: [] };
   S.night.steps = buildSteps(S);
   log(S, `Наступила ночь ${S.n}`, 'phase');
+  rpStart(S);
 }
 
 function buildSteps(S) {
@@ -1138,7 +1139,8 @@ const regNote = (S, ids) => {
   return out;
 };
 // случайное значение, закреплённое на эту ночь (чтобы подсказки не менялись при перерисовке)
-function stable(S, key, fn) { const d = S.night.data; if (!(key in d)) d[key] = fn(); return d[key]; }
+// случайная рекомендация не меняется от перерисовки; хранится отдельно (night.data.st) — переигрывание ночи (правка из журнала) её сохраняет
+function stable(S, key, fn) { const d = S.night.data.st || (S.night.data.st = {}); if (!(key in d)) d[key] = fn(); return d[key]; }
 const once = (S, p, key) => S.flags[key + '_' + p.id];
 const markOnce = (S, p, key) => { S.flags[key + '_' + p.id] = true; };
 const scriptRoles = (S, f) => S.script.roles.filter(r => R(r) && (!f || f(r)));
@@ -1169,11 +1171,42 @@ function genericLogic(S, p, first, off) {
   };
 }
 
-// Прачка, Библиотекарь, Сыщик: 2 игрока и роль. Рекомендация — верная, а при яде/пьянстве/Вортоксе — ложная
+// Шпион может определиться добрым (Горожанином или Изгоем), Затворник — злым (Приспешником или Демоном)
+const REG_AS = { spy: ['townsfolk', 'outsider'], recluse: ['minion', 'demon'] };
+const TEAM_INS = { townsfolk: 'Горожанином', outsider: 'Изгоем', minion: 'Приспешником', demon: 'Демоном' };
+const seatSort = (S, ids) => ids.slice().sort((a, b) => S.players.findIndex(q => q.id === a) - S.players.findIndex(q => q.id === b));
+// какую роль можно показать вместо роли игрока t (Гробовщик, Смотритель воронов): верно — его роль, Шпиону и Затворнику —
+// и роли, которыми они могут определиться; пьяному, отравленному, при Вортоксе — любая роль сценария (ложь).
+// Свою роль показывающему ложной не предлагаем
+function shownRoleGroups(S, p, t, dist) {
+  const own = r => r === actsAs(p) || r === p.role;
+  const reg = scriptRoles(S, r => (REG_AS[t.role] || []).includes(R(r).team) && r !== t.role && !own(r));
+  const groups = [{ label: 'Настоящая роль', roles: [t.role] }];
+  if (reg.length) groups.push({ label: `${rname(t.role)} может определиться другой ролью (решаете вы)`, roles: reg });
+  if (dist) groups.push({ label: 'Ложная роль (пьян, отравлен или Вортокс)', roles: scriptRoles(S, r => r !== t.role && !own(r) && !reg.includes(r)) });
+  return groups;
+}
+
+// Прачка, Библиотекарь, Сыщик: 2 игрока и роль. Рекомендация — верная, а при яде/пьянстве/Вортоксе — ложная.
+// Список ролей — только то, что можно показать (заметка пользователя 2026-10-12): роли этого типа в игре; если в игре Шпион
+// или Затворник, способные определиться этим типом, — и остальные роли типа; пьян/отравлен/Вортокс — любые роли типа (ложь).
+// Роль и игроки связаны: выбрали роль — её обладатель сам встаёт в пару; выбрали игроков — роль берётся у того, кто этого типа
 function infoPair(team) {
   return (S, p, first, off) => {
     const dist = distortion(S, p);
-    const cands = S.players.filter(q => q.id !== p.id && realTeam(q) === team);
+    const own = r => r === actsAs(p) || r === p.role; // свою роль не показываем
+    const others = S.players.filter(q => q.id !== p.id);
+    const cands = others.filter(q => realTeam(q) === team);
+    const held = [...new Set(cands.map(q => q.role))].filter(r => !own(r));
+    const regs = others.filter(q => (REG_AS[q.role] || []).includes(team));
+    const rest = scriptRoles(S, r => R(r).team === team && !own(r) && !held.includes(r));
+    const groups = [{ label: 'В игре', roles: held }];
+    if (rest.length && (dist || regs.length)) groups.push({ label: dist ? 'Нет в игре — ложная информация' : `Нет в игре — если ${regs.map(q => `${q.name} (${rname(q.role)})`).join(' или ')} определится ${TEAM_INS[team]}`, roles: rest });
+    // связь роли и игроков — только для верной информации (пьяному и отравленному рассказчик подбирает ложь сам)
+    const bindT = inp => { if (dist) return; const sel = (inp.t || []).map(id => P(S, id)).filter(Boolean);
+      if (sel.some(q => q.role === inp.r)) return; const h = sel.find(q => realTeam(q) === team && !own(q.role)); if (h) inp.r = h.role; };
+    const bindR = inp => { if (dist || !inp.r) return; const h = others.find(q => q.role === inp.r), sel = inp.t || [];
+      if (h && !sel.includes(h.id)) inp.t = [h.id].concat(sel.filter(id => id !== h.id).slice(-1)); };
     const def = stable(S, `pair:${team}:${p.id}:${dist ? 'f' : 't'}`, () => {
       if (dist) { // ложная: роль этого типа из сценария, которой нет ни у одного из двоих показанных
         const r = pick(scriptRoles(S, x => R(x).team === team && x !== actsAs(p) && x !== p.role)) || null; // не своя роль
@@ -1184,7 +1217,7 @@ function infoPair(team) {
       return real ? { t: shuffle([real.id, pick(others).id]), r: real.role, none: '' } : { t: [], r: null, none: team === 'outsider' ? 'yes' : '' };
     });
     const correct = inp => inp.none === 'yes' ? !cands.length : !!inp.r && (inp.t || []).some(id => P(S, id) && P(S, id).role === inp.r);
-    const pair = [PL('t', 2, 'Укажите на 2 игроков', notSelf(p)), ROLE('r', 'Жетон роли', r => R(r).team === team)];
+    const pair = [PL('t', 2, 'Укажите на 2 игроков', notSelf(p), { bind: bindT }), ROLE('r', `Жетон роли (${TEAM_RU[team]})`, r => R(r).team === team, { groups, bind: bindR })];
     // Библиотекарь: «Изгоев нет» — тогда игроки и жетон не нужны
     const inputs = team === 'outsider' ? [CHOICE('none', 'Показать «Изгоев нет» (0)', [{ v: '', l: 'Нет' }, { v: 'yes', l: 'Да' }])] : pair;
     return {
@@ -1194,7 +1227,7 @@ function infoPair(team) {
         if (inp.none === 'yes') return { show: '0 — Изгоев в игре нет', lines: [ok ? 'Верно' : 'Изгои в игре есть — это ложь', mustLie], tokens: [{ text: '0', sub: 'Изгоев в игре нет' }] };
         const ps = (inp.t || []).map(id => P(S, id));
         return { show: `${rname(inp.r)}: ${ps.map(q => q && q.name).join(' и ')}`, lines: [ok ? 'Информация верная' : 'Информация ложная', mustLie, ...regNote(S, inp.t || [])],
-          tokens: inp.r ? [{ role: inp.r, players: inp.t || [], sub: 'Один из этих игроков — эта роль' }] : [] };
+          tokens: inp.r ? [{ role: inp.r, players: seatSort(S, inp.t || []), lead: 'Эта роль — один из этих игроков:' }] : [] }; // по местам — порядок не выдаёт, кто верный
       },
       apply: inp => {
         log(S, `${rname(p.role === 'drunk' ? p.believes : p.role)} (${p.name}): ${inp.none === 'yes' ? 'Изгоев нет' : `${rname(inp.r)} — ${(inp.t || []).map(id => nm(S, id)).join(' или ')}`}`, 'info');
@@ -1276,7 +1309,7 @@ const LOGIC = {
     const dist = distortion(S, p);
     const own = r => r === actsAs(p) || r === p.role; // свою роль Гробовщику не предлагаем
     const fake = stable(S, 'under:' + p.id, () => pick(scriptRoles(S, r => r !== ex.role && !own(r) && R(r).team === realTeam(ex))) || pick(scriptRoles(S, r => r !== ex.role && !own(r))) || ex.role);
-    return { inputs: [ROLE('r', 'Какую роль показать (по умолчанию — рекомендация)', () => true)], defaults: { r: dist ? fake : ex.role },
+    return { inputs: [ROLE('r', 'Какую роль показать (по умолчанию — рекомендация)', () => true, { groups: shownRoleGroups(S, p, ex, dist) })], defaults: { r: dist ? fake : ex.role },
       info: inp => ({ show: `Покажите жетон: ${rname(inp.r)}`, lines: [`Казнён ${ex.name} — ${rname(ex.role)}`, inp.r !== ex.role ? 'Показываете ложную роль' : '',
         dist && dist.must && inp.r === ex.role ? 'Вортокс: нужна ЛОЖНАЯ роль' : ''], tokens: inp.r ? [{ role: inp.r }] : [] }),
       apply: inp => { log(S, `Гробовщик (${p.name}) узнаёт: ${ex.name} — ${rname(inp.r)}${inp.r !== ex.role ? ` (на самом деле ${rname(ex.role)})` : ''}`, 'info'); if (dist && inp.r !== ex.role) recordAbn(S, p, 'ложная роль казнённого', dist.src); } };
@@ -1294,8 +1327,8 @@ const LOGIC = {
     if (S.flags.ravenWake !== p.id || !S.night.deaths.some(d => d.pid === p.id)) return { active: false, reason: 'Смотритель не умер этой ночью', deadOk: true };
     const dist = distortion(S, p);
     const shown = inp => { const t = inp.t && P(S, inp.t[0]); if (!t) return null; return inp.r || (dist ? stable(S, 'raven:' + t.id, () => pick(scriptRoles(S, r => r !== t.role && r !== actsAs(p) && r !== p.role && R(r).team === realTeam(t))) || t.role) : t.role); };
-    return { deadOk: true, inputs: [PL('t', 1, 'Чью роль узнать')],
-      more: inp => inp.t && inp.t.length ? [ROLE('r', 'Какую роль показать (не выбрано — рекомендация)', () => true, { optional: true })] : [],
+    return { deadOk: true, inputs: [PL('t', 1, 'Чью роль узнать', null, { bind: inp => { inp.r = null; } })], // другой игрок — роль снова по рекомендации
+      more: inp => { const t = inp.t && P(S, inp.t[0]); return t ? [ROLE('r', 'Какую роль показать (не выбрано — рекомендация)', () => true, { optional: true, groups: shownRoleGroups(S, p, t, dist) })] : []; },
       info: inp => { const t = inp.t && P(S, inp.t[0]); if (!t) return null; const r = shown(inp);
         return { show: rname(r), lines: [r !== t.role ? `На самом деле: ${rname(t.role)}` : '', dist && dist.must && r === t.role ? 'Вортокс: нужна ЛОЖНАЯ роль' : '', ...regNote(S, [t.id])], tokens: [{ role: r }] }; },
       apply: inp => { const t = P(S, inp.t[0]), r = shown(inp); log(S, `Смотритель воронов (${p.name}) узнаёт роль ${t.name}: ${rname(r)}${r !== t.role ? ` (на самом деле ${rname(t.role)})` : ''}`, 'info');
@@ -1822,7 +1855,9 @@ const LOGIC = {
     const key = 'balloonLast_' + p.id, last = S.flags[key];
     const TYPES = ['townsfolk', 'outsider', 'minion', 'demon'];
     return {
-      inputs: [PL('t', 1, last ? 'Покажите игрока другого типа, чем прошлой ночью' : 'Покажите любого игрока')],
+      // трезвому Аэронавту — только игроки другого типа (и Шпион/Затворник: тип выбираете вы); пьяному/отравленному — любые
+      inputs: [PL('t', 1, last ? `Покажите игрока другого типа, чем прошлой ночью (не ${TEAM_RU[last.type] || last.type})` : 'Покажите любого игрока',
+        q => !last || off || realTeam(q) !== last.type || !!REG_AS[q.role])],
       more: inp => { const t = inp.t && P(S, inp.t[0]); return t && (t.role === 'recluse' || t.role === 'spy') ? [Object.assign(CHOICE('reg', `Каким типом определяется ${t.name} (ваше решение; не выбрали — настоящим)`, TYPES.map(v => ({ v, l: TEAM_RU[v] }))), { optional: true })] : []; },
       defaults: stable(S, 'balloon:' + p.id, () => {
         const c = S.players.filter(q => q.id !== p.id && (!last || realTeam(q) !== last.type));
@@ -2067,15 +2102,188 @@ function goonHit(S, step, spec, inp) {
 function applyStep(S, step, inp) {
   let spec = stepSpec(S, step);
   if (spec.active && missingInputs(spec, inp).length) return { ok: false, missing: missingInputs(spec, inp) };
+  // запись для правки из журнала: какой шаг, с каким выбором и был ли игрок пьян/отравлен; записи журнала шага помечаются ею
+  const k = rpRec(S, { t: 'step', key: step.key, title: spec.title + (spec.who ? ` (${spec.who})` : ''), inp: JSON.parse(JSON.stringify(inp || {})), dist: spec.active && spec.dist ? spec.dist.label : null }), l0 = S.log.length;
   if (spec.active) {
     if (step.pid && !S.night.woke.includes(step.pid)) S.night.woke.push(step.pid);
     if (goonHit(S, step, spec, inp || {})) spec = stepSpec(S, step); // выбравший Наёмника пьян — пересчитываем шаг
     spec.apply(inp || {});
   }
+  rpTag(S, l0, k);
   if (!S.result) { S.night.i += 1; if (S.night.i >= S.night.steps.length) endNight(S); }
   return { ok: true };
 }
-function skipStep(S) { S.night.i += 1; if (S.night.i >= S.night.steps.length) endNight(S); }
+// how: 'manual' — рассказчик нажал «Пропустить» (шаг попадает в журнал, его можно выполнить позже через журнал);
+// 'auto' — шаг не срабатывает и пропущен сам
+function skipStep(S, how) {
+  const st = currentStep(S), spec = how === 'manual' && st ? stepSpec(S, st) : null;
+  const k = st ? rpRec(S, { t: 'skip', key: st.key, how: how || 'auto' }) : -1, l0 = S.log.length;
+  if (spec && spec.active) { log(S, `Пропущен шаг: ${spec.title}${spec.who ? ` (${spec.who})` : ''}`, 'skip'); rpTag(S, l0, k); }
+  S.night.i += 1; if (S.night.i >= S.night.steps.length) endNight(S);
+}
+
+/* ------------------------------------------------------------ правка ночного выбора задним числом (журнал) */
+// Заметка пользователя 2026-10-12: игрок не понял, что делать, рассказчик пропустил шаг или ошибся — выбор меняют через журнал,
+// и приложение сразу показывает, что это за собой тянет. Как устроено: на закате (startNight) — снимок состояния (rp.base), дальше
+// до следующего заката по порядку пишутся записи rp.recs: шаги ночи (выбор или пропуск) и прочие изменения (patch — разница
+// состояния до и после действия, её пишет интерфейс в act). Правка = переиграть записи от снимка с новым выбором.
+// Поэтому изменить можно выбор последней ночи — и ночью, и следующим днём, пока не наступила новая ночь.
+function rpStart(S) {
+  S.rp = null;
+  const base = JSON.stringify(Object.assign({}, S, { log: [], draft: null }));
+  S.rp = { id: uid(), base, logLen: S.log.length, recs: [] };
+}
+function rpRec(S, rec) { if (!S.rp) return -1; S.rp.recs.push(rec); return S.rp.recs.length - 1; }
+function rpTag(S, from, k) { if (k < 0 || !S.rp) return; for (let i = from; i < S.log.length; i++) { S.log[i].r = k; S.log[i].w = S.rp.id; } }
+const rpStrip = S => JSON.stringify(Object.assign({}, S, { log: undefined, rp: undefined }));
+const jstr = v => JSON.stringify(v);
+// разница состояний: объекты — по ключам; массивы — что убрали и что добавили (порядок не важен: жетоны, смерти, номинации);
+// игроки — по id (порядок мест — целиком); шаги ночи — целиком
+function jdiff(a, b, path) {
+  if (jstr(a) === jstr(b)) return undefined;
+  if (b === undefined) return { x: 1 };
+  if (path === 'players' && Array.isArray(a) && Array.isArray(b)) {
+    const ia = a.map(p => p.id), ib = b.map(p => p.id), ch = {};
+    for (const p of b) { const o = a.find(q => q.id === p.id); if (o) { const d = jdiff(o, p, 'player'); if (d) ch[p.id] = d; } }
+    return { p: { order: jstr(ia) === jstr(ib) ? null : ib, add: b.filter(p => !ia.includes(p.id)), del: ia.filter(id => !ib.includes(id)), ch } };
+  }
+  if (Array.isArray(a) && Array.isArray(b) && path !== 'night.steps') {
+    const rm = a.map(jstr), add = [];
+    for (const v of b) { const i = rm.indexOf(jstr(v)); if (i >= 0) rm.splice(i, 1); else add.push(v); }
+    return { a: { rm, add } };
+  }
+  if (a && b && typeof a === 'object' && typeof b === 'object' && !Array.isArray(a) && !Array.isArray(b)) {
+    const o = {};
+    for (const k of new Set(Object.keys(a).concat(Object.keys(b)))) { const d = jdiff(a[k], b[k], path ? path + '.' + k : k); if (d) o[k] = d; }
+    return { o };
+  }
+  return { s: b };
+}
+function jpatch(t, d) { // возвращает новое значение
+  if (!d) return t;
+  if (d.x) return undefined;
+  if ('s' in d) return JSON.parse(jstr(d.s));
+  if (d.a) { const arr = Array.isArray(t) ? t : [];
+    for (const r of d.a.rm) { const i = arr.findIndex(v => jstr(v) === r); if (i >= 0) arr.splice(i, 1); }
+    for (const v of d.a.add) arr.push(JSON.parse(jstr(v))); return arr; }
+  if (d.p) { let arr = Array.isArray(t) ? t : [];
+    arr = arr.filter(p => !d.p.del.includes(p.id));
+    for (const [id, sd] of Object.entries(d.p.ch)) { const p = arr.find(q => q.id === id); if (p) jpatch(p, sd); }
+    for (const p of d.p.add) if (!arr.some(q => q.id === p.id)) arr.push(JSON.parse(jstr(p)));
+    if (d.p.order) arr.sort((x, y) => { const i = d.p.order.indexOf(x.id), j = d.p.order.indexOf(y.id); return (i < 0 ? 1e3 : i) - (j < 0 ? 1e3 : j); });
+    return arr; }
+  if (d.o) { const obj = t && typeof t === 'object' && !Array.isArray(t) ? t : {};
+    for (const [k, sd] of Object.entries(d.o)) { const v = jpatch(obj[k], sd); if (v === undefined) delete obj[k]; else obj[k] = v; }
+    return obj; }
+  return t;
+}
+// прочее изменение (не шаг ночи): интерфейс передаёт состояние до действия (rpStrip) и длину журнала до него
+function recPatch(S, beforeJson, logLen) {
+  if (!S.rp) return;
+  const d = jdiff(JSON.parse(beforeJson), JSON.parse(rpStrip(S)), ''), lg = S.log.slice(logLen);
+  if (!d && !lg.length) return;
+  S.rp.recs.push({ t: 'patch', d: d || null, log: JSON.parse(jstr(lg)) });
+}
+const stepTitle = (S, st) => { try { const sp = stepSpec(S, st); return sp.title + (sp.who ? ` (${sp.who})` : ''); } catch (e) { return rname(st.id); } };
+// переиграть запись: edits — { номер записи: { inp } или { skip: true } }; upto — остановиться перед этой записью (форма правки
+// показывает шаг в том состоянии, в каком он был). Возвращает новое состояние T и заметки о том, что поменялось по ходу ночи
+function replayNight(S, edits, upto) {
+  const rp = S.rp, T = JSON.parse(rp.base), notes = [];
+  T.log = JSON.parse(jstr(S.log.slice(0, rp.logLen)));
+  T.rp = { id: rp.id, base: rp.base, logLen: rp.logLen, recs: [] };
+  if (S.night && S.night.data && S.night.data.st) T.night.data.st = JSON.parse(jstr(S.night.data.st)); // те же случайные рекомендации
+  for (let k = 0; k < rp.recs.length; k++) {
+    if (upto === k) return { T, notes, at: k };
+    const rec = rp.recs[k], ed = edits && edits[k];
+    if (rec.t === 'patch') {
+      if (rec.d) { const saved = { log: T.log, rp: T.rp }; jpatch(T, rec.d); Object.assign(T, saved); }
+      T.log.push(...JSON.parse(jstr(rec.log || [])));
+      T.rp.recs.push(JSON.parse(jstr(rec)));
+      continue;
+    }
+    // шаги, которых не было в записи (появились из-за правки), — пропускаем, если записанный шаг ещё впереди
+    let guard = 0;
+    while (T.phase === 'night' && currentStep(T) && currentStep(T).key !== rec.key && T.night.steps.slice(T.night.i).some(s => s.key === rec.key) && guard++ < 80) {
+      const cur = currentStep(T), sp = stepSpec(T, cur);
+      if (sp.active) notes.push(`Новый шаг: ${stepTitle(T, cur)} — пропущен. Выполните его через журнал («Пропущен шаг»).`);
+      skipStep(T, sp.active ? 'manual' : 'auto');
+    }
+    const cur = T.phase === 'night' && !T.result && currentStep(T);
+    if (!cur || cur.key !== rec.key) {
+      if (rec.t === 'step') notes.push(`${rec.title || rname(rec.key.split(':')[0])}: шаг больше не наступает — его действие отменено.`);
+      continue;
+    }
+    const sp = stepSpec(T, cur), title = stepTitle(T, cur);
+    if (ed ? ed.skip : rec.t === 'skip') {
+      if (!ed && rec.how !== 'manual' && sp.active) notes.push(`${title}: теперь просыпается, но шаг был пропущен — выполните его через журнал («Пропущен шаг»).`);
+      skipStep(T, ed || sp.active ? 'manual' : rec.how);
+      continue;
+    }
+    if (!sp.active && rec.t === 'step') notes.push(`${title}: теперь не просыпается (${sp.reason}) — выбор не применяется.`);
+    const r = applyStep(T, cur, ed ? ed.inp : rec.inp);
+    if (!r.ok) { notes.push(`${title}: прежний выбор больше не подходит (${r.missing.join('; ')}) — шаг пропущен, выполните его через журнал.`); skipStep(T, 'manual'); continue; }
+    const d2 = sp.active && sp.dist ? sp.dist.label : null;
+    if (sp.active && !!d2 !== !!rec.dist) notes.push(`${title}: ${d2 ? `теперь ${d2.toLowerCase()} — способность не работает, информацию можно было исказить` : `больше не ${rec.dist.toLowerCase()} — способность работает; проверьте, верно ли то, что вы показали`}.`);
+  }
+  return { T, notes, at: rp.recs.length };
+}
+// правка из журнала: новое состояние, но то, что рассказчик сейчас выбирает (черновики шага и дня), остаётся как было
+function editNight(S, k, edit) {
+  const res = replayNight(S, { [k]: edit });
+  const T = res.T, sc = currentStep(S), tc = currentStep(T);
+  if (T.phase === 'night' && S.phase === 'night' && sc && tc && sc.key === tc.key && S.draft && String(S.draft.key).endsWith(':' + sc.key))
+    T.draft = { key: T.n + ':' + T.night.i + ':' + tc.key, inp: JSON.parse(jstr(S.draft.inp)) };
+  if (S.night && T.night && S.night.data) for (const key of ['fakeGrim', 'morn']) if (key in S.night.data) T.night.data[key] = S.night.data[key];
+  if (S.phase === 'day' && T.phase === 'day' && S.day && T.day) { T.day.picks = JSON.parse(jstr(S.day.picks || {})); T.day.draft = JSON.parse(jstr(S.day.draft)); }
+  T.updated = S.updated;
+  return { T, notes: res.notes, changes: stateChanges(S, T) };
+}
+// что поменялось между состояниями — словами для рассказчика
+function stateChanges(S, T) {
+  const out = [], tk = t => `${TOK_RU[t.k] || t.k}${t.src && R(t.src) ? ` (${R(t.src).name})` : ''}${t.note ? `: ${R(t.note) ? R(t.note).name : t.note}` : ''}`;
+  if (!!S.result !== !!T.result || (S.result && T.result && S.result.winner !== T.result.winner))
+    out.push(T.result ? `Игра заканчивается: ${T.result.winner === 'good' ? 'победа добра' : 'победа зла'} (${T.result.reason})` : 'Игра больше не заканчивается — продолжается');
+  for (const p of S.players) {
+    const q = P(T, p.id); if (!q) { out.push(`${p.name}: нет за столом`); continue; }
+    if (p.alive !== q.alive) out.push(`${p.name}: ${q.alive ? 'остаётся в живых' : 'умирает'}`);
+    if (p.role !== q.role) out.push(`${p.name}: роль ${rname(p.role)} → ${rname(q.role)}`);
+    if (p.align !== q.align) out.push(`${p.name}: ${q.align === 'good' ? 'теперь на стороне добра' : 'теперь на стороне зла'}`);
+    if ((p.gained || null) !== (q.gained || null)) out.push(`${p.name}: способность ${q.gained ? rname(q.gained) : 'своя'}`);
+    if (p.ghost !== q.ghost && !q.alive && !p.alive) out.push(`${p.name}: голос призрака ${q.ghost ? 'есть' : 'потрачен'}`);
+    const [gone, came] = msDiff(p.tokens, q.tokens, jstr);
+    for (const t of gone) out.push(`${p.name}: снято «${tk(t)}»`);
+    for (const t of came) out.push(`${p.name}: «${tk(t)}»`);
+  }
+  for (const q of T.players) if (!P(S, q.id)) out.push(`${q.name}: за столом`);
+  const PH = { night: 'ночь', day: 'день', over: 'игра окончена' };
+  if (S.phase !== T.phase) out.push(`Сейчас: ${PH[T.phase] || T.phase} (было: ${PH[S.phase] || S.phase})`);
+  else if (S.phase === 'night') { const a = currentStep(S), b = currentStep(T); if (a && b && a.key !== b.key) out.push(`Текущий шаг ночи: ${stepTitle(T, b)} (был: ${stepTitle(S, a)})`); }
+  // журнал: какие записи уйдут и какие появятся
+  const [logGone, logNew] = msDiff(S.log.slice(S.rp.logLen), T.log.slice(S.rp.logLen), e => e.t);
+  return { list: out, logGone: logGone.map(e => e.t), logNew: logNew.map(e => e.t) };
+}
+// что есть только в a и только в b (повторы считаются)
+function msDiff(a, b, key) {
+  const kb = b.map(key), onlyA = [];
+  for (const x of a) { const j = kb.indexOf(key(x)); if (j >= 0) kb[j] = null; else onlyA.push(x); }
+  const ka = a.map(key), onlyB = [];
+  for (const x of b) { const j = ka.indexOf(key(x)); if (j >= 0) ka[j] = null; else onlyB.push(x); }
+  return [onlyA, onlyB];
+}
+// принять правку: новое состояние + запись в журнале (тоже часть записи — переживёт следующую правку)
+function acceptEdit(T, text) {
+  const l0 = T.log.length;
+  log(T, text, 'effect');
+  if (T.rp) T.rp.recs.push({ t: 'patch', d: null, log: JSON.parse(jstr(T.log.slice(l0))) });
+  return T;
+}
+// запись шага для формы правки: состояние перед ним, сам шаг и что было выбрано
+function editTarget(S, k) {
+  if (!S.rp || !S.rp.recs[k] || S.rp.recs[k].t === 'patch') return null;
+  const res = replayNight(S, null, k), st = res.T.phase === 'night' ? currentStep(res.T) : null;
+  if (!st || st.key !== S.rp.recs[k].key) return null;
+  return { pre: res.T, st, rec: S.rp.recs[k] };
+}
 
 /* --- предупреждения о текущей ситуации */
 function situation(S) {
@@ -2126,7 +2334,7 @@ const ENGINE = { newGame, newPlayer, P, nm, rname, realTeam, actsAs, aliveCount,
   judgeRuling, gunslingerShot, tinkerDies, doomsayerKill, fiddlerEnd, swapSeats, goonWarn, damselGuess, changeRole, madnessExecute, harpyKill,
   finishRoles, autoSetup, setupProblems, drawStart, drawOpen, drawClose, drawCancel, drawShown, drawLocked, drawProblem, distortion,
   randomPool, dealPool, validPool, scriptOutsiders, CARD, jinxesInPlay, startGame, startNight, currentStep, stepSpec, applyStep, skipStep,
-  stepInputs, missingInputs, endNight,
+  stepInputs, missingInputs, endNight, rpStrip, recPatch, replayNight, editNight, editTarget, acceptEdit,
   nominate, nominationPreview, recordVote, block, execute, endDay, slayerShot, voteThreshold, situation, moonchildChoose, klutzChoose,
   abilityOff, attemptKill, die, addTok, rmTok, hasTok, TOK_RU, TEAM_RU, log, checkWin, endGame, aliveNeighbours,
   townsfolkNeighbours, teaLadyProtects, phaseTag, isGoodTeam, shuffle, uid };

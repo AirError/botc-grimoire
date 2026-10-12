@@ -128,6 +128,40 @@ details > .tale { margin-top: 10px; }
 .log .e { font-size: 15px; padding: 3px 0; }
 .log .death { color: var(--evil); } .log .save { color: var(--ok); } .log .win { color: var(--gold); font-weight: 700; }
 .log .phase { color: var(--muted); }
+/* записи последней ночи — можно изменить выбор */
+.log .e.edit { display: flex; align-items: flex-start; gap: 8px; width: 100%; text-align: left; font: inherit; font-size: 15px; color: inherit; background: none;
+  border: 0; border-bottom: 1px dashed var(--line); padding: 5px 0; cursor: pointer; }
+.log .e.edit span:first-child { flex: 1; }
+.log .e.edit .ed { color: var(--gold); font-weight: 700; }
+.log .skip { color: var(--muted); font-style: italic; }
+/* правка выбора из журнала и уведомление «Что изменится» */
+/* казнь на выбор: казнённый выбирает на весь экран, рассказчик читает историю */
+.fateov { background: #000000; color: #F2EAD8; display: flex; align-items: center; justify-content: center; overflow-y: auto;
+  padding: calc(56px + env(safe-area-inset-top, 0px)) 18px calc(24px + env(safe-area-inset-bottom, 0px)); }
+.fatebox { width: 100%; max-width: 560px; margin: auto 0; display: flex; flex-direction: column; gap: 16px; text-align: center; }
+.fatename { font-family: var(--f-tale); font-size: 40px; font-weight: 800; color: #F3E3BC; line-height: 1.1; }
+.fateq { font-family: var(--f-tale); font-size: 24px; color: #DABA74; }
+.fateopts { display: flex; flex-direction: column; gap: 12px; margin-top: 8px; }
+.fateopt { font-family: var(--f-tale); font-size: 28px; font-weight: 800; color: #F3E3BC; background: #15120C; border: 2px solid #DABA74;
+  border-radius: 16px; padding: 18px 12px; cursor: pointer; }
+.fateopt:active { background: #2A2416; }
+.fatet { font-family: var(--f-tale); font-size: 34px; font-weight: 800; color: #DABA74; line-height: 1.15; }
+.fatestory { font-size: 21px; line-height: 1.5; text-align: left; margin: 0; }
+.fatestory b { color: #F3E3BC; }
+.fateov .btn { background: #15120C; color: #F3E3BC; border: 1px solid #DABA74; }
+.fatex { position: fixed; z-index: 31; top: calc(10px + env(safe-area-inset-top, 0px)); right: calc(10px + env(safe-area-inset-right, 0px)); }
+.editov .actions { display: flex; flex-direction: column; gap: 8px; }
+.editov .actions .btn { width: 100%; }
+.edwas { border-left: 3px solid var(--gold); padding: 4px 0 4px 10px; margin: 10px 0; }
+.edwas .ln { font-size: 14px; }
+.edwas .lab, .erbox .lab { font-family: var(--f-sc); font-size: 13px; letter-spacing: .1em; color: var(--gold); text-transform: uppercase; }
+.editres { display: flex; align-items: center; justify-content: center; padding: 16px; background: rgba(20, 16, 10, .6); }
+.erbox { width: 100%; max-width: 560px; max-height: 86vh; overflow-y: auto; background: var(--card); border-radius: 16px; padding: 16px; box-shadow: 0 12px 40px rgba(0, 0, 0, .45); }
+.erbox h3 { margin: 0 0 8px; }
+.erlist { margin: 6px 0 10px; padding-left: 20px; }
+.erlist li { margin: 3px 0; }
+.erlist.gone li { color: var(--muted); text-decoration: line-through; }
+.erlist.new li { color: var(--ok); }
 
 /* таблица раскладки */
 .dist { width: 100%; border-collapse: collapse; font-variant-numeric: tabular-nums; font-size: 15px; }
@@ -332,6 +366,7 @@ html.locked, html.locked body { overflow: hidden; }
 .shtext { font-size: 72px; font-weight: 800; line-height: 1; color: #F3E3BC; margin-top: 6px; }
 /* подписи для игрока («Ваш внук», «Один из них — Демон») — крупно, чтобы читать через стол */
 .shsub { font-size: 26px; font-weight: 800; line-height: 1.2; color: #F3E3BC; max-width: 18ch; text-wrap: balance; margin-top: 4px; }
+.shsub.shlead { margin-top: 10px; color: #DABA74; }
 .shthumb { display: flex; align-items: center; gap: 10px; font-size: 22px; font-weight: 800; letter-spacing: .08em; text-transform: uppercase; }
 .shthumb span { font-size: 40px; }
 .shthumb.side-good { color: #A9C4F5; } .shthumb.side-evil { color: #F59A9A; }
@@ -697,6 +732,7 @@ img.shroud { object-fit: contain; }
 .rseat .rno { font-size: max(.62em, 11px); color: var(--muted); line-height: 1.1; font-variant-numeric: tabular-nums; }
 .rseat .rnm { font-weight: 800; line-height: 1.08; overflow-wrap: anywhere; max-width: 86%; }
 .rseat .rtr { font-size: .55em; color: var(--muted); line-height: 1.1; }
+.rseat .rasg { font-size: max(.6em, 11px); color: var(--gold); font-weight: 700; line-height: 1.1; max-width: 92%; overflow-wrap: anywhere; }
 .rseat.dead { background: var(--paper); border-style: dashed; }
 .rseat.dead .rnm { color: var(--muted); }
 .rseat .shroud { position: absolute; left: 50%; top: -8%; width: 24%; height: auto; transform: translateX(-50%); pointer-events: none; filter: drop-shadow(0 2px 3px rgba(0, 0, 0, .4)); }
@@ -719,7 +755,7 @@ img.shroud { object-fit: contain; }
 .ringmid b.q { font-size: 22px; color: var(--gold); }
 .ringmid .ringblk { color: var(--evil); font-weight: 700; margin-top: 4px; }
 .ringsvg { position: absolute; inset: 0; width: 100%; height: 100%; pointer-events: none; overflow: visible; }
-.ringsvg line { stroke: var(--gold); stroke-width: .9; stroke-linecap: round; }
+.ringsvg line, .ringsvg path.arr { stroke: var(--gold); stroke-width: .9; stroke-linecap: round; fill: none; }
 .ringsvg marker path { fill: var(--gold); }
 
 /* ---------- заметки «что доработать» (вкладка «Ещё», notes.js) ---------- */
