@@ -165,21 +165,26 @@ function recordAbn(S, p, text, src) {
 
 /* ------------------------------------------------------------ смерть */
 
-// cause: demon | minion | ability | execution | unstoppable
+// кто не даёт игроку умереть (без последствий) — общая проверка для attemptKill и подсказок заранее (номинация проклятого Ведьмой).
+// Травница (вики): её соседи не умирают никак — ни от Демона, ни от казни, ни от Ведьмы, ни при изгнании; исключение — Ассасин
+function deathGuard(S, p, cause) {
+  if (cause === 'unstoppable') return null;
+  if (cause === 'demon' && hasTok(p, 'protected', 'monk')) return 'Монах';
+  if (cause === 'demon' && p.role === 'soldier' && !abilityOff(S, p)) return 'Солдат';
+  if (cause !== 'execution' && hasTok(p, 'protected', 'innkeeper')) return 'Трактирщик';
+  if (p.role === 'sailor' && !abilityOff(S, p)) return 'Моряк';
+  if (teaLadyProtects(S, p)) return 'Травница';
+  if (cause === 'execution' && hasTok(p, 'safe', 'devilsadvocate')) return 'Адвокат Дьявола';
+  if (p.role === 'fool' && !abilityOff(S, p) && !S.flags['foolUsed_' + p.id]) return 'Шут (1-я смерть)';
+  return null;
+}
+// cause: demon | minion | ability | execution | exile | unstoppable
 function attemptKill(S, p, cause, src, opts) {
   opts = opts || {};
   if (!p || !p.alive) return { died: false, why: 'уже мёртв' };
   if (cause !== 'unstoppable') {
-    if (cause === 'demon' && hasTok(p, 'protected', 'monk')) return saved(S, p, 'Монах');
-    if (cause === 'demon' && p.role === 'soldier' && !abilityOff(S, p)) return saved(S, p, 'Солдат');
-    if (cause !== 'execution' && hasTok(p, 'protected', 'innkeeper')) return saved(S, p, 'Трактирщик');
-    if (p.role === 'sailor' && !abilityOff(S, p)) return saved(S, p, 'Моряк');
-    if (teaLadyProtects(S, p)) return saved(S, p, 'Травница');
-    if (cause === 'execution' && hasTok(p, 'safe', 'devilsadvocate')) return saved(S, p, 'Адвокат Дьявола');
-    if (p.role === 'fool' && !abilityOff(S, p) && !S.flags['foolUsed_' + p.id]) {
-      S.flags['foolUsed_' + p.id] = true;
-      return saved(S, p, 'Шут (1-я смерть)');
-    }
+    const guard = deathGuard(S, p, cause);
+    if (guard) { if (p.role === 'fool' && guard.startsWith('Шут')) S.flags['foolUsed_' + p.id] = true; return saved(S, p, guard); }
     if (p.role === 'zombuul' && !S.flags.zombuulFaked && !abilityOff(S, p)) {
       S.flags.zombuulFaked = true; p.alive = false; p.secretlyAlive = true;
       log(S, `${p.name} (Зомбуул) «умирает», но остаётся в игре: определяется мёртвым`, 'death');
@@ -274,7 +279,7 @@ function afterDeath(S, p, cause, fake, aliveBefore, opts) {
   // Бабушка
   if (cause === 'demon' && S.flags.grandchild === p.id) {
     for (const g of holders(S, 'grandmother')) if (g.alive && !abilityOff(S, g)) {
-      log(S, `Внук убит Демоном — Бабушка (${g.name}) умирает тоже`, 'death'); die(S, g, 'ability', 'grandmother');
+      log(S, `Внук убит Демоном — Бабушка (${g.name}) должна умереть тоже`, 'death'); attemptKill(S, g, 'ability', 'grandmother'); // защиты действуют (Травница, Моряк…)
     }
   }
   // Менестрель: казнённый Приспешник
@@ -734,8 +739,10 @@ const voteCount = (S, ids) => ids.reduce((sum, id) => sum + voteWeight(S, P(S, i
 function nominationPreview(S, byId, onId) {
   const by = P(S, byId), on = P(S, onId), out = { notes: [], askSpy: false };
   if (!by || !on) return out;
-  if (hasTok(by, 'cursed', 'witch') && holders(S, 'witch').some(w => w.alive && !abilityOff(S, w)) && aliveCount(S) > 3)
-    out.notes.push(`${by.name} проклят Ведьмой: номинировав, он умрёт (номинация всё равно состоится)`);
+  if (hasTok(by, 'cursed', 'witch') && holders(S, 'witch').some(w => w.alive && !abilityOff(S, w)) && aliveCount(S) > 3) {
+    const guard = deathGuard(S, by, 'ability');
+    out.notes.push(guard ? `${by.name} проклят Ведьмой, но не умрёт: ${guard} (номинация состоится)` : `${by.name} проклят Ведьмой: номинировав, он умрёт (номинация всё равно состоится)`);
+  }
   if (on.role === 'virgin' && !S.flags['virginUsed_' + on.id]) {
     if (abilityOff(S, on)) out.notes.push('Девственница пьяна или отравлена: способность тратится впустую');
     else if (realTeam(by) === 'townsfolk') out.notes.push(`Девственница номинирована впервые, ${by.name} — Горожанин: его немедленно казнят`);
@@ -756,10 +763,11 @@ function nominate(S, byId, onId, opts) {
   log(S, `${by ? by.name : 'Рассказчик'} номинирует ${on.name}${d.butcherOpen ? ' (Мясник, после казни)' : ''}`, 'day');
   if (!by) { if (on.role === 'virgin') S.flags['virginUsed_' + on.id] = true; return res; }
   // Ведьма
+  // защиты действуют: соседа Травницы, Моряка, Шута (1-я смерть) проклятие не убивает (вики, Травница: «не умирают никак»)
   if (hasTok(by, 'cursed', 'witch') && holders(S, 'witch').some(w => w.alive && !abilityOff(S, w)) && aliveCount(S) > 3) {
-    log(S, `${by.name} был проклят Ведьмой и умирает, номинировав`, 'death');
-    die(S, by, 'ability', 'witch');
-    res.notes.push(`${by.name} умирает: проклятие Ведьмы`);
+    log(S, `${by.name} проклят Ведьмой и номинирует`, 'effect');
+    const r = attemptKill(S, by, 'ability', 'witch');
+    res.notes.push(r.died ? `${by.name} умирает: проклятие Ведьмы` : `${by.name} проклят Ведьмой, но не умирает: ${r.why}`);
   }
   const wd = S.flags.witchDud; // Ведьма прокляла, будучи пьяной/отравленной: номинация без последствий — для Математика
   if (wd && wd.t === by.id && wd.n === S.n && aliveCount(S) > 3 && P(S, wd.w)) { recordAbn(S, P(S, wd.w), 'проклятие не сработало', wd.src); S.flags.witchDud = null; }
@@ -990,7 +998,7 @@ function exile(S, pid, votes, passed, opts) {
   // Девиант: если сегодня был забавным, изгнание его не убивает (решает рассказчик)
   if (p.role === 'deviant' && opts.funny) { log(S, `Девиант (${p.name}) сегодня был забавным — изгнание его не убивает`, 'save'); return; }
   S.day.exiled = (S.day.exiled || []).concat(pid);
-  die(S, p, 'exile', null);
+  attemptKill(S, p, 'exile', null); // вики, Травница: изгнанный сосед Травницы остаётся жив
 }
 
 // Каннибал съел злого: способности нет (отравлен), но можно разбудить и «дать» ему способность — лучше ту, которой блефовал казнённый
@@ -2301,7 +2309,7 @@ function situation(S) {
   if (vortoxActive(S)) out.push('Вортокс: день без казни — победа зла.');
   // Травница: оба живых соседа добрые — не могут умереть, даже при казни
   const tl = S.players.filter(p => p.alive && teaLadyProtects(S, p));
-  if (tl.length) out.push(`Травница защищает: ${tl.map(p => p.name).join(' и ')} — не могут умереть, даже при казни.`);
+  if (tl.length) out.push(`Травница защищает: ${tl.map(p => p.name).join(' и ')} — не могут умереть никак (казнь, Ведьма, изгнание), кроме Ассасина.`);
   if (S.phase === 'day' && S.day) { const b = block(S) && P(S, block(S)); if (b && teaLadyProtects(S, b)) out.push(`На плахе ${b.name}, но его защищает Травница: казнь его не убьёт.`); }
   if (S.phase === 'day' && S.day) {
     const bishop = holders(S, 'bishop').find(h => h.alive && !abilityOff(S, h));

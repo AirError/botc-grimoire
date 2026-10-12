@@ -809,6 +809,21 @@ try {
     ok('правка: «сделать шаг пропущенным» снимает яд', !E.hasTok(E.P(r5.T, byRole(G3, 'chef').id), 'poisoned') && r5.T.log.some(e => /Пропущен шаг/.test(e.t)));
   }
 
+  // 31. Травница: соседи не умирают никак — ни от проклятия Ведьмы, ни при изгнании (вики; ошибка из игры пользователя 2026-10-12)
+  {
+    const G = game(['clockmaker', 'tealady', 'mayor', 'monk', 'seamstress', 'barber', 'witch', 'imp']); E.autoSetup(G, true); E.startGame(G);
+    const cm = byRole(G, 'clockmaker');
+    runNight(G, { witch: { t: [cm.id] } });
+    ok('Ведьма прокляла соседа Травницы', E.hasTok(cm, 'cursed', 'witch') && E.teaLadyProtects(G, cm));
+    ok('подсказка до номинации: проклят, но не умрёт — Травница', E.nominationPreview(G, cm.id, byRole(G, 'monk').id).notes.some(t => /не умрёт: Травница/.test(t)));
+    const r = E.nominate(G, cm.id, byRole(G, 'monk').id);
+    ok('проклятый сосед Травницы номинировал и остался жив', cm.alive && r.notes.some(t => /не умирает: Травница/.test(t)));
+    E.addTraveller(G, 'Странник', 'matron', 'good', byRole(G, 'tealady').id);
+    const tr = G.players.find(p => p.role === 'matron');
+    E.exile(G, tr.id, 99);
+    ok('изгнанный сосед Травницы остаётся жив (пример вики)', tr.alive && E.teaLadyProtects(G, tr));
+  }
+
   // 30. казнь на выбор: 30 одобренных текстов, у каждого — имя казнённого и своё название
   ok('казни: 30 историй, названия разные, в каждой есть имя', EXECUTIONS.length === 30 && new Set(EXECUTIONS.map(x => x.t)).size === 30
     && EXECUTIONS.every(x => x.t && x.s.includes('{name}') && !/\[Имя\]/.test(x.s)));
