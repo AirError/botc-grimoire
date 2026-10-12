@@ -1156,16 +1156,21 @@ const scriptRoles = (S, f) => S.script.roles.filter(r => R(r) && (!f || f(r)));
 function demonKill(S, p, off, t, inp, cause) {
   if (off) { log(S, `${rname(p.role)} выбирает ${t.name} — способность не работает`, 'action'); if (t.alive) recordAbn(S, p, `нападение на ${t.name} не сработало`, abnSource(S, p)); return; }
   let target = t;
-  if (t.role === 'mayor' && !abilityOff(S, t) && inp.bounce && inp.bounce !== t.id) {
-    target = P(S, inp.bounce); log(S, `Мэр: вместо ${t.name} умирает ${target.name}`, 'effect');
+  // Мэр (вики): «если Мэра атаковали и он умер бы» — рассказчик может решить, что умирает другой. Под защитой (Монах, Травница…)
+  // Мэр не умер бы — рикошета нет. Выбран мёртвый, Солдат или защищённый Монахом — этот игрок не умирает (вики)
+  if (t.role === 'mayor' && !abilityOff(S, t) && inp.bounce && inp.bounce[0] && inp.bounce[0] !== t.id && !deathGuard(S, t, cause || 'demon')) {
+    target = P(S, inp.bounce[0]); log(S, `Мэр: вместо ${t.name} умирает ${target.name}`, 'effect');
   }
   log(S, `${rname(p.role)} (${p.name}) атакует ${t.name}`, 'action');
   return attemptKill(S, target, cause || 'demon', p.role);
 }
+// Мэр атакован: кто умрёт вместо него — по желанию рассказчика (не выбрано — умирает Мэр). Защищён — рикошета нет, только пометка
 function mayorInput(S, inp) {
   const t = inp.t && P(S, inp.t[0]);
-  if (t && t.role === 'mayor' && !abilityOff(S, t)) return [PL('bounce', 1, 'Мэр: кто умрёт вместо него? (не выбирать — умрёт Мэр)', aliveOnly)];
-  return [];
+  if (!t || t.role !== 'mayor' || abilityOff(S, t)) return [];
+  const guard = deathGuard(S, t, 'demon');
+  if (guard) return [{ type: 'note', key: '_mayor', label: `Мэр под защитой (${guard}) — не умирает, рикошета нет (вики: другой умирает, только если Мэр умер бы).` }];
+  return [PL('bounce', 1, 'Мэр: кто умрёт вместо него? (не выбрано — умрёт Мэр; мёртвый, Солдат или под защитой Монаха — никто не умрёт)', null, { min: 0 })];
 }
 function demonExorcised(S, p, base) {
   if (S.night.data.exorcised === p.id) { base.active = false; base.reason = 'Экзорцист выбрал Демона: он не просыпается этой ночью'; return true; }

@@ -135,6 +135,14 @@ details > .tale { margin-top: 10px; }
 .log .e.edit .ed { color: var(--gold); font-weight: 700; }
 .log .skip { color: var(--muted); font-style: italic; }
 /* правка выбора из журнала и уведомление «Что изменится» */
+/* день: состояния и подсказки — одной кнопкой, по нажатию — окно со всеми */
+.statbtn { display: flex; align-items: center; gap: 8px; width: 100%; margin-top: 10px; text-align: left; color: var(--warn); background: var(--warnbg); border-color: transparent; font-weight: 700; }
+.statbtn .sti { flex: none; width: 22px; height: 22px; border-radius: 50%; background: var(--warn); color: var(--warnbg); display: inline-flex; align-items: center; justify-content: center; font-size: 14px; font-weight: 800; }
+.statbtn b { margin-left: auto; min-width: 26px; padding: 1px 8px; border-radius: 12px; background: var(--warn); color: var(--warnbg); text-align: center; font-size: 14px; }
+.statbtn.fresh { border-color: var(--evil); }
+.statbtn .stnew { font-size: 12px; font-weight: 700; color: #FFFFFF; background: var(--evil); border-radius: 8px; padding: 1px 7px; }
+.statbg { position: absolute; inset: 0; }
+.statbox { position: relative; display: flex; flex-direction: column; gap: 8px; }
 /* казнь на выбор: казнённый выбирает на весь экран, рассказчик читает историю */
 .fateov { background: #000000; color: #F2EAD8; display: flex; align-items: center; justify-content: center; overflow-y: auto;
   padding: calc(56px + env(safe-area-inset-top, 0px)) 18px calc(24px + env(safe-area-inset-bottom, 0px)); }

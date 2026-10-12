@@ -824,6 +824,27 @@ try {
     ok('изгнанный сосед Травницы остаётся жив (пример вики)', tr.alive && E.teaLadyProtects(G, tr));
   }
 
+  // 32. Мэр (вики): атакован и умер бы — рассказчик может отдать смерть другому; выбор необязателен; под защитой Монаха — рикошета нет
+  {
+    const mk = () => { const G = game(['mayor', 'monk', 'chef', 'empath', 'soldier', 'butler', 'poisoner', 'imp'], 'tb'); E.autoSetup(G, true); E.startGame(G);
+      runNight(G, { poisoner: { t: [byRole(G, 'empath').id] }, butler: { t: [byRole(G, 'chef').id] } }); E.endDay(G); return G; };
+    const toImp = (G, inputs) => { for (let g = 0; g < 60 && E.currentStep(G).id !== 'imp'; g++) { const st = E.currentStep(G), sp = E.stepSpec(G, st);
+      if (!sp.active) E.skipStep(G, 'auto'); else if (!E.applyStep(G, st, Object.assign({ t: st.id === 'poisoner' ? [byRole(G, 'empath').id] : undefined }, sp.defaults, (inputs || {})[st.id] || {})).ok) E.skipStep(G, 'manual'); } };
+    let G = mk(); toImp(G, { monk: { t: [byRole(G, 'empath').id] }, butler: { t: [byRole(G, 'chef').id] } });
+    let sp = E.stepSpec(G, E.currentStep(G)), my = byRole(G, 'mayor');
+    ok('Мэр: «кто умрёт вместо него» — необязательно (Готово доступно)', E.missingInputs(sp, { t: [my.id] }).length === 0);
+    E.applyStep(G, E.currentStep(G), { t: [my.id], bounce: [byRole(G, 'chef').id] });
+    ok('Мэр: смерть уходит выбранному игроку', my.alive && !byRole(G, 'chef').alive);
+    G = mk(); toImp(G, { monk: { t: [byRole(G, 'empath').id] }, butler: { t: [byRole(G, 'chef').id] } }); my = byRole(G, 'mayor');
+    E.applyStep(G, E.currentStep(G), { t: [my.id] });
+    ok('Мэр: никого не выбрали — умирает Мэр', !my.alive);
+    G = mk(); toImp(G, { monk: { t: [byRole(G, 'mayor').id] }, butler: { t: [byRole(G, 'chef').id] } }); my = byRole(G, 'mayor'); sp = E.stepSpec(G, E.currentStep(G));
+    const fs = E.stepInputs(sp, { t: [my.id] });
+    ok('Мэр под защитой Монаха: рикошета нет — вместо выбора пометка', !fs.some(f => f.key === 'bounce') && fs.some(f => f.type === 'note' && /Монах/.test(f.label)) && E.missingInputs(sp, { t: [my.id] }).length === 0);
+    E.applyStep(G, E.currentStep(G), { t: [my.id], bounce: [byRole(G, 'chef').id] });
+    ok('Мэр под защитой Монаха: никто не умирает', my.alive && byRole(G, 'chef').alive);
+  }
+
   // 30. казнь на выбор: 30 одобренных текстов, у каждого — имя казнённого и своё название
   ok('казни: 30 историй, названия разные, в каждой есть имя', EXECUTIONS.length === 30 && new Set(EXECUTIONS.map(x => x.t)).size === 30
     && EXECUTIONS.every(x => x.t && x.s.includes('{name}') && !/\[Имя\]/.test(x.s)));

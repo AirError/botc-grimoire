@@ -429,6 +429,7 @@ function fieldHtml(f, inp) {
   }
   if (f.type === 'role') return `<div class="field"><label>${esc(f.label)}</label><select data-act="pickR" data-arg="${f.key}">${f.groups ? roleGroupOptions(f.groups, v, f.optional ? '— не выбирать —' : undefined)
     : roleOptions(r => f.filter(r), v, { all: f.all, placeholder: f.optional ? '— не выбирать —' : undefined })}</select></div>`;
+  if (f.type === 'note') return `<div class="warn">${esc(f.label)}</div>`; // пометка без выбора (Мэр под защитой — рикошета нет)
   if (f.type === 'choice') return `<div class="field"><label>${esc(f.label)}</label><div class="seg">${f.options.map(o => `<button class="${(v ?? f.def) === o.v ? 'on' : ''}" data-act="pickC" data-arg="${f.key}|${o.v}">${esc(o.l)}</button>`).join('')}</div></div>`;
   if (f.type === 'number') { const nv = v ?? f.def ?? 0;
     return `<div class="field"><label>${esc(f.label)}</label><div class="stepper"><button class="btn" data-act="num" data-arg="${f.key}|-1|${nv}">−</button><b>${nv}</b><button class="btn" data-act="num" data-arg="${f.key}|1|${nv}">+</button></div></div>`; }
@@ -448,6 +449,23 @@ function boundsHtml(list) {
   return `<div class="bounds"><div class="lab">Рамки выбора</div>${list.map(b => `<div><b>${esc(b.w)}:</b> ${esc(b.t)}</div>`).join('')}</div>`;
 }
 function situationHtml() { return E.situation(S).map(w => `<div class="warn">${esc(w)}</div>`).join(''); }
+// день: подсказки о положении в игре и итоги последнего действия — свёрнуты в одну кнопку, по нажатию — окно со всеми
+// (просьба пользователя 2026-10-12). «новое» — есть итог последнего действия (он пропадает после следующего действия)
+function dayStatusBtn() {
+  const n = E.situation(S).length + (UI.notes || []).length; if (!n) return '';
+  return `<button class="btn statbtn ${(UI.notes || []).length ? 'fresh' : ''}" data-act="statOpen"><span class="sti" aria-hidden="true">!</span>
+    <span>Состояния и подсказки</span>${(UI.notes || []).length ? '<span class="stnew">новое</span>' : ''}<b>${n}</b></button>`;
+}
+function statOverlay() {
+  if (!UI.stat || S.phase !== 'day') return '';
+  const sit = E.situation(S), notes = UI.notes || [], warns = a => a.map(t => `<div class="warn">${esc(t)}</div>`).join('');
+  return `<div class="ov editres" role="dialog" aria-label="Состояния и подсказки"><div class="statbg" data-act="statClose"></div><div class="erbox statbox">
+    <h3>Состояния и подсказки</h3>
+    ${notes.length ? `<div class="lab">После последнего действия</div>${warns(notes)}` : ''}
+    ${sit.length ? `${notes.length ? '<div class="lab">В игре сейчас</div>' : ''}${warns(sit)}` : ''}
+    ${!notes.length && !sit.length ? '<div class="muted">Сейчас ничего особенного.</div>' : ''}
+    <button class="btn wide" data-act="statClose">Закрыть</button></div></div>`;
+}
 const notesHtml = () => (UI.notes || []).map(t => `<div class="warn">${esc(t)}</div>`).join('');
 
 /* Странники и Сказочники — общие для подготовки и «Гримуара» */
@@ -618,8 +636,7 @@ function viewDay() {
   parts.push(`<div class="card"><div class="row"><h2>День ${S.n}</h2><span class="muted">живых ${E.aliveAll(S)} · для казни нужно ${th}</span></div>
     ${S.night && S.night.deaths.length ? `<div class="small">Ночью умерли: ${S.night.deaths.map(x => esc(E.nm(S, x.pid))).join(', ')}</div>` : '<div class="small muted">Ночью никто не умер</div>'}
     ${S.night ? `<details><summary class="small">Слова для утра</summary>${morningHtml(false)}</details>` : ''}
-    ${notesHtml()}</div>`);
-  parts.push(situationHtml());
+    ${dayStatusBtn()}</div>`);
   // Амнезиак: раз в день приватно угадывает свою способность
   for (const a of S.players.filter(p => p.role === 'amnesiac' && p.alive)) {
     const done = (d.amnesiac || {})[a.id], ab = S.flags['amnesiac_' + a.id];
@@ -654,17 +671,20 @@ function viewDay() {
       ${tgt ? `<div class="note-ok">${esc(tgt.name)} первым из добрых произнёс слово — ночью станет злым (если Мецефель будет трезв и здоров).</div><button class="btn" data-act="mezClear">Отменить отметку</button>`
         : `<div class="flabel"><span>Кто из добрых первым произнёс слово (вы должны услышать сами)</span></div>${chipsPlayers('mez', 1, p => p.align === 'good' && p.id !== mez.id, [], { act: 'mezPick', noRole: true })}`}</div></details></div>`);
   }
+  // публичный выбор (Дитя Луны, Растяпа, Истребитель) — кнопкой; выбирают на круге с именами, без ролей и значков:
+  // экран дня могут увидеть игроки (просьба пользователя 2026-10-12)
   for (const [flag, label, actName] of [['moonchildPending', 'Дитя Луны выбирает живого игрока', 'moonchild'], ['klutzPending', 'Растяпа выбирает живого игрока', 'klutz']]) {
     if (!S.flags[flag]) continue;
-    const sel = picks[actName] || [];
-    parts.push(`<div class="card"><h3>${label}</h3>${boundsHtml([{ w: 'Выбирает игрок', t: 'публично, 1 живого игрока' }])}${chipsPlayers(actName, 1, p => p.alive, sel, { act: 'dayPick' })}
-      <button class="btn primary" data-act="${actName}" ${sel.length ? '' : 'disabled'}>Записать выбор</button></div>`);
+    const t = (picks[actName] || [])[0] && E.P(S, picks[actName][0]);
+    parts.push(`<div class="card"><h3>${label}</h3>${boundsHtml([{ w: 'Выбирает игрок', t: 'публично, 1 живого игрока' }])}
+      ${t ? `<div class="small">Выбран: <b>${esc(t.name)}</b></div>` : ''}${pickRingBtn(actName, '', !!t)}
+      ${t ? `<button class="btn primary wide" data-act="${actName}">Записать выбор</button>` : ''}</div>`);
   }
   for (const s of S.players.filter(p => p.role === 'slayer' && p.alive && !S.flags['slayerUsed_' + p.id])) {
-    const sel = picks['slay_' + s.id] || [], t = sel[0] && E.P(S, sel[0]);
-    parts.push(`<div class="card"><h3>Истребитель: ${esc(s.name)}</h3>${boundsHtml([{ w: 'Игрок выбирает', t: 'публично, 1 игрока, раз за игру' }])}${chipsPlayers('slay_' + s.id, 1, p => p.alive, sel, { act: 'dayPick' })}
-      ${t && t.role === 'recluse' ? `<div class="field"><label>Ваше решение: Затворник определяется Демоном?</label><div class="seg"><button class="${picks.slayReg ? '' : 'on'}" data-act="slayReg" data-arg="0">Нет</button><button class="${picks.slayReg ? 'on' : ''}" data-act="slayReg" data-arg="1">Да — он умрёт</button></div></div>` : ''}
-      <button class="btn" data-act="slay" data-arg="${s.id}" ${sel.length ? '' : 'disabled'}>Выстрел</button></div>`);
+    const t = (picks['slay_' + s.id] || [])[0] && E.P(S, picks['slay_' + s.id][0]);
+    parts.push(`<div class="card"><h3>Истребитель: ${esc(s.name)}</h3>${boundsHtml([{ w: 'Игрок выбирает', t: 'публично, 1 игрока, раз за игру' }])}
+      ${t ? `<div class="small">Цель: <b>${esc(t.name)}</b></div>` : ''}${pickRingBtn('slay', s.id, !!t)}
+      ${t ? `${slayRegHtml(t)}<button class="btn danger wide" data-act="slay" data-arg="${s.id}">Выстрел</button>` : ''}</div>`);
   }
   // Девица: Приспешник публично называет игрока Девицей — одна догадка на всех Приспешников за игру (вики)
   if (S.players.some(p => p.role === 'damsel') && !S.flags.damselGuessUsed) {
@@ -711,7 +731,7 @@ function viewDay() {
     parts.push(`<div class="card"><details><summary class="small"><b>Фаталист:</b> игрок требует смерти игрока своей стороны</summary><div class="field" style="margin-top:8px">
       ${boundsHtml([{ w: 'Игрок', t: 'живой, раз за игру, публично (пока живы 4 и больше)' }, { w: 'Вы решаете', t: 'кто из живых игроков его стороны умирает; Демона — только если игра продолжится' }])}
       <div class="flabel"><span>Кто требует</span></div>${chipsPlayers('doomBy', 1, p => p.alive && !E.isTraveller(p) && !S.flags['doomUsed_' + p.id], by ? [by] : [], { act: 'dayPick', noRole: true })}
-      ${a ? `<div class="flabel"><span>Кто умирает (${a.align === 'good' ? 'добрые' : 'злые'})</span></div>${chipsPlayers('doomV', 1, p => p.alive && p.align === a.align, vic, { act: 'dayPick' })}` : ''}
+      ${a ? `<div class="flabel"><span>Кто умирает (${a.align === 'good' ? 'добрые' : 'злые'})</span></div>${chipsPlayers('doomV', 1, p => p.alive && p.align === a.align, vic, { act: 'dayPick', noRole: true })}` : ''}
       <button class="btn danger" data-act="doom" ${a && vic.length ? '' : 'disabled'}>Записать смерть</button></div></details></div>`);
   }
   // Сказочник Скрипач: состязание Демона и игрока другой стороны — игра заканчивается
@@ -1033,7 +1053,29 @@ function stGrimRing() {
       <button class="btn wide" data-act="ringClose">Закрыть</button></div></div>`;
 }
 const fabledList = () => (S.fabled || []).length ? `<div class="gbluffs"><span class="small muted">Сказочники</span><div>${S.fabled.map(r => `<span class="gbl">${ico(r, 'good', 'gbi')}${esc(E.rname(r))}</span>`).join('')}</div></div>` : '';
+/* ---------- публичный выбор днём кругом: Истребитель, Дитя Луны, Растяпа — только имена и места ---------- */
+const PICK_RINGS = {
+  slay: id => ({ key: 'slay_' + id, title: 'Истребитель: ' + E.nm(S, id), hint: 'Нажмите, в кого стреляет Истребитель. Повторное нажатие снимает выбор.', mid: 'цель', ok: 'slay', okArg: id, okLabel: 'Выстрел', danger: true, extra: slayRegHtml }),
+  moonchild: () => ({ key: 'moonchild', title: 'Дитя Луны выбирает', hint: 'Нажмите, кого выбирает Дитя Луны (живого игрока).', mid: 'выбран', ok: 'moonchild', okLabel: 'Записать выбор' }),
+  klutz: () => ({ key: 'klutz', title: 'Растяпа выбирает', hint: 'Нажмите, кого выбирает Растяпа (живого игрока).', mid: 'выбран', ok: 'klutz', okLabel: 'Записать выбор' }),
+};
+const pickRingBtn = (kind, arg, chosen) => `<button class="btn ringbtn wide" data-act="ringPickOpen" data-arg="${kind}|${arg}">◯ ${chosen ? 'Изменить выбор — кругом' : 'Выбрать кругом'}</button>`;
+// Затворник под выстрелом: решение рассказчика (нейтрально — экран могут увидеть)
+const slayRegHtml = t => t && t.role === 'recluse' ? `<div class="field"><label>Ваше решение: цель определяется Демоном?</label><div class="seg"><button class="${S.day.picks.slayReg ? '' : 'on'}" data-act="slayReg" data-arg="0">Нет</button><button class="${S.day.picks.slayReg ? 'on' : ''}" data-act="slayReg" data-arg="1">Да — умрёт</button></div></div>` : '';
+function pickRing() {
+  const pr = UI.ringPick, r = pr && PICK_RINGS[pr.kind] && PICK_RINGS[pr.kind](pr.arg); if (!r) return '';
+  const g = ringGeom(S.players.length, false, 330), selId = (S.day.picks[r.key] || [])[0], t = selId && E.P(S, selId);
+  const seats = S.players.map((p, i) => seatHtml(p, i, g, p.id === selId ? 'on' : '', `data-act="dayPick" data-arg="${r.key}|${p.id}" ${p.alive ? '' : 'disabled'}`)).join('');
+  return `<div class="ov ringov" role="dialog" aria-label="${esc(r.title)}">
+    <div class="ringtop"><span></span><b>${esc(r.title)}</b><button class="wbtn" data-act="ringClose" aria-label="Закрыть">×</button></div>
+    <div class="ringbox"><div class="small muted ringhint">${esc(r.hint)}</div>
+      <div class="ring" style="${ringStyle(g)}">${seats}<div class="ringmid" style="top:${(g.H / 2).toFixed(2)}cqw">${t ? `<span>${esc(r.mid)}</span><b class="nm">${esc(t.name)}</b>` : '<b class="q">кого?</b>'}</div></div>
+      ${r.extra ? r.extra(t) : ''}
+      <button class="btn ${r.danger ? 'danger' : 'primary'} wide" data-act="${r.ok}" data-arg="${r.okArg || ''}" ${t ? '' : 'disabled'}>${esc(r.okLabel)}</button>
+      <button class="btn wide" data-act="ringClose">Вернуться к экрану дня</button></div></div>`;
+}
 function ringOverlay() {
+  if (UI.ring === 'pick' && S.phase === 'day') return pickRing();
   if (UI.ring === 'seat' && S.phase === 'setup') return seatRing();
   if (UI.ring === 'nom' && S.phase === 'day') return nomRing();
   if (UI.ring === 'grim' && S.phase !== 'setup') return stGrimRing();
@@ -1378,12 +1420,13 @@ function render() {
       <button class="hundo" data-act="undo" ${last ? '' : 'disabled'} aria-label="${last ? esc('Отменить: ' + last.label) : 'Нечего отменять'}" title="${last ? esc('Отменить: ' + last.label) : ''}">↶</button><span class="save"></span></header>
     <main>${body}</main>
     <nav class="tabs">${[['game', S.phase === 'night' ? 'Ночь' : S.phase === 'day' ? 'День' : 'Игра'], ['table', 'Гримуар'], ['log', 'Журнал'], ['roles', 'Роли'], ['menu', 'Ещё']].map(([k, l]) => `<button class="${UI.tab === k ? 'on' : ''}" data-act="tab" data-arg="${k}">${l}</button>`).join('')}</nav>
-    ${legendOverlay()}${wallOverlay()}${grimOverlay()}${ringOverlay()}${sheetOverlay()}${editOverlay()}${fateOverlay()}${showOverlay()}${noteViewOverlay()}`;
+    ${legendOverlay()}${wallOverlay()}${grimOverlay()}${ringOverlay()}${sheetOverlay()}${editOverlay()}${fateOverlay()}${statOverlay()}${showOverlay()}${noteViewOverlay()}`;
   // круг рассадки — только на подготовке, круг номинации — только днём, Гримуар кругом — во время игры (после смены фазы закрываются сами)
-  if ((UI.ring === 'seat' && S.phase !== 'setup') || (UI.ring === 'nom' && S.phase !== 'day') || (UI.ring === 'grim' && S.phase === 'setup')) UI.ring = null;
+  if ((UI.ring === 'seat' && S.phase !== 'setup') || ((UI.ring === 'nom' || UI.ring === 'pick') && S.phase !== 'day') || (UI.ring === 'grim' && S.phase === 'setup')) UI.ring = null;
   // под полноэкранными слоями страница не прокручивается
   if (UI.fate && !(S.phase === 'day' && S.day.picks && S.day.picks.fate)) UI.fate = false; // день кончился — выбор казни закрыт
-  document.documentElement.classList.toggle('locked', !!(UI.show || UI.legend || UI.ring || UI.noteView || UI.edit || UI.fate || (UI.open && E.P(S, UI.open)) || (UI.wall && S.draw) || (UI.grimShow && S.phase === 'night')));
+  if (UI.stat && S.phase !== 'day') UI.stat = false;
+  document.documentElement.classList.toggle('locked', !!(UI.show || UI.legend || UI.ring || UI.noteView || UI.edit || UI.fate || UI.stat || (UI.open && E.P(S, UI.open)) || (UI.wall && S.draw) || (UI.grimShow && S.phase === 'night')));
   app.querySelectorAll('details > summary').forEach(s => { if (opened.has(s.textContent)) s.parentElement.open = true; });
   if (UI.tab === 'roles') filterRefs();
   paintSave();
@@ -1460,10 +1503,11 @@ const A = {
   stepSkip: () => { const spec = E.stepSpec(S, E.currentStep(S)); act(S => E.skipStep(S, 'manual'), 'пропущен шаг: ' + spec.title, 'step'); window.scrollTo(0, 0); },
   // день
   dayPick: arg => { const [key, id] = arg.split('|'); draft(S => { S.day.picks[key] = sel1(S.day.picks[key], id); }); },
-  moonchild: () => act(S => E.moonchildChoose(S, S.day.picks.moonchild[0])),
-  klutz: () => act(S => E.klutzChoose(S, S.day.picks.klutz[0])),
+  moonchild: () => { UI.ring = null; act(S => E.moonchildChoose(S, S.day.picks.moonchild[0])); },
+  klutz: () => { UI.ring = null; act(S => E.klutzChoose(S, S.day.picks.klutz[0])); },
   slayReg: v => draft(S => { S.day.picks.slayReg = v === '1'; }),
-  slay: id => act(S => { E.slayerShot(S, id, S.day.picks['slay_' + id][0], S.day.picks.slayReg); S.day.picks = {}; }),
+  slay: id => { UI.ring = null; act(S => { E.slayerShot(S, id, S.day.picks['slay_' + id][0], S.day.picks.slayReg); S.day.picks = {}; }); },
+  ringPickOpen: arg => { const [kind, a] = arg.split('|'); UI.ringPick = { kind, arg: a }; UI.ring = 'pick'; render(); },
   madExe: arg => { const [pid, src] = arg.split('|'); act(S => E.madnessExecute(S, pid, src), 'казнь за нарушенное безумие'); window.scrollTo(0, 0); },
   harpyKill: arg => act(S => E.harpyKill(S, arg.split(',')), 'Гарпия: смерть'),
   damselGuess: () => { const by = (S.day.picks.dgBy || [])[0], on = (S.day.picks.dgOn || [])[0]; if (by && on) act(S => { E.damselGuess(S, by, on); S.day.picks.dgBy = []; S.day.picks.dgOn = []; }, 'догадка о Девице'); },
@@ -1518,6 +1562,8 @@ const A = {
   fatePick: i => { const f = S.day.picks.fate, p = f && E.P(S, f.pid); if (!p) return;
     act(S => { S.day.picks.fate.pick = +i; S.flags.fateUsed = (S.flags.fateUsed || []).concat(+i); E.log(S, `${p.name} выбирает казнь: ${EXECUTIONS[+i].t}`, 'day'); }, 'казнь на выбор'); },
   fateShow: () => { UI.fate = true; render(); },
+  statOpen: () => { UI.stat = true; render(); },
+  statClose: () => { UI.stat = false; render(); },
   fateClose: () => { UI.fate = false; render(); },
   // журнал: изменить выбор шага последней ночи → «Что изменится» (переигрывание ночи) → «Принять» или «Отмена»
   logEdit: k => {
