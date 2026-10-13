@@ -845,6 +845,36 @@ try {
     ok('Мэр под защитой Монаха: никто не умирает', my.alive && byRole(G, 'chef').alive);
   }
 
+  // 33. блефы без Пьяницы и Безумца (решение пользователя 2026-10-13: «Пьяница не знает, что он Пьяница»)
+  {
+    let bad = 0;
+    for (let k = 0; k < 60; k++) { const G = game(['chef', 'empath', 'monk', 'soldier', 'mayor', 'butler', 'poisoner', 'imp'], 'tb'); E.autoSetup(G, true); if (G.bluffs.some(b => b === 'drunk' || b === 'lunatic')) bad++; }
+    for (let k = 0; k < 60; k++) { const G = game(['chef', 'empath', 'monk', 'soldier', 'mayor', 'sweetheart', 'poisoner', 'imp'], 'snv'); E.autoSetup(G, true); if (G.bluffs.some(b => b === 'drunk' || b === 'lunatic')) bad++; }
+    for (let k = 0; k < 60; k++) { const G = game(['grandmother', 'sailor', 'chambermaid', 'exorcist', 'innkeeper', 'goon', 'godfather', 'zombuul'], 'bmr'); E.autoSetup(G, true); if (G.bluffs.some(b => b === 'drunk' || b === 'lunatic')) bad++; }
+    ok('блефы: ни Пьяницы, ни Безумца (180 раздач)', bad === 0, String(bad));
+    const G = game(['chef', 'empath', 'monk', 'soldier', 'mayor', 'butler', 'poisoner', 'imp'], 'tb'); E.autoSetup(G, true); G.bluffs[0] = 'drunk';
+    ok('блефы: Пьяница вручную — подготовка не даёт начать', E.setupProblems(G).some(t => /Пьяница/.test(t) && /бессмыслен/.test(t)));
+  }
+
+  // 34. Растяпа и Дитя Луны казнены: публичный выбор — до ночи (вики: «когда узнаёте, что умерли»; заметка пользователя 2026-10-13)
+  {
+    const G = game(['clockmaker', 'klutz', 'mayor', 'monk', 'seamstress', 'barber', 'witch', 'imp']); E.autoSetup(G, true); E.startGame(G);
+    runNight(G, { witch: { t: [byRole(G, 'monk').id] } });
+    const kl = byRole(G, 'klutz');
+    E.nominate(G, byRole(G, 'clockmaker').id, kl.id); E.recordVote(G, kl.id, G.players.slice(0, 6).map(p => p.id));
+    E.endDay(G);
+    ok('Растяпа казнён — день держится до его выбора', !kl.alive && G.phase === 'day' && G.flags.klutzPending === kl.id && G.day.holdForChoice);
+    E.klutzChoose(G, byRole(G, 'mayor').id); E.endDay(G);
+    ok('после выбора Растяпы «Начать ночь» — ночь, без повторного «без казни»', G.phase === 'night' && G.log.filter(e => /без казни/.test(e.t)).length === 0);
+    const G2 = game(['clockmaker', 'moonchild', 'mayor', 'monk', 'seamstress', 'barber', 'witch', 'imp']); E.autoSetup(G2, true); E.startGame(G2);
+    runNight(G2, { witch: { t: [byRole(G2, 'monk').id] } });
+    const mc = byRole(G2, 'moonchild');
+    E.nominate(G2, byRole(G2, 'clockmaker').id, mc.id); E.recordVote(G2, mc.id, G2.players.slice(0, 6).map(p => p.id)); E.endDay(G2);
+    ok('Дитя Луны казнено — выбор до ночи', G2.phase === 'day' && G2.flags.moonchildPending === mc.id);
+    E.endDay(G2);
+    ok('выбора нет — второе нажатие всё равно начинает ночь', G2.phase === 'night');
+  }
+
   // 30. казнь на выбор: 30 одобренных текстов, у каждого — имя казнённого и своё название
   ok('казни: 30 историй, названия разные, в каждой есть имя', EXECUTIONS.length === 30 && new Set(EXECUTIONS.map(x => x.t)).size === 30
     && EXECUTIONS.every(x => x.t && x.s.includes('{name}') && !/\[Имя\]/.test(x.s)));

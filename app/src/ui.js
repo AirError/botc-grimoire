@@ -550,7 +550,7 @@ function viewSetup() {
         ${p.role === 'lunatic' ? `<select data-act="setBelieves" data-arg="${p.id}">${roleOptions(r => team(r) === 'demon', p.believes, { placeholder: '— каким Демоном себя считает —' })}</select>` : ''}
       </div>`; }).join('')}</div>`;
   } else if (n > 15) roles = '<div class="warn">Больше 15 игроков: лишние должны быть Странниками.</div>';
-  const notIn = r => DATA.roles[r] && isGoodRole(r) && !S.players.some(p => p.role === r || p.believes === r);
+  const notIn = r => E.canBluff(r) && !S.players.some(p => p.role === r || p.believes === r); // без Пьяницы и Безумца
   const goodPl = core.filter(p => p.role && isGoodRole(p.role));
   const pickSel = (act, label, cur, list) => `<div class="field"><label>${label}</label><select data-act="${act}"><option value="">—</option>${list.map(p => `<option value="${p.id}" ${p.id === cur ? 'selected' : ''}>${esc(p.name)} (${esc(E.rname(p.role))})</option>`).join('')}</select></div>`;
   const prep = n >= 5 && S.players.every(p => p.role) ? `<div class="card"><h3>Подготовка</h3>
@@ -792,14 +792,19 @@ function viewDay() {
   if (d.noms.length) parts.push(`<div class="card"><h3>Номинации сегодня</h3>${d.noms.map(x => `<div class="row"><b>${esc(E.nm(S, x.on))}</b><span class="muted">${x.count} голос.</span>${x.pardoned ? '<span class="badge">Судья: казни не будет</span>' : ''}${x.butcher ? '<span class="badge">Мясник</span>' : ''}${x.on === blk ? '<span class="badge evil">на плахе</span>' : ''}</div>`).join('')}</div>`);
   const second = d.executed && d.noms.find(x => x.butcher && x.count >= th);
   const scapegoat = blk && !d.executed ? S.players.find(p => p.role === 'scapegoat' && p.alive && p.id !== blk && p.align === E.P(S, blk).align) : null;
-  const endLabel = d.executed ? (second ? `Завершить день и казнить: ${esc(E.nm(S, second.on))} (Мясник)` : 'Завершить день') : blk ? `Завершить день и казнить: ${esc(E.nm(S, blk))}` : 'Завершить день без казни';
+  // день задержан до публичного выбора Растяпы/Дитя Луны (engine endDay) — следующее нажатие начинает ночь
+  const endLabel = d.holdForChoice ? 'Начать ночь' : d.executed ? (second ? `Завершить день и казнить: ${esc(E.nm(S, second.on))} (Мясник)` : 'Завершить день') : blk ? `Завершить день и казнить: ${esc(E.nm(S, blk))}` : 'Завершить день без казни';
+  const dead = S.players.filter(p => !p.alive);
   parts.push(fateCard(second ? second.on : d.executed || blk)); // казнь на выбор — над «Завершить день», когда есть казнь
   parts.push(`<div class="card"><button class="btn primary wide" data-act="endDay">${art('execute', 'bg')}${endLabel}</button>
     ${blk && !d.executed && E.travellerWorks(S, 'butcher') ? `<button class="btn wide" data-act="executeNow">Казнить ${esc(E.nm(S, blk))} сейчас — Мясник номинирует ещё раз</button>` : ''}
     ${scapegoat ? `<div class="seg"><button class="${picks.scapegoat ? 'on' : ''}" data-act="scapegoat" data-arg="${scapegoat.id}">Козёл Отпущения (${esc(scapegoat.name)}) казнён вместо ${esc(E.nm(S, blk))}</button></div>` : ''}
     ${blk && !d.executed && S.players.some(p => p.role === 'pacifist' && p.alive) && E.P(S, blk).align === 'good' ? `<div class="seg"><button class="${picks.pacifist ? 'on' : ''}" data-act="pacifist">Пацифист спасает казнённого</button></div>` : ''}
-    <details><summary class="small">Казнить другого игрока (решение рассказчика)</summary><div style="margin-top:8px">${chipsPlayers('manualExe', 1, p => p.alive && !E.isTraveller(p), picks.manualExe || [], { act: 'dayPick', noRole: true })}
-    <button class="btn danger" data-act="manualExe" ${(picks.manualExe || []).length ? '' : 'disabled'}>Казнить и завершить день</button></div></details></div>`);
+    <details><summary class="small">${d.executed ? 'Воскресить игрока' : 'Казнить другого игрока или воскресить'} (решение рассказчика)</summary><div style="margin-top:8px">
+    ${d.executed ? '' : `<div class="flabel"><span>Казнить</span></div>${chipsPlayers('manualExe', 1, p => p.alive && !E.isTraveller(p), picks.manualExe || [], { act: 'dayPick', noRole: true })}
+    <button class="btn danger" data-act="manualExe" ${(picks.manualExe || []).length ? '' : 'disabled'}>Казнить и завершить день</button>`}
+    ${dead.length ? `<div class="flabel"><span>Воскресить (например, если ошибся рассказчик)</span></div>${chipsPlayers('revive', 1, p => !p.alive, picks.revive || [], { act: 'dayPick', noRole: true, ghost: true })}
+    <button class="btn" data-act="revive" ${(picks.revive || []).length ? '' : 'disabled'}>Воскресить</button>` : '<div class="small muted">Мёртвых нет — воскрешать некого.</div>'}</div></details></div>`);
   parts.push(killFormHtml());
   parts.push(exileHtml(picks)); // изгнание Странников — в самом низу
   return parts.join('');
@@ -1553,6 +1558,10 @@ const A = {
   voteCancel: () => act(S => { S.day.draft = { by: null, on: null, voters: [], stage: 'pick', spy: false }; }, 'номинация отменена'),
   pacifist: () => draft(S => { S.day.picks.pacifist = !S.day.picks.pacifist; }),
   endDay: () => { const pac = S.day.picks.pacifist, sg = S.day.picks.scapegoat; UI.notes = []; act(S => E.endDay(S, { pacifist: pac, scapegoat: sg }), 'конец дня ' + S.n); window.scrollTo(0, 0); },
+  // воскрешение по решению рассказчика (экран дня): жив, причина смерти снята, голос призрака возвращается
+  revive: () => { const id = (S.day.picks.revive || [])[0], p = id && E.P(S, id); if (!p || p.alive) return;
+    act(S => { const q = E.P(S, id); q.alive = true; q.ghost = true; q.deathNote = null; E.log(S, `Рассказчик воскрешает ${q.name}`, 'effect'); S.day.picks.revive = [];
+      for (const f of ['klutzPending', 'moonchildPending']) if (S.flags[f] === id) S.flags[f] = null; }, 'воскрешение: ' + p.name); }, // ожил — выбора «после смерти» нет
   manualExe: () => { const id = S.day.picks.manualExe[0]; act(S => { E.execute(S, id); if (!S.result) E.endDay(S, { skipExecution: true }); }); window.scrollTo(0, 0); },
   // казнь на выбор: три случайных, без повторов за игру (пока хватает); выбор — в журнал
   fateOpen: pid => {

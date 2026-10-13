@@ -476,6 +476,10 @@ function finishRoles(S) {
   }
 }
 
+// блефом может быть добрая роль, кроме Пьяницы и Безумца: их обладатель не знает, кто он, — такой блеф бессмыслен
+// (решение пользователя 2026-10-13: «Пьяница не знает, что он Пьяница»; вики блеф Пьяницей не запрещает)
+const NO_BLUFF = ['drunk', 'lunatic'];
+const canBluff = r => !!R(r) && isGoodTeam(R(r).team) && !NO_BLUFF.includes(r);
 // значения по умолчанию для подготовки: Пьяница, Безумец, блефы, внук, ложная цель, близнец.
 // Пьянице — роль не из блефов (иначе Демон поймёт, кто Пьяница); блефы — только добрые роли сценария не в игре, без повторов
 function autoSetup(S, force) {
@@ -487,9 +491,9 @@ function autoSetup(S, force) {
     if (p.role === 'drunk' && p.believes) used.add(p.believes);
     if (p.role === 'lunatic' && (force || !p.believes)) p.believes = shuffle(roles.filter(r => R(r) && R(r).team === 'demon'))[0] || null;
   }
-  if (force || !S.bluffs.filter(Boolean).length || S.bluffs.some(b => b && used.has(b))) {
-    const keep = force ? [] : S.bluffs.filter(b => b && !used.has(b));
-    const good = shuffle(roles.filter(r => R(r) && isGoodTeam(R(r).team) && !used.has(r) && !keep.includes(r)));
+  if (force || !S.bluffs.filter(Boolean).length || S.bluffs.some(b => b && (used.has(b) || !canBluff(b)))) {
+    const keep = force ? [] : S.bluffs.filter(b => b && !used.has(b) && canBluff(b));
+    const good = shuffle(roles.filter(r => canBluff(r) && !used.has(r) && !keep.includes(r)));
     S.bluffs = keep.concat(good).slice(0, 3);
   }
   const goodPlayers = S.players.filter(p => p.align === 'good');
@@ -605,6 +609,7 @@ function setupProblems(S) {
     const roles = S.players.map(p => p.role);
     if (new Set(roles).size !== roles.length) out.push('Одна роль выдана дважды');
     for (const b of S.bluffs) if (b && S.players.some(p => p.role === b || p.believes === b)) out.push(`Блеф «${rname(b)}» есть в игре — выберите другой`);
+    for (const b of S.bluffs) if (b && NO_BLUFF.includes(b)) out.push(`Блеф «${rname(b)}» бессмыслен: обладатель этой роли не знает, кто он, — выберите другой`);
     for (const p of S.players) {
       if (p.role === 'drunk' && !p.believes) out.push(`${p.name}: Пьяница — выберите, кем он себя считает`);
       if (p.role === 'lunatic' && !p.believes) out.push(`${p.name}: Безумец — выберите, каким Демоном он себя считает`);
@@ -891,7 +896,7 @@ function endDay(S, opts) {
     if (bn) { d.executed2 = bn.on; execute(S, bn.on, { scapegoat: opts.scapegoat }); }
   }
   if (S.result) return;
-  if (!d.executed) {
+  if (!d.executed && !d.holdForChoice) { // день уже держали до выбора Растяпы/Дитя Луны — итог «без казни» подведён
     log(S, 'День закончился без казни', 'day');
     if (vortoxActive(S)) return endGame(S, 'evil', 'Вортокс: день прошёл без казни');
     const mayor = S.players.find(p => p.role === 'mayor' && p.alive && !abilityOff(S, p));
@@ -899,6 +904,15 @@ function endDay(S, opts) {
     if (S.flags.mastermindDay === S.n) return endGame(S, 'good', 'Кукловод: в дополнительный день никого не казнили');
   }
   if (checkWin(S)) return;
+  // Растяпа или Дитя Луны умерли днём (казнь, Ведьма…): узнают о смерти сразу и публично выбирают игрока — до ночи
+  // (вики: «когда узнаёте, что умерли»). Раньше ночь наступала сразу, и выбор всплывал только на следующий день (заметка
+  // пользователя 2026-10-13). День держим один раз: следующее «Завершить день» начинает ночь, даже если выбора нет
+  const pend = [S.flags.klutzPending, S.flags.moonchildPending].filter(Boolean);
+  if (pend.length && !d.holdForChoice) {
+    d.holdForChoice = true;
+    log(S, `До наступления ночи: ${pend.map(id => `${rname(P(S, id).role)} (${nm(S, id)})`).join(' и ')} публично выбирает игрока`, 'day');
+    return;
+  }
   startNight(S);
 }
 
@@ -1799,9 +1813,9 @@ const LOGIC = {
       // 7+ игроков: Безумцу — любые «приспешники» (столько, сколько Приспешников в игре) и 3 любые добрые роли; Демону — кто Безумец
       const big = coreCount(S) >= 7, k = S.players.filter(q => realTeam(q) === 'minion').length, demon = S.players.find(isDemon);
       const def = stable(S, 'lunatic:' + p.id, () => ({ m: shuffle(S.players.filter(q => q.id !== p.id && !isTraveller(q))).slice(0, k).map(q => q.id),
-        b: shuffle(scriptRoles(S, r => isGoodTeam(R(r).team) && !inPlay(S, r))).slice(0, 3) }));
+        b: shuffle(scriptRoles(S, r => canBluff(r) && !inPlay(S, r))).slice(0, 3) }));
       return {
-        inputs: big ? [PL('m', k, `Кого показать Безумцу как «Приспешников» (${k})`, notSelf(p)), ROLE('b0', '«Блеф» 1', r => isGoodTeam(R(r).team)), ROLE('b1', '«Блеф» 2', r => isGoodTeam(R(r).team)), ROLE('b2', '«Блеф» 3', r => isGoodTeam(R(r).team))] : [],
+        inputs: big ? [PL('m', k, `Кого показать Безумцу как «Приспешников» (${k})`, notSelf(p)), ROLE('b0', '«Блеф» 1', canBluff), ROLE('b1', '«Блеф» 2', canBluff), ROLE('b2', '«Блеф» 3', canBluff)] : [],
         defaults: big ? { m: def.m, b0: def.b[0], b1: def.b[1], b2: def.b[2] } : {},
         info: inp => ({ show: `${p.name} считает себя Демоном (${rname(p.believes)})`, lines: [big ? 'Безумцу — «приспешники» и «блефы»; затем настоящему Демону — кто Безумец' : 'Меньше 7 игроков: Безумцу ничего не показывают; Демону — кто Безумец'],
           tokens: (big ? [{ label: `Безумцу (${p.name})`, caption: CARD.minions, players: inp.m || [] }].concat(['b0', 'b1', 'b2'].filter(x => inp[x]).map(x => ({ label: `Безумцу (${p.name})`, caption: CARD.notInPlay, role: inp[x] }))) : [])
@@ -2342,7 +2356,7 @@ function klutzChoose(S, pid) {
 }
 
 
-const ENGINE = { newGame, newPlayer, P, nm, rname, realTeam, actsAs, aliveCount, aliveAll, coreCount, isTraveller, exile, exileThreshold, addTraveller, meetingBlocker, isDemon, distribution, setupDistribution, distCheck, unknownSetup, countTeams, randomDeal,
+const ENGINE = { canBluff, newGame, newPlayer, P, nm, rname, realTeam, actsAs, aliveCount, aliveAll, coreCount, isTraveller, exile, exileThreshold, addTraveller, meetingBlocker, isDemon, distribution, setupDistribution, distCheck, unknownSetup, countTeams, randomDeal,
   amnesiacGuess, AMNESIAC_ANSWERS, storytellerKill, voteCount, voteWeight, voudonActive, bishopActive, travellerWorks, executeNow,
   judgeRuling, gunslingerShot, tinkerDies, doomsayerKill, fiddlerEnd, swapSeats, goonWarn, damselGuess, changeRole, madnessExecute, harpyKill,
   finishRoles, autoSetup, setupProblems, drawStart, drawOpen, drawClose, drawCancel, drawShown, drawLocked, drawProblem, distortion,
