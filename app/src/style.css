@@ -126,8 +126,11 @@ details > .tale { margin-top: 10px; }
 .log { display: flex; flex-direction: column; gap: 2px; }
 .log .ph { font-family: var(--f-sc); font-weight: 700; color: var(--gold); margin-top: 10px; letter-spacing: .06em; }
 .log .e { font-size: 15px; padding: 3px 0; }
-.log .death { color: var(--evil); } .log .save { color: var(--ok); } .log .win { color: var(--gold); font-weight: 700; }
+.log .death { color: var(--evil); } .log .saved { color: var(--ok); } .log .win { color: var(--gold); font-weight: 700; }
 .log .phase { color: var(--muted); }
+.log .revive { color: var(--ok); }
+.log .poison { color: #6E3AA0; }
+.log .e b { font-weight: 800; }
 /* записи последней ночи — можно изменить выбор */
 .log .e.edit { display: flex; align-items: flex-start; gap: 8px; width: 100%; text-align: left; font: inherit; font-size: 15px; color: inherit; background: none;
   border: 0; border-bottom: 1px dashed var(--line); padding: 5px 0; cursor: pointer; }
@@ -142,6 +145,11 @@ details > .tale { margin-top: 10px; }
 .statbtn.fresh { border-color: var(--evil); }
 .statbtn .stnew { font-size: 12px; font-weight: 700; color: #FFFFFF; background: var(--evil); border-radius: 8px; padding: 1px 7px; }
 .statbg { position: absolute; inset: 0; }
+/* итог казни */
+.exeres { text-align: center; align-items: stretch; }
+.exename { font-family: var(--f-tale); font-size: 30px; font-weight: 800; }
+.exeverd { font-size: 26px; font-weight: 800; letter-spacing: .04em; }
+.exeverd.die { color: var(--evil); } .exeverd.live { color: var(--ok); }
 .statbox { position: relative; display: flex; flex-direction: column; gap: 8px; }
 /* казнь на выбор: казнённый выбирает на весь экран, рассказчик читает историю */
 .fateov { background: #000000; color: #F2EAD8; display: flex; align-items: center; justify-content: center; overflow-y: auto;
@@ -348,6 +356,17 @@ html.locked, html.locked body { overflow: hidden; }
 .ptag span { font-size: 14.5px; font-weight: 600; }
 .oled .reveal.poison { box-shadow: 0 0 18px rgba(107, 227, 122, .25), inset 0 0 14px rgba(107, 227, 122, .12); }
 .oled .ptag .drops, .oled .ppill .drop1 { filter: drop-shadow(0 0 4px rgba(107, 227, 122, .7)); }
+/* пьянство — янтарная рамка с кружками; Безумец — фиолетовая со своим значком (вид — dist.kind) */
+.k-drunk { --poison: #B7791F; --poisonbg: #FBF1DE; --poisonink: #7A4A0B; }
+.k-lunatic { --poison: #7B4FB8; --poisonbg: #F1EAFA; --poisonink: #4E2A85; }
+html:root.oled .k-drunk { --poison: #F0B44C; --poisonbg: #000000; --poisonink: #F5C66E; }
+html:root.oled .k-lunatic { --poison: #B98CF2; --poisonbg: #000000; --poisonink: #CDAEF6; }
+.mugs { display: inline-flex; gap: 2px; flex: none; }
+.mug1 { width: 22px; height: 22px; object-fit: contain; flex: none; }
+.ppill .mug1, .badge.poisonb .mug1 { width: 16px; height: 16px; }
+.reveal.poison.k-drunk, .reveal.poison.k-lunatic { border-width: 3px; border-style: double; padding-top: 10px; }
+.oled .reveal.poison.k-drunk { box-shadow: 0 0 18px rgba(240, 180, 76, .25), inset 0 0 14px rgba(240, 180, 76, .12); }
+.oled .reveal.poison.k-lunatic { box-shadow: 0 0 18px rgba(185, 140, 242, .25), inset 0 0 14px rgba(185, 140, 242, .12); }
 
 /* кнопки «Показать игроку» */
 .showbtns { display: flex; flex-direction: column; gap: 6px; margin-top: 6px; }
@@ -377,7 +396,8 @@ html.locked, html.locked body { overflow: hidden; }
 .shsub.shlead { margin-top: 10px; color: #DABA74; }
 .shthumb { display: flex; align-items: center; gap: 10px; font-size: 22px; font-weight: 800; letter-spacing: .08em; text-transform: uppercase; }
 .shthumb span { font-size: 40px; }
-.shthumb.side-good { color: #A9C4F5; } .shthumb.side-evil { color: #F59A9A; }
+.shthumb.side-good { color: #A9C4F5; } .shthumb.side-evil { color: #F59A9A; } .shthumb.side-none { color: #E3C27A; }
+.shthumb .tside { display: inline-block; transform: rotate(-90deg); } /* палец в сторону — Генерал «никто не побеждает» */
 .shhint { font-size: 13px; color: #6E685E; margin-top: 8px; }
 @keyframes ovIn { from { opacity: 0; } to { opacity: 1; } }
 
@@ -540,6 +560,13 @@ span.drops { display: inline-flex; align-items: flex-end; gap: 1px; width: auto;
 span.drops img { object-fit: contain; } span.drops .d1 { height: 17px; } span.drops .d2 { height: 23px; } span.drops .d3 { height: 13px; }
 html.art-poison .reveal.poison { border: 18px solid transparent; border-image: var(--a-poison-frame) var(--frame-slice) / 18px round; border-radius: 0;
   background: var(--poisonbg) padding-box; padding: 24px 10px 10px; overflow: visible; }
+/* рисованная рамка — только у яда; у пьянства и Безумца — двойная линия своего цвета */
+html.art-poison .reveal.poison.k-drunk, html.art-poison .reveal.poison.k-lunatic { border: 3px double var(--poison); border-image: none; border-radius: var(--r); background: var(--poisonbg); padding: 10px 12px 12px; }
+/* пьянство с рисованной рамкой (drunk_frame) и пеной по верхнему краю (drunk_foam) — как у яда */
+html.art-drunk .reveal.poison.k-drunk { border: 18px solid transparent; border-image: var(--a-drunk-frame) var(--drunk-slice) / 18px round; border-radius: 0;
+  background: var(--poisonbg) padding-box; padding: 24px 10px 10px; overflow: visible; }
+.reveal .foam2 { position: absolute; left: 0; right: 0; top: 0; height: 18px; pointer-events: none; background: var(--a-drunk-foam) left top / auto 100% repeat-x; }
+.oled .reveal .foam2 { filter: drop-shadow(0 0 4px rgba(240, 180, 76, .45)); }
 .reveal .drip2 { position: absolute; left: 0; right: 0; top: 0; height: 18px; pointer-events: none; background: var(--a-poison-drips) left top / auto 100% repeat-x; }
 .oled .reveal .drip2 { filter: drop-shadow(0 0 4px rgba(107, 227, 122, .45)); }
 @media (prefers-reduced-motion: reduce) {
@@ -625,6 +652,9 @@ img.shroud { object-fit: contain; }
 .grimtop b { text-align: center; font-family: var(--f-sc); font-size: 17px; letter-spacing: .12em; text-transform: uppercase; color: #E3C27A; }
 .grimbox { max-width: 640px; margin: 0 auto; padding: 14px 16px 24px; display: flex; flex-direction: column; gap: 16px; }
 .grimov .btn { background: #000000; color: #E3C27A; border-color: #E3C27A; }
+/* невидимая кнопка «закрыть Гримуар» — левый нижний угол, над крупным жетоном тоже */
+.grimx { position: fixed; z-index: 5; left: 0; bottom: 0; width: 76px; height: 76px; margin-bottom: env(safe-area-inset-bottom, 0px);
+  background: transparent; border: 0; padding: 0; opacity: 0; cursor: default; -webkit-tap-highlight-color: transparent; }
 /* круг: позиции и размеры жетонов — в cqw ширины поля (считает grimCircle) */
 .gcirc { position: relative; width: 100%; container-type: inline-size; }
 .gct { position: absolute; padding: 0; border: none; background: none; border-radius: 50%; cursor: pointer; }
@@ -734,6 +764,13 @@ img.shroud { object-fit: contain; }
 .ringbox { max-width: 640px; margin: 0 auto; padding: 12px 16px 24px; display: flex; flex-direction: column; gap: 12px; }
 .ringhint { text-align: center; }
 .ring { position: relative; width: 100%; container-type: inline-size; }
+/* ночной выбор кругом: иконка роли над именем, номер выбора */
+.rseat.withicon .rno { order: -2; }
+.rseat .rsi { order: -1; width: 44%; height: auto; max-height: 40%; object-fit: contain; }
+.rseat .rord { position: absolute; right: -4%; top: -4%; width: 1.7em; height: 1.7em; border-radius: 50%; background: var(--evil); color: #FFFFFF;
+  font-weight: 800; display: flex; align-items: center; justify-content: center; font-size: max(.7em, 11px); }
+.nightring { margin: 6px 0; }
+.pickmode { font-size: 13px; margin-right: 6px; }
 .rseat { position: absolute; display: flex; flex-direction: column; align-items: center; justify-content: center; padding: 0; border-radius: 50%;
   background: var(--card); border: 2px solid var(--line); box-shadow: 0 2px 6px rgba(0, 0, 0, .16); color: var(--ink); cursor: pointer; text-align: center;
   transition: left .18s ease, top .18s ease, background .12s, border-color .12s; }

@@ -179,6 +179,22 @@ def beauty():
         meta["frame_slice"] = max(tx, ty) + 2
         f.save(OUT / "poison_frame.png")
         print("рамка: толщина", tx, ty)
+    # пьянство — как яд (раздел 8 промптов): значок-кружка, пена по верхнему краю, рамка для border-image
+    if have("drunk_mug"):
+        d = white_alpha(SRC / "drunk_mug.png"); d.crop(d.getbbox()).save(OUT / "drunk_mug.png")
+    if have("drunk_foam"):
+        d = white_alpha(SRC / "drunk_foam.png"); d = d.crop(d.getbbox())
+        seamless_x(d).save(OUT / "drunk_foam.png")
+    if have("drunk_frame"):
+        f = white_alpha(SRC / "drunk_frame.png"); f = f.crop(f.getbbox())
+        f = f.resize((600, round(600 * f.height / f.width)), Image.LANCZOS)
+        al = np.asarray(f)[..., 3]
+        row, col = al[al.shape[0] // 2], al[:, al.shape[1] // 2]
+        def inner2(line):
+            a = int(np.argmax(line >= 128)); return a + int(np.argmax(line[a:] < 20))
+        meta["drunk_slice"] = max(inner2(row), inner2(col)) + 2
+        f.save(OUT / "drunk_frame.png")
+        print("рамка пьянства: толщина", meta["drunk_slice"])
     meta["cards"] = cards()
     meta["marks"] = marks()
     meta["digits"] = digits()
@@ -261,7 +277,8 @@ def marks():
 
 
 CARDS = ["card_demon", "card_minions", "card_notinplay", "card_youare", "card_selected", "card_thisplayer",
-         "card_yourrole", "card_yes", "card_no", "card_good", "card_evil"]
+         "card_yourrole", "card_yes", "card_no", "card_good", "card_evil",
+         "card_general_good", "card_general_evil", "card_general_neither"]
 
 
 def cards():

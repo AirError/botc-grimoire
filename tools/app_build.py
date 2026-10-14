@@ -33,6 +33,7 @@ ART = {
     "tablet": (CUT / "tablet.png", 300), "tablet_cracked": (CUT / "tablet_cracked.png", 300),
     "wall_glow": (CUT / "wall_glow.png", 360), "fx_open": (CUT / "fx_open.png", 640), "fx_circle": (CUT / "fx_circle.png", 640),
     "poison_drop": (CUT / "poison_drop.png", 72), "poison_drips": (CUT / "poison_drips.png", 900), "poison_frame": (CUT / "poison_frame.png", 600),
+    "drunk_mug": (CUT / "drunk_mug.png", 72), "drunk_foam": (CUT / "drunk_foam.png", 900), "drunk_frame": (CUT / "drunk_frame.png", 600),
 }
 ART.update({f"rune{i}": (CUT / f"rune{i}.png", 128) for i in range(24)})
 # рисованные цифры 0–9 для показа чисел игрокам (prep_art.digits)
@@ -42,7 +43,8 @@ ART["shroud"] = (CUT / "shroud.png", 120)
 ART.update({f"mark{i}": (CUT / f"mark{i}.png", 72) for i in range(20)})
 # карточки для показа игрокам (надпись накладывает приложение — поле в meta.json → cards.box)
 ART.update({n: (CUT / f"{n}.png", 800) for n in ["card_demon", "card_minions", "card_notinplay", "card_youare", "card_selected",
-                                                  "card_thisplayer", "card_yourrole", "card_yes", "card_no", "card_good", "card_evil"]})
+                                                  "card_thisplayer", "card_yourrole", "card_yes", "card_no", "card_good", "card_evil",
+         "card_general_good", "card_general_evil", "card_general_neither"]})
 
 
 def webp_uri(path, width):

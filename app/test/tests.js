@@ -653,7 +653,13 @@ try {
     try {
       const g = E.newGame(key);
       for (let i = 0; i < n; i++) g.players.push(E.newPlayer(key + i));
-      E.randomDeal(g); E.finishRoles(g); E.autoSetup(g, true);
+      E.randomDeal(g);
+      if (g.flags.marionetteNeed) { // Марионетка: рассказчик выбирает соседа Демона с доброй ролью
+        const c = E.demonSeatNeighbours(g).filter(q => E.isGoodTeam(E.realTeam(q)));
+        if (!c.length) continue; // оба соседа Демона злые — рассказчик пересадит (редко, 3 Приспешника)
+        E.makeMarionette(g, c[0].id);
+      }
+      E.finishRoles(g); E.autoSetup(g, true);
       const probs = E.setupProblems(g).filter(t => !/выберите, сколько Изгоев/.test(t));
       if (probs.length && !E.unknownSetup(g).length) commErr.push(`${key}/${n}: ${probs.join('; ')}`);
       if (E.setupProblems(g).some(t => /выберите, сколько Изгоев/.test(t))) continue;
@@ -873,6 +879,94 @@ try {
     ok('Дитя Луны казнено — выбор до ночи', G2.phase === 'day' && G2.flags.moonchildPending === mc.id);
     E.endDay(G2);
     ok('выбора нет — второе нажатие всё равно начинает ночь', G2.phase === 'night');
+  }
+
+  // 35. Цирюльник казнён (Reptiles II, Демон — Аль-Адихия): этой ночью Демон может поменять роли (заметка пользователя 2026-10-14)
+  {
+    const G = game(['chef', 'barber', 'sailor', 'flowergirl', 'undertaker', 'innkeeper', 'poisoner', 'alhadikhia'], 'reptiles2'); E.autoSetup(G, true); E.startGame(G);
+    runNight(G, { poisoner: { t: [byRole(G, 'chef').id] }, sailor: { t: [byRole(G, 'chef').id] } });
+    const bb = byRole(G, 'barber');
+    E.nominate(G, byRole(G, 'chef').id, bb.id); E.recordVote(G, bb.id, G.players.slice(0, 6).map(p => p.id)); E.endDay(G);
+    const bst = G.night.steps.find(s => s.id === 'barber');
+    ok('Цирюльник казнён — ночью шаг Цирюльника активен', !bb.alive && !!bst && E.stepSpec(G, bst).active, JSON.stringify({ alive: bb.alive, phase: G.phase, haircuts: G.flags.haircuts, steps: G.night && G.night.steps.map(s => s.id), reason: bst && E.stepSpec(G, bst).reason, log: G.log.slice(-4).map(e => e.t) }));
+  }
+
+  // 36. заметки пользователя 2026-10-14: роли в разных сценариях
+  {
+    const night = (G, inputs) => { for (let g = 0; g < 80 && G.phase === 'night'; g++) { const st = E.currentStep(G), sp = E.stepSpec(G, st);
+      if (!sp.active) { E.skipStep(G, 'auto'); continue; } if (!E.applyStep(G, st, Object.assign({}, sp.defaults, (inputs || {})[st.id] || {})).ok) E.skipStep(G, 'manual'); } };
+    // Профессор воскресил — на рассвете он не «умер»
+    let G = game(['professor', 'chambermaid', 'tealady', 'gambler', 'exorcist', 'goon', 'godfather', 'po'], 'bmr'); E.autoSetup(G, true); E.startGame(G);
+    night(G, { godfather: {} }); const ex = byRole(G, 'exorcist');
+    E.nominate(G, byRole(G, 'gambler').id, ex.id); E.recordVote(G, ex.id, G.players.slice(0, 6).map(p => p.id)); E.endDay(G);
+    for (let g = 0; g < 80 && G.phase === 'night' && E.currentStep(G).id !== 'professor'; g++) { const st = E.currentStep(G), sp = E.stepSpec(G, st); if (!sp.active) E.skipStep(G, 'auto'); else if (!E.applyStep(G, st, Object.assign({}, sp.defaults, st.id === 'po' ? { t: [ex.id] } : {})).ok) E.skipStep(G, 'manual'); }
+    ok('Профессор: шаг доступен ночью', E.currentStep(G).id === 'professor');
+    E.applyStep(G, E.currentStep(G), { t: [ex.id] }); night(G, { po: { t: [] } });
+    ok('Профессор воскресил — на рассвете не «умер», а «снова жив»', ex.alive && !E.nightDeaths(G).some(d => d.pid === ex.id) && G.log.some(e => /Снова жив: .*exorcist/.test(e.t)));
+    // По: «Пропустить» = никого — следующей ночью троих
+    G = game(['professor', 'chambermaid', 'tealady', 'gambler', 'exorcist', 'goon', 'godfather', 'po'], 'bmr'); E.autoSetup(G, true); E.startGame(G); night(G); E.endDay(G);
+    for (let g = 0; g < 80 && E.currentStep(G).id !== 'po'; g++) { const st = E.currentStep(G), sp = E.stepSpec(G, st); if (!sp.active) E.skipStep(G, 'auto'); else if (!E.applyStep(G, st, Object.assign({}, sp.defaults)).ok) E.skipStep(G, 'manual'); }
+    E.skipStep(G, 'manual');
+    ok('По: «Пропустить» — копит на троих', G.flags.poCharged === true);
+    // Гадалка: ложная цель — не она сама (решение пользователя)
+    let bad = 0; for (let k = 0; k < 40; k++) { const g = game(['fortuneteller', 'chef', 'empath', 'monk', 'soldier', 'butler', 'poisoner', 'imp'], 'tb'); E.autoSetup(g, true); if (g.flags.ftHerring === byRole(g, 'fortuneteller').id) bad++; }
+    ok('Гадалка: ложная цель случайно — никогда не сама Гадалка', bad === 0);
+    // Философ со способностью Травницы — соседи защищены
+    G = game(['chef', 'philosopher', 'empath', 'monk', 'soldier', 'butler', 'poisoner', 'imp'], 'snv'); G.script.roles.push('tealady'); E.autoSetup(G, true); E.startGame(G);
+    night(G, { philosopher: { r: 'tealady' }, poisoner: { t: [byRole(G, 'monk').id] } });
+    ok('Философ стал Травницей — добрые соседи защищены', E.teaLadyProtects(G, byRole(G, 'chef')) && E.teaLadyProtects(G, byRole(G, 'empath')));
+    // Безумец: в шаге Демона — жетон Безумца и его «жертвы»
+    G = game(['grandmother', 'sailor', 'chambermaid', 'exorcist', 'innkeeper', 'lunatic', 'godfather', 'zombuul'], 'bmr'); E.autoSetup(G, true); E.startGame(G); night(G, { godfather: {} }); E.endDay(G);
+    const lu = byRole(G, 'lunatic');
+    for (let g = 0; g < 80 && E.currentStep(G).id !== 'zombuul'; g++) { const st = E.currentStep(G), sp = E.stepSpec(G, st); if (!sp.active) E.skipStep(G, 'auto'); else if (!E.applyStep(G, st, Object.assign({}, sp.defaults, st.id === 'lunatic' ? { t: [byRole(G, 'sailor').id] } : st.id === 'exorcist' ? { t: [byRole(G, 'chambermaid').id] } : {})).ok) E.skipStep(G, 'manual'); }
+    const zi = E.stepSpec(G, E.currentStep(G)).info({});
+    ok('Безумец: Демону показывают Безумца и кого он «атаковал»', zi && zi.tokens.some(t => t.role === 'lunatic' && t.players[0] === lu.id) && zi.tokens.some(t => (t.players || []).includes(byRole(G, 'sailor').id)), JSON.stringify(zi));
+    ok('Безумец: не «отравлен» — свой вид искажения', E.distortion(G, lu) && E.distortion(G, lu).kind === 'lunatic');
+    // Аль-Адихия: трое выбрали жить — все трое умирают; мёртвый, выбравший жить, оживает
+    G = game(['chef', 'washerwoman', 'librarian', 'sailor', 'general', 'flowergirl', 'poisoner', 'alhadikhia'], 'reptiles2'); E.autoSetup(G, true); E.startGame(G); night(G); E.endDay(G);
+    for (let g = 0; g < 80 && E.currentStep(G).id !== 'alhadikhia'; g++) { const st = E.currentStep(G), sp = E.stepSpec(G, st); if (!sp.active) E.skipStep(G, 'auto'); else if (!E.applyStep(G, st, Object.assign({}, sp.defaults, st.id === 'poisoner' ? { t: [byRole(G, 'poisoner').id] } : st.id === 'sailor' ? { t: [byRole(G, 'sailor').id] } : {})).ok) E.skipStep(G, 'manual'); }
+    const three = ['chef', 'washerwoman', 'librarian'].map(r => byRole(G, r).id);
+    ok('Аль-Адихия: выбор троих и ответ каждого', E.stepInputs(E.stepSpec(G, E.currentStep(G)), { t: three }).filter(f => f.type === 'choice').length === 3);
+    E.applyStep(G, E.currentStep(G), { t: three, c0: 'live', c1: 'live', c2: 'live' });
+    ok('Аль-Адихия: все трое выбрали жить — все трое умирают', three.every(id => !E.P(G, id).alive));
+    G = game(['chef', 'washerwoman', 'librarian', 'sailor', 'general', 'flowergirl', 'poisoner', 'alhadikhia'], 'reptiles2'); E.autoSetup(G, true); E.startGame(G); night(G);
+    const dead = byRole(G, 'chef'); E.nominate(G, byRole(G, 'general').id, dead.id); E.recordVote(G, dead.id, G.players.slice(0, 6).map(p => p.id)); E.endDay(G);
+    for (let g = 0; g < 80 && E.currentStep(G).id !== 'alhadikhia'; g++) { const st = E.currentStep(G), sp = E.stepSpec(G, st); if (!sp.active) E.skipStep(G, 'auto'); else if (!E.applyStep(G, st, Object.assign({}, sp.defaults, st.id === 'poisoner' ? { t: [byRole(G, 'poisoner').id] } : st.id === 'sailor' ? { t: [byRole(G, 'sailor').id] } : {})).ok) E.skipStep(G, 'manual'); }
+    const tr2 = [dead.id, byRole(G, 'washerwoman').id, byRole(G, 'librarian').id];
+    E.applyStep(G, E.currentStep(G), { t: tr2, c0: 'live', c1: 'die', c2: 'live' });
+    ok('Аль-Адихия: мёртвый выбрал жить — оживает, выбравший умереть — умирает', dead.alive && !byRole(G, 'washerwoman').alive && byRole(G, 'librarian').alive);
+    // Генерал: выбор и карточка; Аристократ — 3 игрока, 1 злой
+    const gs = E.stepSpec(G, G.night.steps.find(s => s.id === 'general') || { id: 'general', pid: byRole(G, 'general').id, key: 'general' });
+    ok('Генерал: выбор «добро / зло / никто» и карточка с пальцем', gs.inputs.some(f => f.key === 'side') && gs.info({ side: 'neither' }).tokens[0].thumb === 'side');
+    G = game(['noble', 'balloonist', 'savant', 'engineer', 'huntsman', 'damsel', 'poisoner', 'vigormortis'], 'oasis'); E.autoSetup(G, true); E.startGame(G);
+    const ns = E.stepSpec(G, G.night.steps.find(s => s.id === 'noble'));
+    const nt = ns.defaults.t.map(id => E.P(G, id));
+    ok('Аристократ: 3 игрока, ровно 1 злой', ns.inputs[0].n === 3 && nt.length === 3 && nt.filter(q => q.align === 'evil').length === 1);
+    ok('Дурманщик и общий шаг: число игроков из способности', E.choiceCount('alhadikhia') === 3 && E.choiceCount('poppygrower') === 0);
+    // Инженер: Приспешник становится другим, сторона злая
+    const en = G.night.steps.find(s => s.id === 'engineer'), po = byRole(G, 'poisoner');
+    for (let g = 0; g < 80 && E.currentStep(G) !== en; g++) { const st = E.currentStep(G), sp = E.stepSpec(G, st); if (!sp.active) E.skipStep(G, 'auto'); else if (!E.applyStep(G, st, Object.assign({}, sp.defaults, st.id === 'poisoner' ? { t: [byRole(G, 'savant').id] } : {})).ok) E.skipStep(G, 'manual'); }
+    E.applyStep(G, E.currentStep(G), { mode: 'minions', r0: 'pithag' });
+    ok('Инженер: Отравитель стал Ягой, злой, способность Инженера потрачена', po.role === 'pithag' && po.align === 'evil' && E.stepSpec(G, en).active === false);
+    // Девица: Приспешник угадал — победа зла
+    E.damselGuess(G, po.id, byRole(G, 'damsel').id);
+    ok('Девица: Приспешник угадал живую Девицу — победа зла', G.result && G.result.winner === 'evil', JSON.stringify({ r: G.result, off: E.abilityOff(G, byRole(G, 'damsel')) }));
+    // Психопат: днём убивает; казнён и не проиграл — жив; Голем
+    G = game(['noble', 'balloonist', 'savant', 'golem', 'professor', 'farmer', 'psychopath', 'vigormortis'], 'oasis'); E.autoSetup(G, true); E.startGame(G); night(G);
+    const psy = byRole(G, 'psychopath'), sv = byRole(G, 'savant');
+    E.psychopathKill(G, psy.id, sv.id);
+    ok('Психопат: днём убивает выбранного', !sv.alive && !E.psychopathKill(G, psy.id, byRole(G, 'noble').id));
+    E.nominate(G, byRole(G, 'golem').id, byRole(G, 'noble').id);
+    ok('Голем: номинировал не Демона — тот умирает', !byRole(G, 'noble').alive);
+    ok('Психопат казнён: нужен ответ «камень-ножницы-бумага»', E.exeQuestions(G, psy.id).includes('roshambo'));
+    E.execute(G, psy.id, { roshambo: 'live' });
+    ok('Психопат не проиграл — жив, казнь дня состоялась', psy.alive && G.day.executed === psy.id && G.day.exeResult && !G.day.exeResult.died);
+    // Марионетка: в мешочке вместо неё Горожанин, потом сосед Демона; просыпается как своя роль, Приспешники её не видят
+    G = E.newGame('pies'); for (let i = 0; i < 9; i++) G.players.push(E.newPlayer('M' + i));
+    G.pool = ['chef', 'washerwoman', 'librarian', 'empath', 'monk', 'butler', 'saint', 'marionette', 'imp']; E.randomDeal(G);
+    ok('Марионетка: при раздаче — Горожанин вместо неё, нужно выбрать', G.flags.marionetteNeed && !G.players.some(p => p.role === 'marionette') && E.setupProblems(G).some(t => /Марионетка/.test(t)));
+    const mn = E.demonSeatNeighbours(G).find(p => E.isGoodTeam(E.realTeam(p))), mrole = mn.role; E.makeMarionette(G, mn.id); E.autoSetup(G, false);
+    ok('Марионетка: сосед Демона, злой, считает себя своей ролью', mn.role === 'marionette' && mn.align === 'evil' && mn.believes === mrole && E.actsAs(mn) === mrole && E.abilityOff(G, mn) === 'Марионетка' && !G.bluffs.includes(mrole));
   }
 
   // 30. казнь на выбор: 30 одобренных текстов, у каждого — имя казнённого и своё название

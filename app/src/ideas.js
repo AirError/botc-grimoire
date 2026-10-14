@@ -72,8 +72,10 @@ const IDEAS = (() => {
       () => { const last = S.flags.abnPrev; if (!last || S.n < 2) return null; const y = !last.length;
         return { yes: y ? 'Со вчерашнего утра у всех способности сработали как надо.' : 'Со вчерашнего утра чья-то способность сработала не так, как должна (ложная информация или сбой).',
           no: y ? 'Со вчерашнего утра чья-то способность сработала не так, как должна (ложная информация или сбой).' : 'Со вчерашнего утра у всех способности сработали как надо.' }; },
+      // ложь — правдоподобная: не больше 2 злых и не больше, чем злых в игре (заметка пользователя 2026-10-14: «три злых подряд — слишком очевидная ложь»)
       () => { const ps = coreOf(S), i = ps.indexOf(sv), n = ps.length; const three = [1, 2, 3].map(k => ps[(i + k) % n]).filter(p => p !== sv); const k = three.filter(evil).length;
-        return { yes: `Среди трёх игроков по часовой стрелке от тебя злых: ${k}.`, no: `Среди трёх игроков по часовой стрелке от тебя злых: ${near(k, 0, 3)}.` }; },
+        const hi = Math.min(2, S.players.filter(evil).length), f = near(k, 0, hi); if (f === k) return null;
+        return { yes: `Среди трёх игроков по часовой стрелке от тебя злых: ${k}.`, no: `Среди трёх игроков по часовой стрелке от тебя злых: ${f}.` }; },
       () => { const [a, b] = shuffle(others); if (!b) return null; const y = !evil(a) && !evil(b);
         return { yes: y ? `${a.name} и ${b.name} — оба добрые.` : `Хотя бы один из игроков ${a.name} и ${b.name} — злой.`, no: y ? `Хотя бы один из игроков ${a.name} и ${b.name} — злой.` : `${a.name} и ${b.name} — оба добрые.` }; },
       () => { if (!demon || demon === sv) return null; const rest = shuffle(others.filter(p => p !== demon));
