@@ -635,9 +635,10 @@ try {
   ok('Приспешникам: только «ЭТО ДЕМОН» — Демон',
     cMi.length === 1 && cMi[0].caption === 'ЭТО ДЕМОН' && cMi[0].players[0] === byRole(S, 'imp').id);
   ok('Демону: Приспешники и 3 блефа', cDi.some(t => t.caption === 'ЭТО ВАШИ ПРИСПЕШНИКИ') && cDi.filter(t => t.caption === 'ЭТИХ РОЛЕЙ В ИГРЕ НЕТ').length === 3);
-  ok('Безумцу: «приспешники» и «блефы», Демону — «ЭТОТ ИГРОК» Безумец',
+  // Демону «ЭТОТ ИГРОК» Безумец — на шаге Демона, а не Безумца (заметка пользователя 2026-10-15)
+  ok('Безумцу: «приспешники» и «блефы»; Демону — «ЭТОТ ИГРОК» Безумец на шаге Демона',
     cLu.some(t => t.caption === 'ЭТО ВАШИ ПРИСПЕШНИКИ' && t.players.length === 1) && cLu.filter(t => t.caption === 'ЭТИХ РОЛЕЙ В ИГРЕ НЕТ').length === 3
-    && cLu.some(t => t.caption === 'ЭТОТ ИГРОК' && t.role === 'lunatic' && t.players[0] === byRole(S, 'lunatic').id), JSON.stringify(cLu));
+    && !cLu.some(t => t.role === 'lunatic') && cDi.some(t => t.caption === 'ЭТОТ ИГРОК' && t.role === 'lunatic' && t.players[0] === byRole(S, 'lunatic').id), JSON.stringify(cLu));
 
   S = game(['clockmaker', 'grandmother', 'fortuneteller', 'monk', 'tealady', 'imp', 'witch', 'recluse']); E.autoSetup(S, true); E.startGame(S);
   const ftSt = S.night.steps.find(s => s.id === 'fortuneteller'), ftInfo = E.stepSpec(S, ftSt).info({ t: ids(S, 'monk', 'imp') });
@@ -706,6 +707,28 @@ try {
   S = game(['washerwoman', 'librarian', 'investigator', 'chef', 'empath', 'monk', 'poisoner', 'imp'], 'tb'); S.players[3].role = null; S.players[4].role = null;
   E.drawStart(S); drawAll(S);
   ok('жребий: роли, выданные до стены, остаются; остальным — из случайного набора', S.players[0].role === 'washerwoman' && S.players[7].role === 'imp' && S.players.every(p => p.role) && E.setupProblems(S).length === 0, E.setupProblems(S).join('; '));
+  // роли лежат в ячейках: какую ячейку выбрал — ту роль и получил (заметка пользователя 2026-10-15); открываем с конца
+  S = E.newGame('tb'); for (let i = 0; i < 8; i++) S.players.push(E.newPlayer('C' + i)); S.pool = POOL8.slice();
+  E.drawStart(S);
+  const hidOk = S.draw.cells.map(c => c.hid).filter(Boolean).sort().join() === POOL8.slice().sort().join();
+  let cellOk = true;
+  for (let g = 0; S.draw.turn && g < 30; g++) {
+    let k = S.draw.cells.length - 1; while (S.draw.cells[k].pid) k--;
+    const want = S.draw.cells[k].hid, who = E.P(S, S.draw.turn); E.drawOpen(S, k); if (who.role !== want) cellOk = false; E.drawClose(S);
+  }
+  ok('жребий: роли разложены по ячейкам — выбранная ячейка решает роль', hidOk && cellOk && S.draw.finished);
+  // назначенному — своя роль из любой ячейки; жетон из его ячейки переезжает (роли не теряются и не дублируются)
+  S = E.newGame('tb'); for (let i = 0; i < 8; i++) S.players.push(E.newPlayer('D' + i)); S.pool = POOL8.slice();
+  S.assign = { [S.players[0].id]: { role: 'imp' } }; E.drawStart(S);
+  const kNot = S.draw.cells.findIndex(c => c.hid !== 'imp'), wasHid = S.draw.cells[kNot].hid;
+  E.drawOpen(S, kNot);
+  const leftHid = S.draw.cells.filter(c => !c.pid).map(c => c.hid).filter(Boolean).sort().join();
+  ok('жребий: назначенному — своя роль из любой ячейки, жетон его ячейки переезжает', S.players[0].role === 'imp' && leftHid === S.draw.bag.slice().sort().join() && S.draw.bag.includes(wasHid), leftHid);
+  // роль выдана до стены: ячейка «пустая», её жетон переезжает в пустую ячейку
+  S = game(['washerwoman', 'librarian', 'investigator', 'chef', 'empath', 'monk', 'poisoner', 'imp'], 'tb'); for (const p of S.players.slice(1)) p.role = null;
+  E.drawStart(S); const kH = S.draw.cells.findIndex(c => c.hid);
+  E.drawOpen(S, kH); // первый в очереди — с ролью до стены
+  ok('жребий: роль до стены — жетон ячейки не пропадает', S.players[0].role === 'washerwoman' && S.draw.cells.filter(c => !c.pid).map(c => c.hid).filter(Boolean).sort().join() === S.draw.bag.slice().sort().join());
   // набор ролей на игру (S.pool) — раздача берёт только его
   S = E.newGame('tb'); for (let i = 0; i < 7; i++) S.players.push(E.newPlayer('P' + i));
   S.pool = ['chef', 'empath', 'monk', 'slayer', 'soldier', 'poisoner', 'imp']; E.randomDeal(S);
@@ -967,6 +990,65 @@ try {
     ok('Марионетка: при раздаче — Горожанин вместо неё, нужно выбрать', G.flags.marionetteNeed && !G.players.some(p => p.role === 'marionette') && E.setupProblems(G).some(t => /Марионетка/.test(t)));
     const mn = E.demonSeatNeighbours(G).find(p => E.isGoodTeam(E.realTeam(p))), mrole = mn.role; E.makeMarionette(G, mn.id); E.autoSetup(G, false);
     ok('Марионетка: сосед Демона, злой, считает себя своей ролью', mn.role === 'marionette' && mn.align === 'evil' && mn.believes === mrole && E.actsAs(mn) === mrole && E.abilityOff(G, mn) === 'Марионетка' && !G.bluffs.includes(mrole));
+  }
+
+  // 32. заметки пользователя 2026-10-15
+  {
+    // Пьяница в «Подготовке»: выбранный Горожанин становится Пьяницей, прежний Пьяница — ролью, которой себя считал
+    let G = game(['washerwoman', 'chef', 'fortuneteller', 'monk', 'empath', 'drunk', 'scarletwoman', 'imp'], 'tb'); E.autoSetup(G, true);
+    const oldDr = byRole(G, 'drunk'), oldBel = oldDr.believes, ft = byRole(G, 'fortuneteller');
+    E.makeDrunk(G, ft.id);
+    ok('Пьяница: Гадалка стала Пьяницей-Гадалкой, прежний Пьяница — своей ролью, раскладка цела', ft.role === 'drunk' && ft.believes === 'fortuneteller' && oldDr.role === oldBel && E.setupProblems(G).length === 0, E.setupProblems(G).join('; '));
+    G = game(['washerwoman', 'chef', 'fortuneteller', 'monk', 'empath', 'slayer', 'scarletwoman', 'imp'], 'tb'); E.autoSetup(G, true);
+    const ch = byRole(G, 'chef'); E.setupRole(G, ch, 'drunk');
+    ok('Пьяница из списка ролей: считает себя прежней ролью', ch.role === 'drunk' && ch.believes === 'chef');
+    // смена роли рассказчиком в 1-ю ночь: новая роль просыпается
+    G = game(['washerwoman', 'chef', 'fortuneteller', 'monk', 'empath', 'drunk', 'scarletwoman', 'imp'], 'tb'); E.autoSetup(G, true); E.startGame(G);
+    E.storytellerRole(G, byRole(G, 'scarletwoman'), 'poisoner');
+    ok('смена роли в 1-ю ночь: Отравитель проснётся, сторона прежняя', G.night.steps.some(s => s.id === 'poisoner') && byRole(G, 'poisoner').align === 'evil');
+    // Сплетница: заявления не было — шаг не просыпается; было и верное — выбранный умирает
+    G = game(['gossip', 'grandmother', 'sailor', 'chambermaid', 'exorcist', 'fool', 'assassin', 'po'], 'bmr'); E.autoSetup(G, true); E.startGame(G); runNight(G);
+    const gsp = byRole(G, 'gossip');
+    ok('Сплетница: в конце дня спросить о заявлении', E.gossipPending(G).includes(gsp));
+    E.setGossip(G, gsp.id, false); E.endDay(G);
+    let gst = G.night.steps.find(s => s.id === 'gossip');
+    ok('Сплетница: заявления не было — шаг не просыпается', gst && !E.stepSpec(G, gst).active);
+    G = game(['gossip', 'grandmother', 'sailor', 'chambermaid', 'exorcist', 'fool', 'assassin', 'po'], 'bmr'); E.autoSetup(G, true); E.startGame(G); runNight(G);
+    E.setGossip(G, byRole(G, 'gossip').id, true, 'Демон в шляпе'); E.endDay(G);
+    for (let g = 0; g < 40 && E.currentStep(G).id !== 'gossip'; g++) E.skipStep(G, 'manual');
+    gst = E.currentStep(G); const gspec = E.stepSpec(G, gst), cm = byRole(G, 'chambermaid');
+    ok('Сплетница: было заявление — «верно?», и только тогда — кто умирает', gspec.active && !E.stepInputs(gspec, { true: 'no' }).some(f => f.key === 't') && E.stepInputs(gspec, { true: 'yes' }).some(f => f.key === 't'));
+    E.applyStep(G, gst, { true: 'yes', t: [cm.id] });
+    ok('Сплетница: заявление верное — выбранный умирает', !cm.alive);
+    // Безумец: Демону его показывают на шаге Демона; при 5–6 игроках — отдельный шаг сразу после Безумца
+    G = game(['gossip', 'sailor', 'chambermaid', 'lunatic', 'zombuul'], 'bmr'); E.autoSetup(G, true); E.startGame(G);
+    const lk = G.night.steps.findIndex(s => s.id === 'lunatic'), dk = G.night.steps.findIndex(s => s.lunatic);
+    const lsp = E.stepSpec(G, G.night.steps[lk]), lin = lsp.info(lsp.defaults), din = dk >= 0 ? E.stepSpec(G, G.night.steps[dk]).info({}) : { tokens: [] };
+    ok('Безумец (5 игроков): на его шаге Демону ничего, следом — «Демон узнаёт Безумца»', lk >= 0 && dk === lk + 1 && !(lin.tokens || []).some(t => /Демону/.test(t.label || ''))
+      && din.tokens.some(t => t.role === 'lunatic' && t.players[0] === byRole(G, 'lunatic').id), G.night.steps.map(s => s.key).join(','));
+    G = game(['gossip', 'sailor', 'chambermaid', 'exorcist', 'innkeeper', 'lunatic', 'assassin', 'zombuul'], 'bmr'); E.autoSetup(G, true); E.startGame(G);
+    const dI = E.stepSpec(G, G.night.steps.find(s => s.id === 'demoninfo')).info({});
+    ok('Безумец (7+): на шаге «Информация Демону» — «ЭТОТ ИГРОК» и жетон Безумца', dI.tokens.some(t => t.role === 'lunatic' && t.caption === E.CARD.thisPlayer) && !G.night.steps.some(s => s.lunatic));
+    // Девица при Дурманщике: сразу после блефов Демону, каждому Приспешнику по отдельности
+    G = game(['poppygrower', 'balloonist', 'savant', 'noble', 'general', 'damsel', 'poisoner', 'pithag', 'vigormortis'], 'oasis'); E.autoSetup(G, true); E.startGame(G);
+    const sk = G.night.steps.map(s => s.id), dmK = sk.indexOf('damsel'), dmT = E.stepSpec(G, G.night.steps[dmK]).info({}).tokens;
+    ok('Девица при Дурманщике: после блефов Демону, каждому Приспешнику отдельно', dmK === sk.indexOf('demoninfo') + 1 && dmT.length === 2 && dmT.every(t => t.role === 'damsel') && new Set(dmT.map(t => t.label)).size === 2, sk.join(','));
+    // казнён мёртвый (убит Големом при номинации, голосование продолжилось): «уже мёртв», а не «не умирает»
+    G = game(['noble', 'balloonist', 'savant', 'golem', 'professor', 'farmer', 'psychopath', 'vigormortis'], 'oasis'); E.autoSetup(G, true); E.startGame(G); runNight(G);
+    const nb = byRole(G, 'noble'); E.nominate(G, byRole(G, 'golem').id, nb.id); E.execute(G, nb.id);
+    ok('казнён мёртвый (Голем): итог «уже мёртв»', !nb.alive && G.day.exeResult.dead && !G.day.exeResult.died && E.exeQuestions(G, nb.id).length === 0);
+    // Яга создала доброго Демона — окно с советами вики
+    G = game(['clockmaker', 'dreamer', 'mathematician', 'flowergirl', 'artist', 'pithag', 'fanggu'], 'snv'); E.autoSetup(G, true); E.startGame(G); runNight(G); E.endDay(G);
+    for (let g = 0; g < 40 && E.currentStep(G).id !== 'pithag'; g++) E.skipStep(G, 'manual');
+    E.applyStep(G, E.currentStep(G), { t: [byRole(G, 'clockmaker').id], r: 'vortox', kill: [] });
+    const adv = E.pithagAdvice(G);
+    ok('Яга создала доброго Демона: советы вики', adv && adv.lines.some(l => /добрый Демон/.test(l)) && adv.lines.some(l => /на ваше усмотрение/.test(l)), adv && adv.lines.join(' | '));
+    // Амнезиак: для способности из подсказок карточка подставляется сама; свой текст — на весь экран
+    G = game(['amnesiac', 'chef', 'empath', 'monk', 'soldier', 'poisoner', 'imp'], 'tb'); E.startGame(G);
+    const asp = E.stepSpec(G, G.night.steps.find(s => s.id === 'amnesiac')), afl = E.stepInputs(asp, { ability: IDEAS.AMNESIAC[1] });
+    ok('Амнезиак: способность из подсказок — карточка «Число»', afl.some(f => f.key === 'kind' && f.def === 'number') && afl.some(f => f.key === 'num'));
+    const atx = asp.info({ ability: 'своя', kind: 'text', say: 'Слева от вас злой' });
+    ok('Амнезиак: свой текст — на весь экран', atx.tokens && atx.tokens[0].text === 'Слева от вас злой');
   }
 
   // 30. казнь на выбор: 30 одобренных текстов, у каждого — имя казнённого и своё название

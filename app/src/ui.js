@@ -357,7 +357,9 @@ function showButtons(tokens) {
 const numText = s => {
   s = String(s);
   if (/^\d{1,3}$/.test(s) && HAS_ART('digit0')) return `<div class="shdig" role="img" aria-label="${s}">${[...s].map(c => `<img src="${ART['digit' + c]}" alt="">`).join('')}</div>`;
-  return `<div class="shtext ${s.length > 4 ? 'long' : ''}">${esc(s)}</div>`;
+  // --lw — самое длинное слово: шрифт не крупнее, чем нужно, чтобы слово влезло в строку целиком
+  const lw = Math.max(4, ...s.split(/\s+/).map(w => w.length));
+  return `<div class="shtext ${s.length <= 4 ? '' : s.length <= 12 ? 'long l1' : s.length <= 48 ? 'long l2' : 'long'}" style="--lw:${lw}">${esc(s)}</div>`;
 };
 // на экране показа есть и карточка (жетон информации, ДА/НЕТ), и роли/имена/числа
 function showHasBoth(sc) {
@@ -569,6 +571,11 @@ function viewSetup() {
   const prep = n >= 5 && S.players.every(p => p.role) ? `<div class="card"><h3>Подготовка</h3>
       <div class="field"><label>Блефы Демона: 3 добрые роли, которых нет в игре</label>
       ${[0, 1, 2].map(i => `<select data-act="bluff" data-arg="${i}">${roleOptions(r => r === S.bluffs[i] || (notIn(r) && !S.bluffs.some((b, j) => j !== i && b === r)), S.bluffs[i])}</select>`).join('')}</div>
+      ${S.script.roles.includes('drunk') || S.players.some(p => p.role === 'drunk') ? (() => { // Пьяница — кто из Горожан (заметки пользователя 2026-10-15)
+        const cur = S.players.find(p => p.role === 'drunk'), cand = core.filter(p => p === cur || E.realTeam(p) === 'townsfolk');
+        return `<div class="field"><label>Пьяница — кто из Горожан на самом деле Пьяница (будет считать себя своей ролью)</label>
+          <select data-act="setDrunk"><option value="">— Пьяницы нет —</option>${cand.map(p => `<option value="${p.id}" ${p === cur ? 'selected' : ''}>${esc(p.name)} (${esc(E.rname(p === cur ? p.believes : p.role))})</option>`).join('')}</select>
+          <div class="small muted">${cur ? 'Выберите другого — прежний Пьяница получит роль, которой себя считал: раскладка не изменится.' : 'Пьяница — Изгой: Горожан станет на 1 меньше, Изгоев на 1 больше.'}</div></div>`; })() : ''}
       ${S.players.some(p => p.role === 'grandmother') ? pickSel('setFlag-grandchild', 'Внук Бабушки', S.flags.grandchild, goodPl.filter(p => p.role !== 'grandmother')) : ''}
       ${S.players.some(p => p.role === 'fortuneteller') ? pickSel('setFlag-ftHerring', 'Ложная цель Гадалки (добрый игрок)', S.flags.ftHerring, goodPl) : ''}
       ${S.players.some(p => p.role === 'eviltwin') ? pickSel('setFlag-goodTwin', 'Добрый близнец', S.flags.goodTwin, goodPl) : ''}
@@ -613,7 +620,7 @@ function revealHtml(info, dist) {
   const tag = dist ? `<div class="ptag">${icons}<b>${esc(dist.label)}</b><span>${say}</span></div>` : '';
   const top = kind === 'poison' ? DRIP_SVG : kind === 'drunk' && HAS_ART('drunk_foam') ? '<span class="foam2" aria-hidden="true"></span>' : '';
   return `<div class="reveal ${info.secret ? 'secret' : ''} ${dist ? 'poison k-' + kind : ''}">${top}${tag}
-    <div class="lab">${info.secret ? 'Только для вас — не показывайте' : 'Покажите / объявите'}</div>${info.show ? `<div class="big">${esc(info.show)}</div>` : ''}
+    <div class="lab">${info.secret ? 'Только для вас — не показывайте' : 'Покажите / объявите'}</div>${info.show ? `<div class="big">${esc(info.show)}</div>` : ''}${info.show2 ? `<div class="big alive">${esc(info.show2)}</div>` : ''}
     ${(info.lines || []).filter(Boolean).map(l => `<div class="ln">${esc(l)}</div>`).join('')}
     ${info.grim ? `<div class="showbtns"><button class="btn showbtn" data-act="grimShow">${art('eye', 'bg')}Показать Гримуар на весь экран</button>
       <div class="small muted">Закрыть Гримуар — только невидимой кнопкой в <b>левом нижнем углу</b> экрана: игрок сам его не закроет. Его собственная отметка «отравлен / пьян» на экране не видна.</div>
@@ -621,6 +628,11 @@ function revealHtml(info, dist) {
         <div class="small muted">Пьяному или отравленному можно дать ложную информацию (вики, «Пьян»): роли добрых перемешаны, часть заменена ролями сценария того же типа, отметки состояний переезжают вместе с ролью; его место, Демон и Приспешники (злые знают друг друга), саваны и Странники — как есть.${S.night.data.fakeGrim ? ' <button class="linkish" data-act="grimFakeNew">Перемешать заново</button>' : ''}</div>` : ''}</div>` : ''}${info.secret ? '' : showButtons(info.tokens)}</div>`;
 }
 
+// цвет шага — по стороне игрока, а не по типу роли: Адвокат Дьявола, ставший добрым после обмена Цирюльника, — синий
+// (заметка пользователя 2026-10-15). Шаг «Марионетка» — Демону, его цвет — по роли
+const stepAlign = st => { const p = st.pid && !st.fakeCannibal && st.id !== 'marionette' && E.P(S, st.pid); return p && !E.isTraveller(p) ? p.align : null; };
+const alignTeam = (t, al) => !al || !t ? t : al === 'good' && (t === 'minion' || t === 'demon') ? 'townsfolk' : al === 'evil' && (t === 'townsfolk' || t === 'outsider') ? 'minion' : t;
+const stepIcon = (st, cls) => st.pid ? ico(st.fakeCannibal ? 'cannibal' : st.id, stepAlign(st), cls) : st.fabled ? ico(st.id, 'good', cls) : art(st.id, cls);
 function viewNight() {
   const st = E.currentStep(S); if (!st) return '';
   const spec = E.stepSpec(S, st), inp = stepDraft(st, spec);
@@ -629,13 +641,15 @@ function viewNight() {
   const missing = spec.active ? E.missingInputs(spec, inp) : [];
   let info = null; try { info = spec.active ? spec.info(inp) : null; } catch (e) { info = null; }
   const goon = spec.active ? E.goonWarn(S, st, spec, inp) : null;
-  const next = S.night.steps.slice(i + 1, i + 5).map(s => `<div>${s.pid ? ico(s.fakeCannibal ? 'cannibal' : s.id, null, 'ui') : ''}${esc(s.meet ? 'Злые знакомятся' : s.fakeCannibal ? 'Каннибал — отравлен' : E.rname(s.id))}${s.pid ? ` <span>· ${esc(E.nm(S, s.pid))}</span>` : ''}</div>`).join('');
-  const deaths = E.nightDeaths(S).length ? `<div class="small"><b>Умерли этой ночью:</b> ${E.nightDeaths(S).map(d => esc(E.nm(S, d.pid))).join(', ')}</div>` : '';
-  const icon = st.pid ? ico(st.fakeCannibal ? 'cannibal' : st.id, null, 'si') : st.fabled ? ico(st.id, 'good', 'si') : art(st.id, 'si');
+  const next = S.night.steps.slice(i + 1, i + 5).map(s => `<div>${s.pid ? stepIcon(s, 'ui') : ''}${esc(s.meet ? 'Злые знакомятся' : s.fakeCannibal ? 'Каннибал — отравлен' : E.rname(s.id))}${s.pid ? ` <span>· ${esc(E.nm(S, s.pid))}</span>` : ''}</div>`).join('');
+  const back = (S.night.revived || []).filter(id => E.P(S, id) && E.P(S, id).alive);
+  const deaths = (E.nightDeaths(S).length ? `<div class="small"><b>Умерли этой ночью:</b> ${E.nightDeaths(S).map(d => esc(E.nm(S, d.pid))).join(', ')}</div>` : '')
+    + (back.length ? `<div class="small"><b>Снова жив:</b> ${back.map(id => esc(E.nm(S, id))).join(', ')}</div>` : '');
+  const icon = stepIcon(st, 'si');
   return `<div class="phase-wrap">${art('night', 'phase-art')}</div><div class="progress"><i style="width:${Math.round(100 * i / total)}%"></i></div>
     ${situationHtml()}${deaths}
     <div class="card ${spec.active ? '' : 'inactive'}">
-      <div class="steprole">${icon}<span class="rn t-${spec.team || ''}">${esc(spec.title)}</span>${spec.who ? `<span class="who">${esc(spec.who)}</span>` : ''}${spec.active && spec.dist ? `<span class="ppill k-${spec.dist.kind || 'poison'}">${distIcon(spec.dist.kind)}${esc(spec.dist.label)}</span>` : ''}</div>
+      <div class="steprole">${icon}<span class="rn t-${alignTeam(spec.team, stepAlign(st)) || ''}">${esc(spec.title)}</span>${spec.who ? `<span class="who">${esc(spec.who)}</span>` : ''}${spec.active && spec.dist ? `<span class="ppill k-${spec.dist.kind || 'poison'}">${distIcon(spec.dist.kind)}${esc(spec.dist.label)}</span>` : ''}</div>
       ${spec.text ? `<div class="instr">${fmtInstr(spec.text)}</div>` : ''}
       ${spec.active ? '' : `<div class="warn">Не просыпается: ${esc(spec.reason)}</div>`}
       ${spec.active && spec.bounds && spec.bounds.length ? boundsHtml(spec.bounds) : ''}
@@ -659,6 +673,7 @@ function viewDay() {
   parts.push(`<div class="phase-wrap">${art('day', 'phase-art')}</div>`);
   parts.push(`<div class="card"><div class="row"><h2>День ${S.n}</h2><span class="muted">живых ${E.aliveAll(S)} · для казни нужно ${th}</span></div>
     ${S.night && E.nightDeaths(S).length ? `<div class="small">Ночью умерли: ${E.nightDeaths(S).map(x => esc(E.nm(S, x.pid))).join(', ')}</div>` : '<div class="small muted">Ночью никто не умер</div>'}
+    ${S.night && (S.night.revived || []).some(id => E.P(S, id) && E.P(S, id).alive) ? `<div class="small">Снова жив: ${S.night.revived.filter(id => E.P(S, id) && E.P(S, id).alive).map(id => esc(E.nm(S, id))).join(', ')}</div>` : ''}
     ${S.night ? `<details><summary class="small">Слова для утра</summary>${morningHtml(false)}</details>` : ''}
     ${dayStatusBtn()}</div>`);
   // Амнезиак: раз в день приватно угадывает свою способность
@@ -891,7 +906,10 @@ const realTokenRole = p => (p.role === 'drunk' || p.role === 'marionette') && p.
 // искажённый Гримуар (пьяный или отравленный Шпион/Вдова) — роль на месте игрока подменена: S.night.data.fakeGrim.map
 const fakeGrimOn = () => !!(UI.grimShow && UI.grimFake && S.phase === 'night' && S.night && S.night.data.fakeGrim);
 const tokenRole = p => (fakeGrimOn() && S.night.data.fakeGrim.map[p.id]) || realTokenRole(p);
-const tokenAlign = p => fakeGrimOn() && S.night.data.fakeGrim.map[p.id] ? (isGoodRole(S.night.data.fakeGrim.map[p.id]) ? 'good' : 'evil') : p.align;
+// цвет жетона: Марионетка (и Пьяница) лежит в Гримуаре жетоном доброй роли, которой себя считает, — он синий, а не красный;
+// что это Марионетка, видно по напоминанию (вики: «IS THE MARIONETTE» рядом с жетоном; заметка пользователя 2026-10-15)
+const tokenAlign = p => fakeGrimOn() && S.night.data.fakeGrim.map[p.id] ? (isGoodRole(S.night.data.fakeGrim.map[p.id]) ? 'good' : 'evil')
+  : realTokenRole(p) !== p.role ? (isGoodRole(realTokenRole(p)) ? 'good' : 'evil') : p.align;
 // искажённый Гримуар: роли перемешаны между местами, примерно треть заменена ролями сценария того же типа, которых нет в игре.
 // Место смотрящего (Шпиона, Вдовы) и Странники — как есть: подмену там видно сразу. Демон и Приспешники тоже на своих местах:
 // злые знают друг друга с первой ночи (заметка пользователя 2026-10-12)
@@ -1183,7 +1201,7 @@ function drawCard() {
   // кто ещё не открыл ячейку: нажатие — карточка игрока, там можно назначить роль или тип роли
   const waiting = d && !d.finished ? core.filter(p => !p.role) : [];
   return `<div class="card drawcard"><h3>Выдача ролей · каменная стена</h3>
-    <div class="small muted">Игроки по кругу открывают светящиеся ячейки — как тянут жетон из мешочка: роль выпадает в момент открытия, заранее её не знает никто. ${src} Пока игрок не открыл ячейку, в его карточке можно назначить роль или тип роли. Пьяница увидит роль, которой себя считает.</div>
+    <div class="small muted">Игроки по кругу открывают светящиеся ячейки — как тянут жетон из мешочка: роли разложены по ячейкам в случайном порядке, и какую ячейку игрок выберет, ту роль и получит. Где какая роль, не видит никто, и вы тоже. ${src} Пока игрок не открыл ячейку, в его карточке можно назначить роль или тип роли — назначенное выпадет ему из любой ячейки. Пьяница увидит роль, которой себя считает.</div>
     ${!ok ? '<div class="warn">Нужно от 5 до 15 игроков (без Странников) — рассадку заполните на вкладке «Игра».</div>'
       : d && d.finished ? '<div class="note-ok">Роли выданы жребием. Заново их не раздать; роль можно сменить только на роль сценария, которой нет в игре.</div>'
       : d ? `<div class="note-ok">Жребий идёт: осталось ячеек — ${left}. Очередь: ${esc(E.nm(S, d.turn))}</div>
@@ -1329,8 +1347,8 @@ function editOverlay() {
   try {
     const spec = ed.spec, inp = ed.inp, fields = spec.active ? E.stepInputs(spec, inp) : [], missing = spec.active ? E.missingInputs(spec, inp) : [];
     let info = null; try { info = spec.active ? spec.info(inp) : null; } catch (e) { info = null; }
-    const icon = ed.st.pid ? ico(ed.st.fakeCannibal ? 'cannibal' : ed.st.id, null, 'si') : ed.st.fabled ? ico(ed.st.id, 'good', 'si') : art(ed.st.id, 'si');
-    body = `<div class="sheethead">${icon}<div class="sht"><div class="shp">Изменить выбор · Ночь ${ed.pre.n}</div><div class="pr t-${spec.team || ''}">${esc(spec.title)}${spec.who ? ' · ' + esc(spec.who) : ''}</div></div>
+    const icon = stepIcon(ed.st, 'si');
+    body = `<div class="sheethead">${icon}<div class="sht"><div class="shp">Изменить выбор · Ночь ${ed.pre.n}</div><div class="pr t-${alignTeam(spec.team, stepAlign(ed.st)) || ''}">${esc(spec.title)}${spec.who ? ' · ' + esc(spec.who) : ''}</div></div>
         <button class="btn sq" data-act="editClose" aria-label="Закрыть">×</button></div>
       <div class="edwas"><div class="lab">Сейчас в журнале</div>${now || '<div class="ln muted">Шаг был пропущен</div>'}</div>
       ${spec.active ? '' : `<div class="warn">Не просыпается: ${esc(spec.reason)}</div>`}
@@ -1477,13 +1495,13 @@ function render() {
       <button class="hundo" data-act="undo" ${last ? '' : 'disabled'} aria-label="${last ? esc('Отменить: ' + last.label) : 'Нечего отменять'}" title="${last ? esc('Отменить: ' + last.label) : ''}">↶</button><span class="save"></span></header>
     <main>${body}</main>
     <nav class="tabs">${[['game', S.phase === 'night' ? 'Ночь' : S.phase === 'day' ? 'День' : 'Игра'], ['table', 'Гримуар'], ['log', 'Журнал'], ['roles', 'Роли'], ['menu', 'Ещё']].map(([k, l]) => `<button class="${UI.tab === k ? 'on' : ''}" data-act="tab" data-arg="${k}">${l}</button>`).join('')}</nav>
-    ${legendOverlay()}${wallOverlay()}${grimOverlay()}${ringOverlay()}${sheetOverlay()}${editOverlay()}${fateOverlay()}${statOverlay()}${exeAskHtml()}${exeResHtml()}${showOverlay()}${noteViewOverlay()}`;
+    ${legendOverlay()}${wallOverlay()}${grimOverlay()}${ringOverlay()}${sheetOverlay()}${editOverlay()}${fateOverlay()}${statOverlay()}${tipHtml()}${gossipAskHtml()}${exeAskHtml()}${exeResHtml()}${showOverlay()}${noteViewOverlay()}`;
   // круг рассадки — только на подготовке, круг номинации — только днём, Гримуар кругом — во время игры (после смены фазы закрываются сами)
   if ((UI.ring === 'seat' && S.phase !== 'setup') || ((UI.ring === 'nom' || UI.ring === 'pick') && S.phase !== 'day') || (UI.ring === 'grim' && S.phase === 'setup')) UI.ring = null;
   // под полноэкранными слоями страница не прокручивается
   if (UI.fate && !(S.phase === 'day' && S.day.picks && S.day.picks.fate)) UI.fate = false; // день кончился — выбор казни закрыт
   if (UI.stat && S.phase !== 'day') UI.stat = false;
-  document.documentElement.classList.toggle('locked', !!(UI.show || UI.legend || UI.ring || UI.noteView || UI.edit || UI.fate || UI.stat || UI.exeAsk || UI.exeRes || (UI.open && E.P(S, UI.open)) || (UI.wall && S.draw) || (UI.grimShow && S.phase === 'night')));
+  document.documentElement.classList.toggle('locked', !!(UI.show || UI.legend || UI.ring || UI.noteView || UI.edit || UI.fate || UI.stat || UI.tip || UI.gossipAsk || UI.exeAsk || UI.exeRes || (UI.open && E.P(S, UI.open)) || (UI.wall && S.draw) || (UI.grimShow && S.phase === 'night')));
   app.querySelectorAll('details > summary').forEach(s => { if (opened.has(s.textContent)) s.parentElement.open = true; });
   if (UI.tab === 'roles') filterRefs();
   paintSave();
@@ -1519,7 +1537,8 @@ const A = {
   delP: id => act(S => { S.players = S.players.filter(p => p.id !== id); }, 'удалён игрок'),
   deal: () => { if (S.draw) return alertNote('Роли выдаются или выданы жребием — случайная раздача недоступна.'); act(S => E.randomDeal(S), 'случайная раздача ролей'); },
   outMod: arg => { const [id, v] = arg.split('|'); act(S => { S.flags.mods = Object.assign({}, S.flags.mods, { [id]: +v }); }, `${E.rname(id)}: ${{ '-1': '−1 Изгой', 0: 'Изгоев без изменений', 1: '+1 Изгой' }[v]}`); },
-  setRole: (id, el) => act(S => { const p = E.P(S, id); p.role = el.value || null; E.finishRoles(S); E.autoSetup(S, false); }, 'роль ' + E.P(S, id).name),
+  setRole: (id, el) => act(S => E.setupRole(S, E.P(S, id), el.value), 'роль ' + E.P(S, id).name),
+  setDrunk: (a, el) => act(S => E.makeDrunk(S, el.value), 'Пьяница'),
   setBelieves: (id, el) => act(S => { E.P(S, id).believes = el.value || null; }, 'роль-обманка'),
   setMarionette: (a, el) => { if (el.value) act(S => E.makeMarionette(S, el.value), 'Марионетка'); },
   bluff: (i, el) => act(S => { S.bluffs[+i] = el.value || null; }, 'блеф Демона'),
@@ -1558,7 +1577,10 @@ const A = {
   pickIdea: arg => { const [key, list, i] = arg.split('|'); inpDraft(key, inp => { inp[key] = IDEAS[list][+i]; }); },
   amnGuessText: (id, el) => { S.day.picks['amnGuess_' + id] = el.value; S.updated = Date.now(); persist(); },
   amnAnswer: arg => { const [id, ans] = arg.split('|'), guess = (S.day.picks['amnGuess_' + id] || '').trim(); act(S => { E.amnesiacGuess(S, id, guess, ans); delete S.day.picks['amnGuess_' + id]; }); },
-  stepDone: () => { const st = E.currentStep(S), spec = E.stepSpec(S, st), inp = clone(S.draft.inp); UI.notes = []; act(S => { if (spec.active) E.applyStep(S, st, inp); else E.skipStep(S, 'auto'); }, spec.title + (spec.who ? ' (' + spec.who + ')' : ''), 'step'); window.scrollTo(0, 0); },
+  stepDone: () => { const st = E.currentStep(S), spec = E.stepSpec(S, st), inp = clone(S.draft.inp), had = !!S.night.data.pithagInfo; UI.notes = []; act(S => { if (spec.active) E.applyStep(S, st, inp); else E.skipStep(S, 'auto'); }, spec.title + (spec.who ? ' (' + spec.who + ')' : ''), 'step'); window.scrollTo(0, 0);
+    // Яга создала Демона — окно с советами вики (заметка пользователя 2026-10-15)
+    if (!had && S.phase === 'night' && S.night.data.pithagInfo) { UI.tip = E.pithagAdvice(S); render(); } },
+  tipClose: () => { UI.tip = null; render(); },
   stepSkip: () => { const spec = E.stepSpec(S, E.currentStep(S)); act(S => E.skipStep(S, 'manual'), 'пропущен шаг: ' + spec.title, 'step'); window.scrollTo(0, 0); },
   // день
   dayPick: arg => { const [key, id] = arg.split('|'); draft(S => { S.day.picks[key] = sel1(S.day.picks[key], id); }); },
@@ -1616,6 +1638,9 @@ const A = {
   // «Завершить день»: если казнят доброго при Пацифисте или Психопата — сначала окно с решением (заметка пользователя 2026-10-14),
   // после казни — окно «Казнён: умирает / не умирает» и «Продолжить»
   endDay: () => {
+    // Сплетница: сначала — было ли сегодня публичное заявление (заметка пользователя 2026-10-15)
+    const gp = E.gossipPending(S);
+    if (gp.length && !S.day.holdForChoice) { UI.gossipAsk = { pid: gp[0].id }; render(); return; }
     const d = S.day, sg = d.picks.scapegoat, blk = E.block(S), th = E.voteThreshold(S);
     const bn = d.executed && !d.executed2 && d.noms.find(x => x.butcher && x.count >= th);
     const pid = d.holdForChoice ? null : !d.executed ? (blk ? sg || blk : null) : bn ? bn.on : null;
@@ -1627,6 +1652,9 @@ const A = {
     const opts = a.q === 'pacifist' ? { pacifist: v === 'spare' } : { roshambo: v };
     if (a.then === 'manual') doManualExe(a.pid, opts); else doEndDay(opts); },
   exeAskClose: () => { UI.exeAsk = null; render(); },
+  gossipAnswer: v => { const a = UI.gossipAsk; if (!a) return; const t = (document.getElementById('gossipText') || {}).value || ''; UI.gossipAsk = null;
+    act(S => E.setGossip(S, a.pid, v === 'yes', t), 'Сплетница: ' + (v === 'yes' ? 'заявление' : 'без заявления')); A.endDay(); },
+  gossipClose: () => { UI.gossipAsk = null; render(); },
   exeResClose: () => { UI.exeRes = null; render(); },
   // воскрешение по решению рассказчика (экран дня): жив, причина смерти снята, голос призрака возвращается
   revive: () => { const id = (S.day.picks.revive || [])[0], p = id && E.P(S, id); if (!p || p.alive) return;
@@ -1722,7 +1750,7 @@ const A = {
   drawClose: () => { if (UI.openAt && Date.now() - UI.openAt < 3000) return; UI.openAt = null;
     UI.cracking = S.draw.open; act(S => E.drawClose(S), 'жребий: ячейка закрыта'); setTimeout(() => { UI.cracking = null; }, 1600); },
   drawCancel: () => { UI.wall = false; act(S => E.drawCancel(S), 'жребий отменён'); },
-  edRole: (id, el) => act(S => { const p = E.P(S, id); const old = p.role; p.role = el.value || null; E.log(S, `Рассказчик меняет роль ${p.name}: ${E.rname(old)} → ${E.rname(p.role)}`, 'effect'); }),
+  edRole: (id, el) => act(S => E.storytellerRole(S, E.P(S, id), el.value || null), 'роль ' + E.nm(S, id)),
   // смерть по решению рассказчика — настоящая: ночью попадёт в объявление на рассвете, сработают последствия
   edKill: id => { const why = (document.getElementById('edWhy-' + id) || {}).value || ''; act(S => E.storytellerKill(S, id, null, why), 'смерть: ' + E.nm(S, id)); },
   edAlive: id => act(S => E.revive(S, E.P(S, id), 'Рассказчик воскрешает'), 'воскрешение'),
@@ -1792,13 +1820,32 @@ function exeAskHtml() {
   return `<div class="ov editres" role="alertdialog" aria-label="Решение о казни"><div class="statbg" data-act="exeAskClose"></div><div class="erbox statbox">${body}
     <button class="btn wide" data-act="exeAskClose">Отмена — вернуться к дню</button></div></div>`;
 }
+// окно с советами вики (Яга создала Демона): {title, lines, src}
+function tipHtml() {
+  const t = UI.tip; if (!t) return '';
+  return `<div class="ov editres" role="alertdialog" aria-label="${esc(t.title)}"><div class="statbg" data-act="tipClose"></div><div class="erbox statbox tipbox">
+    <h3>${esc(t.title)}</h3>${t.lines.map(l => `<p>${esc(l)}</p>`).join('')}${t.src ? `<div class="small muted">${esc(t.src)}</div>` : ''}
+    <button class="btn primary wide" data-act="tipClose">Понятно</button></div></div>`;
+}
+// окно в конце дня: делала ли Сплетница публичное заявление (верное — ночью кто-то умирает, выбор — на её шаге)
+function gossipAskHtml() {
+  const a = UI.gossipAsk, p = a && E.P(S, a.pid); if (!p || S.phase !== 'day') return '';
+  return `<div class="ov editres" role="alertdialog" aria-label="Сплетница"><div class="statbg" data-act="gossipClose"></div><div class="erbox statbox">
+    <h3>Сплетница: ${esc(p.name)}</h3>${p.role !== 'gossip' ? `<div class="small muted">На самом деле ${esc(E.rname(p.role))} — считает себя Сплетницей.</div>` : ''}
+    <div>Сделала ли Сплетница сегодня публичное заявление?</div>
+    <div class="small muted">Вики: считается только ясное заявление, которое слышали все и про которое вы знаете, верно оно или нет. Верное — этой ночью кто-то умирает (выберете на её шаге); неверное или не было — никто.</div>
+    <textarea id="gossipText" placeholder="Заявление — необязательно, напомнит ночью" aria-label="Заявление Сплетницы"></textarea>
+    <div class="confirm"><button class="btn ok" data-act="gossipAnswer" data-arg="yes">Да, было</button><button class="btn no" data-act="gossipAnswer" data-arg="no">Нет</button></div>
+    <button class="btn wide" data-act="gossipClose">Отмена — вернуться к дню</button></div></div>`;
+}
 // окно после казни: «Казнён: умирает / не умирает» → «Продолжить» (дальше ночь)
 function exeResHtml() {
   const r = UI.exeRes, p = r && E.P(S, r.pid); if (!p) return '';
   return `<div class="ov editres" role="alertdialog" aria-label="Итог казни"><div class="erbox statbox exeres">
     <div class="lab">Казнь</div><div class="exename">${esc(p.name)}</div>
-    <div class="exeverd ${r.died ? 'die' : 'live'}">${r.died ? 'Умирает' : 'Не умирает'}</div>
-    ${r.died ? '' : `<div class="small muted">Только для вас: ${esc(r.why || 'защита')}. Объявите «казнён, но жив» — не говорите почему.</div>`}
+    <div class="exeverd ${r.died || r.dead ? 'die' : 'live'}">${r.died ? 'Умирает' : r.dead ? 'Уже мёртв' : 'Не умирает'}</div>
+    ${r.dead ? '<div class="small muted">Казнён мёртвый игрок: казнь дня состоялась, он остаётся мёртвым.</div>'
+      : r.died ? '' : `<div class="small muted">Только для вас: ${esc(r.why || 'защита')}. Объявите «казнён, но жив» — не говорите почему.</div>`}
     <button class="btn primary wide" data-act="exeResClose">Продолжить</button></div></div>`;
 }
 // стена «выкатывается» сверху один раз при показе, дальше перерисовки идут без анимации
@@ -1811,6 +1858,8 @@ document.addEventListener('click', ev => {
 document.addEventListener('change', ev => {
   const el = ev.target; if (!el.dataset || !el.dataset.act) return;
   if (el.tagName === 'SELECT' || el.tagName === 'INPUT') { const f = A[el.dataset.act]; if (f) f(el.dataset.arg, el); }
+  // текст шага ночи (свой текст Амнезиака, тайное слово) вписан — перерисовать, чтобы появилась кнопка показа
+  if (el.tagName === 'TEXTAREA' && el.dataset.act === 'pickT') render();
 });
 document.addEventListener('input', ev => {
   // текстовые поля и «живые» поля ввода (поиск) — без перерисовки на каждую букву

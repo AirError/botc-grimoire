@@ -81,6 +81,8 @@ textarea { min-height: 96px; resize: vertical; }
 .reveal { border: 2px solid var(--gold); border-radius: 12px; padding: 12px 14px; background: var(--goldbg); display: flex; flex-direction: column; gap: 4px; }
 .reveal .lab { font-family: var(--f-sc); font-size: 13px; letter-spacing: .1em; color: var(--gold); }
 .reveal .big { font-size: 24px; font-weight: 700; line-height: 1.2; overflow-wrap: anywhere; }
+.reveal .big.alive { margin-top: 6px; color: var(--ok); } /* рассвет: «Снова жив» — крупно, как смерти */
+.tipbox p { margin: 0 0 10px; } /* окно советов вики (Яга создала Демона) */
 .reveal .ln { font-size: 14.5px; }
 /* только для рассказчика — не показывать игроку */
 .reveal.secret { border-style: dashed; border-color: var(--muted); background: transparent; }
@@ -126,17 +128,18 @@ details > .tale { margin-top: 10px; }
 .log { display: flex; flex-direction: column; gap: 2px; }
 .log .ph { font-family: var(--f-sc); font-weight: 700; color: var(--gold); margin-top: 10px; letter-spacing: .06em; }
 .log .e { font-size: 15px; padding: 3px 0; }
-.log .death { color: var(--evil); } .log .saved { color: var(--ok); } .log .win { color: var(--gold); font-weight: 700; }
-.log .phase { color: var(--muted); }
-.log .revive { color: var(--ok); }
-.log .poison { color: #6E3AA0; }
-.log .e b { font-weight: 800; }
 /* записи последней ночи — можно изменить выбор */
 .log .e.edit { display: flex; align-items: flex-start; gap: 8px; width: 100%; text-align: left; font: inherit; font-size: 15px; color: inherit; background: none;
   border: 0; border-bottom: 1px dashed var(--line); padding: 5px 0; cursor: pointer; }
 .log .e.edit span:first-child { flex: 1; }
 .log .e.edit .ed { color: var(--gold); font-weight: 700; }
-.log .skip { color: var(--muted); font-style: italic; }
+/* цвета — после .e.edit и с той же силой: записи ночи с ✎ — кнопки, их color: inherit перебивал цвет (заметка 2026-10-15) */
+.log .e.death { color: var(--evil); } .log .e.saved { color: var(--ok); } .log .e.win { color: var(--gold); font-weight: 700; }
+.log .e.phase { color: var(--muted); }
+.log .e.revive { color: var(--ok); }
+.log .e.poison { color: #6E3AA0; }
+.log .e b { font-weight: 800; }
+.log .e.skip { color: var(--muted); font-style: italic; }
 /* правка выбора из журнала и уведомление «Что изменится» */
 /* день: состояния и подсказки — одной кнопкой, по нажатию — окно со всеми */
 .statbtn { display: flex; align-items: center; gap: 8px; width: 100%; margin-top: 10px; text-align: left; color: var(--warn); background: var(--warnbg); border-color: transparent; font-weight: 700; }
@@ -592,7 +595,8 @@ html.art-drunk .reveal.poison.k-drunk { border: 18px solid transparent; border-i
 .shrole.small { flex-direction: row; gap: 10px; }
 .shroles.stack .shrole.small .shic, .shrole.small .shic { width: 64px; height: 64px; }
 .shrole.small .shname { font-size: 20px; }
-.shpre { font-size: 24px; font-weight: 800; color: #F3E3BC; line-height: 1.2; text-wrap: balance; margin-top: 8px; }
+/* надпись над иконкой («Ваш внук» Бабушки, «Безумие: завтра вы —») */
+.shpre { font-size: 28px; font-weight: 800; color: #F3E3BC; line-height: 1.2; text-wrap: balance; margin: 8px 0 6px; max-width: 18ch; }
 
 /* мёртвые: саван на иконке (как в оригинальном Гримуаре); значки: капля — отравлен, кружка — пьян, крест — защита */
 .gsq .shroud { position: absolute; left: 50%; top: 0; width: 34%; height: 56%; transform: translateX(-50%); z-index: 1; pointer-events: none; filter: drop-shadow(0 2px 3px rgba(0, 0, 0, .45)); }
@@ -747,6 +751,8 @@ img.shroud { object-fit: contain; }
 .shab, .wrab { font-weight: 700; font-size: 19px; }
 .shtext { font-size: 84px; }
 .shtext.long { font-size: 34px; }
+/* слово или короткая фраза (свой текст Амнезиака, тайное слово) — крупнее (заметка пользователя 2026-10-15: «крупно на весь экран») */
+.shtext.long.l1 { font-size: min(54px, calc(88vw / (var(--lw) * .66))); } .shtext.long.l2 { font-size: min(44px, calc(88vw / (var(--lw) * .66))); }
 
 /* рисованные цифры (prep_art.digits): крупно, с тенью — видно через стол в темноте */
 .shdig { display: flex; justify-content: center; align-items: flex-end; gap: 6px; margin-top: 6px; }
@@ -858,9 +864,12 @@ img.shroud { object-fit: contain; }
 .showov.land .shpl span { font-size: calc(var(--short) * .09); }
 .showov.land .shtext { font-size: calc(var(--short) * .24); }
 .showov.land .shtext.long { font-size: calc(var(--short) * .09); }
+.showov.land .shtext.long.l1 { font-size: min(calc(var(--short) * .14), calc(var(--long) * .45 / (var(--lw) * .66))); }
+.showov.land .shtext.long.l2 { font-size: min(calc(var(--short) * .11), calc(var(--long) * .45 / (var(--lw) * .66))); }
 .showov.land .shdig img { height: calc(var(--short) * .34); }
 .showov.land .shab { font-size: calc(var(--short) * .045); max-width: 44ch; }
 .showov.land .shsub { font-size: calc(var(--short) * .06); max-width: 24ch; }
+.showov.land .shpre { font-size: calc(var(--short) * .065); max-width: 24ch; }
 .showov.land .shcap, .showov.land .shthumb { font-size: calc(var(--short) * .08); }
 .showov.land .shhint { position: absolute; left: 0; right: 0; bottom: 2.5vmin; margin: 0; }
 /* заметки: кнопки «В работе» и «Выполнено» */

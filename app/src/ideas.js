@@ -29,6 +29,10 @@ const IDEAS = (() => {
     'Каждую ночь выберите игрока: если это Демон, вы узнаёте «да» (без ложной цели), но только через ночь.',
     'Каждую ночь вы узнаёте, в какой стороне от вас (слева или справа по кругу) ближе сидит злой игрок.',
   ];
+  // что показать Амнезиаку на экране для каждой способности из списка (по порядку; заметка пользователя 2026-10-15):
+  // yesno — ДА/НЕТ, number — число, role — жетон роли, player — указать на игроков, text — свой текст, none — ничего
+  const AMNESIAC_KIND = ['yesno', 'number', 'number', 'text', 'yesno', 'yesno', 'yesno', 'yesno', 'number', 'yesno',
+    'player', 'role', 'role', 'none', 'none', 'player', 'none', 'none', 'yesno', 'text'];
 
   // Мецефель: необычные слова, которые не скажут случайно (вики: «Румпельштильцхен», «Константинополь»)
   const MEZ_WORDS = ['Румпельштильцхен', 'Константинополь', 'Тимбукту', 'Синхрофазотрон', 'Катавасия', 'Фантасмагория',
@@ -132,5 +136,5 @@ const IDEAS = (() => {
     return out;
   }
 
-  return { AMNESIAC, MEZ_WORDS, savantPair, fishermanAdvice };
+  return { AMNESIAC, AMNESIAC_KIND, MEZ_WORDS, savantPair, fishermanAdvice };
 })();
