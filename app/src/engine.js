@@ -581,6 +581,23 @@ function autoSetup(S, force) {
   if (inPlay(S, 'eviltwin') && (force || !S.flags.goodTwin)) {
     const g = goodPlayers; S.flags.goodTwin = g.length ? pick(g).id : null;
   }
+  if (inPlay(S, 'puzzlemaster') && (force || !S.flags.puzzleDrunk)) S.flags.puzzleDrunk = puzzleDrunkDefault(S);
+}
+// Головоломщик (вики): при подготовке 1-й ночи один игрок пьян до конца игры, даже если Головоломщик умрёт; почти всегда лучше
+// Горожанин (Приспешника или Демона — только с очень веской причиной). Раз за игру он угадывает, кто это: угадал — рассказчик
+// приватно называет Демона, нет — любого игрока, который не Демон; угадал ли — не говорить. Мёртвый не угадывает
+function puzzleDrunkDefault(S) {
+  const tf = S.players.filter(p => realTeam(p) === 'townsfolk' && !isTraveller(p));
+  return tf.length ? pick(tf).id : null;
+}
+const puzzleHit = (S, gid) => { const g = P(S, gid); return !!g && hasTok(g, 'drunk', 'puzzlemaster'); };
+function puzzleGuess(S, pmId, guessId, toldId) {
+  const pm = P(S, pmId), g = P(S, guessId), t = P(S, toldId);
+  if (!pm || !g || !t || !pm.alive || S.flags['puzzleUsed_' + pmId]) return false;
+  S.flags['puzzleUsed_' + pmId] = true; addTok(S, pm, 'guessused', 'puzzlemaster');
+  const off = abilityOff(S, pm);
+  log(S, `Головоломщик (${pm.name}) угадывает, что пьян ${g.name}: ${puzzleHit(S, guessId) ? 'верно' : 'неверно'}${off ? ` (Головоломщик ${off})` : ''}. Названо имя: ${t.name}`, 'day');
+  return true;
 }
 
 /* «Стена жребия» — как мешочек с жетонами, разложенными по ячейкам. В мешочке — «Роли на игру» (S.pool) или, если они
@@ -729,8 +746,10 @@ function startGame(S) {
   S.flags.ever = Object.fromEntries(S.players.filter(p => p.role).map(p => [p.role, true])); // роли, бывшие в игре (джинксы «есть или был»)
   for (const p of S.players) { p.alive = true; p.ghost = true; p.tokens = []; }
   S.flags.demonless = !S.players.some(isDemon);
+  // Головоломщик: пьяный не выбран (или игрока нет) — случайный Горожанин
+  if (inPlay(S, 'puzzlemaster') && !(S.flags.puzzleDrunk && P(S, S.flags.puzzleDrunk))) S.flags.puzzleDrunk = puzzleDrunkDefault(S);
   // выбор подготовки остаётся от прежней раздачи — ставим отметку, только если роль правда в игре (иначе выбор сбрасываем)
-  for (const [flag, rid, tok] of [['grandchild', 'grandmother', 'grandchild'], ['ftHerring', 'fortuneteller', 'herring'], ['goodTwin', 'eviltwin', 'twin']]) {
+  for (const [flag, rid, tok] of [['grandchild', 'grandmother', 'grandchild'], ['ftHerring', 'fortuneteller', 'herring'], ['goodTwin', 'eviltwin', 'twin'], ['puzzleDrunk', 'puzzlemaster', 'drunk']]) {
     const q = S.flags[flag] && P(S, S.flags[flag]);
     if (q && inPlay(S, rid)) addTok(S, q, tok, rid); else S.flags[flag] = null;
   }
@@ -2291,6 +2310,17 @@ const LOGIC = {
         tokens: d ? [{ label: `Демону (${d.name})`, caption: CARD.thisPlayer, role: 'marionette', players: [p.id] }] : [] }),
       apply: () => log(S, `Демон узнаёт Марионетку: ${p.name}`, 'info') };
   },
+  // Верховная Жрица (вики): каждую ночь рассказчик указывает на игрока, с которым ей, по его мнению, стоит поговорить больше всего —
+  // живого или мёртвого, доброго или злого, того же или другого (сценарий Blind Hunt, 2026-10-15)
+  highpriestess: (S, p, first, off) => {
+    const last = S.flags['hpLast_' + p.id];
+    return {
+      inputs: [PL('t', 1, 'С кем, по-вашему, Жрице стоит поговорить больше всего', notSelf(p))],
+      info: inp => { const t = inp.t && P(S, inp.t[0]); if (!t) return null;
+        return { show: t.name, lines: [last && P(S, last) ? `Прошлой ночью: ${nm(S, last)}` : '', off ? `Жрица ${off}: можно указать на кого угодно` : ''], tokens: [{ players: [t.id] }] }; },
+      apply: inp => { S.flags['hpLast_' + p.id] = inp.t[0]; log(S, `Верховная Жрица (${p.name}) узнаёт: поговорить с ${nm(S, inp.t[0])}`, 'info'); },
+    };
+  },
   // Аристократ (вики): в свою 1-ю ночь узнаёт 3 игроков — ровно 1 злой и 2 добрых. Пьян/отравлен — можно ложно (0 или 2+ злых)
   noble: (S, p, first, off) => {
     if (!first) return { active: false, reason: 'Аристократ узнаёт только в свою первую ночь' };
@@ -2430,6 +2460,8 @@ const BOUNDS = {
   exorcist: { other: [I('1 игрока, не того же, что прошлой ночью. Если это Демон — он не просыпается')] },
   innkeeper: { other: [I('2 игроков: они не могут умереть этой ночью'), Y('Кто из двоих пьян до заката')] },
   gambler: { other: [I('1 игрока и роль. Не угадал — Азартный игрок умирает')] },
+  highpriestess: { all: [Y('Кого показать: живого или мёртвого, доброго или злого; можно того же, что прошлой ночью (вики)'),
+    Y('Например: у игрока есть важная информация, которую он не раскрыл; злой с неубедительным блефом; добрый, которому мало верят или который идёт по ложному следу')] },
   gossip: { other: [Y('Было ли дневное заявление Сплетницы верным (было ли оно — отмечено в конце дня). Если да — вы выбираете, кто умирает')] },
   courtier: { all: [I('любую роль, раз за игру: её обладатель пьян 3 ночи и 3 дня')] },
   professor: { other: [I('1 мёртвого игрока, раз за игру; воскресает, только если он Горожанин')] },
@@ -2752,7 +2784,7 @@ function klutzChoose(S, pid) {
 }
 
 
-const ENGINE = { canBluff, nightDeaths, revive, psychopathKill, exeQuestions, roleWorks, makeMarionette, makeDrunk, setupRole, storytellerRole, gossipPending, setGossip, pithagAdvice, demonSeatNeighbours, generalGuess, choiceCount, newGame, newPlayer, P, nm, rname, realTeam, actsAs, aliveCount, aliveAll, coreCount, isTraveller, exile, exileThreshold, addTraveller, meetingBlocker, isDemon, distribution, setupDistribution, distCheck, unknownSetup, countTeams, randomDeal,
+const ENGINE = { canBluff, nightDeaths, revive, psychopathKill, exeQuestions, roleWorks, makeMarionette, makeDrunk, setupRole, storytellerRole, gossipPending, setGossip, pithagAdvice, puzzleHit, puzzleGuess, demonSeatNeighbours, generalGuess, choiceCount, newGame, newPlayer, P, nm, rname, realTeam, actsAs, aliveCount, aliveAll, coreCount, isTraveller, exile, exileThreshold, addTraveller, meetingBlocker, isDemon, distribution, setupDistribution, distCheck, unknownSetup, countTeams, randomDeal,
   amnesiacGuess, AMNESIAC_ANSWERS, storytellerKill, voteCount, voteWeight, voudonActive, bishopActive, travellerWorks, executeNow,
   judgeRuling, gunslingerShot, tinkerDies, doomsayerKill, fiddlerEnd, swapSeats, goonWarn, damselGuess, changeRole, madnessExecute, harpyKill,
   finishRoles, autoSetup, setupProblems, drawStart, drawOpen, drawClose, drawCancel, drawShown, drawLocked, drawProblem, distortion,

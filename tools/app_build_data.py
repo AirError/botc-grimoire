@@ -104,6 +104,14 @@ scripts = {
         "barber", "recluse", "moonchild", "klutz",
         "eviltwin", "devilsadvocate", "witch", "godfather",
         "imp", "pukka", "nodashii", "fanggu"]},
+    # Blind Hunt (by Alex, 2026-10-15) — состав из blind_hunt/src/script.json; Верховная Жрица, Политик, Головоломщик,
+    # Егерь (на листе пользователя — «Ловчий»), Девица, Дурманщик — экспериментальные, жетонов нет
+    "blindhunt": {"name": "Blind Hunt", "roles": [
+        "washerwoman", "librarian", "empath", "highpriestess", "undertaker", "monk", "huntsman", "slayer", "soldier",
+        "ravenkeeper", "mayor", "virgin", "poppygrower",
+        "moonchild", "politician", "damsel", "puzzlemaster",
+        "godfather", "poisoner", "witch", "mastermind",
+        "imp"]},
     # Catfishing 11.1 by Emily (botcscripts.com/script/3/11.1.0); Странники — рекомендованные сценарием
     "catfishing": {"name": "Catfishing", "roles": [
         "investigator", "chef", "grandmother", "balloonist", "dreamer", "fortuneteller", "snakecharmer",

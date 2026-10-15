@@ -512,7 +512,7 @@ function fabledZone() {
 /* ------------------------------------------------------------ экраны */
 // сценарий — выпадающим списком (решение пользователя: везде списком)
 function scriptSelect() {
-  const groups = [['Ваш сценарий', ['ecbe']], ['Базовая коробка', ['tb', 'bmr', 'snv']], ['Сообщество', ['catfishing', 'reptiles2', 'oasis', 'pies', 'uncertain']]];
+  const groups = [['Ваши сценарии', ['ecbe', 'blindhunt']], ['Базовая коробка', ['tb', 'bmr', 'snv']], ['Сообщество', ['catfishing', 'reptiles2', 'oasis', 'pies', 'uncertain']]];
   const known = new Set(groups.flatMap(g => g[1])), rest = Object.keys(DATA.scripts).filter(k => !known.has(k));
   const opt = k => `<option value="${k}" ${S.script.key === k ? 'selected' : ''}>${esc(DATA.scripts[k].name)}</option>`;
   return `<select class="scriptsel" data-act="script" aria-label="Сценарий">${S.script.key === 'custom' ? `<option value="custom" selected>Свой: ${esc(S.script.name)}</option>` : ''}
@@ -579,6 +579,7 @@ function viewSetup() {
       ${S.players.some(p => p.role === 'grandmother') ? pickSel('setFlag-grandchild', 'Внук Бабушки', S.flags.grandchild, goodPl.filter(p => p.role !== 'grandmother')) : ''}
       ${S.players.some(p => p.role === 'fortuneteller') ? pickSel('setFlag-ftHerring', 'Ложная цель Гадалки (добрый игрок)', S.flags.ftHerring, goodPl) : ''}
       ${S.players.some(p => p.role === 'eviltwin') ? pickSel('setFlag-goodTwin', 'Добрый близнец', S.flags.goodTwin, goodPl) : ''}
+      ${S.players.some(p => p.role === 'puzzlemaster') ? pickSel('setFlag-puzzleDrunk', 'Головоломщик: кто пьян всю игру (вики: почти всегда лучше Горожанин; сам игрок не знает)', S.flags.puzzleDrunk, core.filter(p => p.role && p.role !== 'puzzlemaster')) : ''}
       ${S.flags.marionetteNeed || S.players.some(p => p.role === 'marionette') ? (() => { // Марионетка: сосед Демона с доброй ролью (вики)
         const cur = S.players.find(p => p.role === 'marionette'), cand = E.demonSeatNeighbours(S).filter(p => p.role && (isGoodRole(p.role) || p === cur));
         return `<div class="field ${cur ? '' : 'ask'}"><label>Марионетка — кто из соседей Демона ею станет (он будет считать себя своей ролью, как Пьяница)</label>
@@ -742,6 +743,18 @@ function viewDay() {
       <div class="flabel"><span>Какой Приспешник угадывает</span></div>${chipsPlayers('dgBy', 1, p => E.realTeam(p) === 'minion', by, { act: 'dayPick', noRole: true })}
       <div class="flabel"><span>Кого он называет Девицей</span></div>${chipsPlayers('dgOn', 1, () => true, on, { act: 'dayPick', noRole: true })}
       <button class="btn danger" data-act="damselGuess" ${by.length && on.length ? '' : 'disabled'}>Записать догадку</button></div></details></div>`);
+  }
+  // Головоломщик (вики): раз за игру угадывает, кто пьян из-за него; вы приватно называете одно имя (Blind Hunt, 2026-10-15)
+  for (const pm of S.players.filter(p => p.role === 'puzzlemaster' && p.alive && !S.flags['puzzleUsed_' + p.id])) {
+    const st = pmState(pm);
+    parts.push(`<div class="card"><details ${st.g ? 'open' : ''}><summary class="small"><b>Головоломщик (${esc(pm.name)})</b> — раз за игру угадывает, кто пьян</summary><div class="field" style="margin-top:8px">
+      ${boundsHtml([{ w: 'Игрок', t: 'публично или приватно называет игрока, которого считает пьяным из-за Головоломщика' },
+        { w: 'Вы', t: 'приватно называете одно имя: угадал — Демона, не угадал — любого игрока, который не Демон. Угадал ли — не говорите' }])}
+      <div class="flabel"><span>Кого он назвал пьяным</span></div>${chipsPlayers('pmg_' + pm.id, 1, () => true, st.g ? [st.g] : [], { act: 'dayPick', noRole: true })}
+      ${st.g ? `<div class="reveal secret"><div class="lab">Только для вас</div><div class="ln">${st.hit ? (st.off ? `Угадал, но Головоломщик ${esc(st.off)}: можно назвать кого угодно` : 'Угадал — назовите Демона') : 'Не угадал — назовите любого игрока, который не Демон'}</div></div>
+        <div class="flabel"><span>Какое имя назвать</span></div>${chipsPlayers('pmt_' + pm.id, 1, p => st.hit || st.off ? true : !E.isDemon(p), st.told ? [st.told] : [], { act: 'dayPick', noRole: true })}
+        ${st.told ? showButtons([{ label: pm.name, players: [st.told] }]) : ''}
+        <button class="btn primary" data-act="pmGuess" data-arg="${pm.id}" ${st.told ? '' : 'disabled'}>Записать догадку</button>` : ''}</div></details></div>`);
   }
   // Безумие (вики): Цереновус и Уродец — нарушил, можно казнить (казнь за день, потом ночь); Гарпия — убить одного или обоих
   const madOf = src => S.players.filter(p => p.tokens.some(t => t.k === 'mad' && t.src === src));
@@ -1467,7 +1480,19 @@ function viewMenu() {
 function viewOver() {
   const r = S.result;
   return `<div class="phase-wrap">${art(r.winner === 'good' ? 'win_good' : 'win_evil', 'win-art')}</div><div class="banner"><div class="w">${r.winner === 'good' ? 'Победа добра' : 'Победа зла'}</div><div>${esc(r.reason)}</div></div>
-    ${viewTable()}${viewLog()}`;
+    ${politicianHtml()}${viewTable()}${viewLog()}`;
+}
+// Политик (вики): игра окончена, его команда проиграла — если больше всех виноват он, он меняет сторону и тоже побеждает
+// (решает рассказчик; пьяный или отравленный — не меняет). Сценарий Blind Hunt, 2026-10-15
+function politicianHtml() {
+  const r = S.result, list = S.players.filter(p => p.role === 'politician' && p.align !== r.winner && !S.flags['polWon_' + p.id]);
+  const done = S.players.filter(p => p.role === 'politician' && S.flags['polWon_' + p.id]);
+  if (!list.length && !done.length) return '';
+  return `<div class="card"><h3>Политик</h3>${done.map(p => `<div class="note-ok">${esc(p.name)} меняет сторону и побеждает вместе ${r.winner === 'good' ? 'с добром' : 'со злом'}.</div>`).join('')}
+    ${list.map(p => { const off = E.abilityOff(S, p);
+      return `<div class="small"><b>${esc(p.name)}</b> (${p.align === 'good' ? 'добрый' : 'злой'}) — его команда проиграла. ${off ? `Политик ${esc(off)}: сторону не меняет.`
+        : `Если вы считаете, что поражение — во многом из-за его слов и поступков (больше, чем из-за любого другого игрока его команды), объявите: Политик становится ${r.winner === 'good' ? 'добрым' : 'злым'} и тоже побеждает.`}</div>
+      ${off ? '' : `<button class="btn" data-act="polWin" data-arg="${p.id}">Политик меняет сторону и побеждает</button>`}`; }).join('')}</div>`;
 }
 
 function render() {
@@ -1510,6 +1535,16 @@ function render() {
 
 /* ------------------------------------------------------------ обработчики */
 const sel1 = (list, id) => (list || [])[0] === id ? [] : [id];
+// Головоломщик: кого назвали пьяным (g), угадал ли (hit), какое имя назвать (told: выбранное вами, иначе — Демон, если угадал).
+// Не угадал — Демона называть нельзя (выбор, оставшийся от прежней догадки, сбрасывается)
+function pmState(pm) {
+  const picks = S.day.picks, g = (picks['pmg_' + pm.id] || [])[0] || null, hit = !!g && E.puzzleHit(S, g), off = E.abilityOff(S, pm);
+  const dm = S.players.find(p => E.isDemon(p) && p.alive) || S.players.find(p => E.isDemon(p));
+  let told = (picks['pmt_' + pm.id] || [])[0] || null;
+  if (told && !hit && !off && E.isDemon(E.P(S, told))) told = null;
+  if (!told && !picks['pmt_' + pm.id] && hit && !off && dm) told = dm.id;
+  return { g, hit, off, told };
+}
 const A = {
   tab: k => { UI.tab = k; render(); window.scrollTo(0, 0); },
   undo: () => undo(),
@@ -1545,6 +1580,7 @@ const A = {
   'setFlag-grandchild': (a, el) => act(S => { S.flags.grandchild = el.value || null; }, 'внук Бабушки'),
   'setFlag-ftHerring': (a, el) => act(S => { S.flags.ftHerring = el.value || null; }, 'ложная цель Гадалки'),
   'setFlag-goodTwin': (a, el) => act(S => { S.flags.goodTwin = el.value || null; }, 'добрый близнец'),
+  'setFlag-puzzleDrunk': (a, el) => act(S => { S.flags.puzzleDrunk = el.value || null; }, 'пьяный Головоломщика'),
   autoPrep: () => act(S => E.autoSetup(S, true), 'подготовка случайно'),
   start: () => { UI.notes = []; act(S => E.startGame(S), 'начало игры'); window.scrollTo(0, 0); },
   // Странники и Сказочники
@@ -1592,6 +1628,9 @@ const A = {
   ringPickOpen: arg => { const [kind, a] = arg.split('|'); UI.ringPick = { kind, arg: a }; UI.ring = 'pick'; render(); },
   madExe: arg => { const [pid, src] = arg.split('|'), before = exeMark(); act(S => E.madnessExecute(S, pid, src), 'казнь за нарушенное безумие'); window.scrollTo(0, 0); showExeResult(before); },
   harpyKill: arg => act(S => E.harpyKill(S, arg.split(',')), 'Гарпия: смерть'),
+  polWin: id => act(S => { const p = E.P(S, id); S.flags['polWon_' + id] = true; p.align = S.result.winner; E.log(S, `Политик (${p.name}) меняет сторону и побеждает вместе ${S.result.winner === 'good' ? 'с добром' : 'со злом'}`, 'win'); }, 'Политик'),
+  pmGuess: id => { const pm = E.P(S, id), st = pmState(pm); if (!st.g || !st.told) return;
+    act(S => { E.puzzleGuess(S, id, st.g, st.told); S.day.picks['pmg_' + id] = []; S.day.picks['pmt_' + id] = []; }, 'догадка Головоломщика'); },
   damselGuess: () => { const by = (S.day.picks.dgBy || [])[0], on = (S.day.picks.dgOn || [])[0]; if (by && on) act(S => { E.damselGuess(S, by, on); S.day.picks.dgBy = []; S.day.picks.dgOn = []; }, 'догадка о Девице'); },
   jugAdd: () => { const pid = document.getElementById('jugP').value, role = document.getElementById('jugR').value; if (role) act(S => { (S.flags.jugglerGuesses = S.flags.jugglerGuesses || []).push({ pid, role }); }, 'догадка Жонглёра'); },
   jugDel: i => act(S => S.flags.jugglerGuesses.splice(+i, 1), 'убрана догадка'),

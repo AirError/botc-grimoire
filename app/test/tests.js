@@ -650,7 +650,7 @@ try {
 
   // 33. сценарии сообщества: раздача, подготовка и две ночи без ошибок; Сказочники сценария — в игре
   const commErr = [];
-  for (const key of ['reptiles2', 'oasis', 'pies', 'uncertain']) for (const n of [5, 7, 9, 11, 13, 15]) {
+  for (const key of ['reptiles2', 'oasis', 'pies', 'uncertain', 'blindhunt', 'blindhunt', 'blindhunt', 'blindhunt']) for (const n of [5, 7, 9, 11, 13, 15]) {
     try {
       const g = E.newGame(key);
       for (let i = 0; i < n; i++) g.players.push(E.newPlayer(key + i));
@@ -1049,6 +1049,25 @@ try {
     ok('Амнезиак: способность из подсказок — карточка «Число»', afl.some(f => f.key === 'kind' && f.def === 'number') && afl.some(f => f.key === 'num'));
     const atx = asp.info({ ability: 'своя', kind: 'text', say: 'Слева от вас злой' });
     ok('Амнезиак: свой текст — на весь экран', atx.tokens && atx.tokens[0].text === 'Слева от вас злой');
+  }
+
+  // 34. сценарий Blind Hunt (by Alex): Верховная Жрица, Головоломщик
+  {
+    ok('Blind Hunt: 22 роли, 13/4/4/1', DATA.scripts.blindhunt && DATA.scripts.blindhunt.roles.length === 22
+      && ['townsfolk', 'outsider', 'minion', 'demon'].map(t => DATA.scripts.blindhunt.roles.filter(r => DATA.roles[r].team === t).length).join() === '13,4,4,1');
+    let G = game(['washerwoman', 'highpriestess', 'empath', 'monk', 'soldier', 'puzzlemaster', 'poisoner', 'imp'], 'blindhunt'); E.autoSetup(G, true);
+    const pmDrunk = E.P(G, G.flags.puzzleDrunk);
+    ok('Головоломщик: на подготовке выбран пьяный Горожанин', pmDrunk && E.realTeam(pmDrunk) === 'townsfolk');
+    E.startGame(G);
+    ok('Головоломщик: выбранный пьян всю игру', /пьян/.test(E.abilityOff(G, pmDrunk) || '') && E.hasTok(pmDrunk, 'drunk', 'puzzlemaster'));
+    const hp = G.night.steps.find(s => s.id === 'highpriestess'), hsp = E.stepSpec(G, hp), sol = byRole(G, 'soldier');
+    const hin = hsp.info({ t: [sol.id] });
+    ok('Верховная Жрица: каждую ночь — один игрок на экране', hsp.active && hsp.inputs[0].n === 1 && hin.tokens[0].players[0] === sol.id);
+    runNight(G, { highpriestess: { t: [sol.id] } });
+    const pm = byRole(G, 'puzzlemaster');
+    ok('Головоломщик: угадал — верно; не угадал — нет', E.puzzleHit(G, pmDrunk.id) && !E.puzzleHit(G, pm.id));
+    E.puzzleGuess(G, pm.id, pmDrunk.id, byRole(G, 'imp').id);
+    ok('Головоломщик: догадка одна за игру', G.flags['puzzleUsed_' + pm.id] && E.hasTok(pm, 'guessused') && !E.puzzleGuess(G, pm.id, pmDrunk.id, byRole(G, 'imp').id));
   }
 
   // 30. казнь на выбор: 30 одобренных текстов, у каждого — имя казнённого и своё название
