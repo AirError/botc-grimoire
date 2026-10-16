@@ -248,8 +248,14 @@ details > .tale { margin-top: 10px; }
 /* список фактов Саванта (вкладка «Гримуар»): верные — зелёные, неверные — красные; выбранный — залит цветом */
 #savlist { scroll-margin-top: 72px; } /* «Выбрать из списка» прокручивает сюда — заголовок не под шапкой */
 .savsel { margin-top: 8px; font-weight: 700; }
-.savgrp { margin-top: 14px; display: flex; flex-direction: column; gap: 10px; }
-.savgrp .lab { font-family: var(--f-sc); text-transform: uppercase; letter-spacing: .08em; font-size: 13px; font-weight: 700; color: var(--gold); }
+.savgrp { margin-top: 8px; display: flex; flex-direction: column; gap: 10px; }
+/* заголовок группы — кнопка: свернуть / раскрыть */
+.savgh { display: flex; align-items: center; gap: 10px; width: 100%; min-height: 48px; padding: 10px 12px; text-align: left; cursor: pointer;
+  border: 1px solid var(--line); border-radius: 10px; background: var(--paper);
+  font-family: var(--f-sc); text-transform: uppercase; letter-spacing: .08em; font-size: 13.5px; font-weight: 700; color: var(--gold); }
+.savgh .chev { display: inline-block; transition: transform .15s; } .savgh.open .chev { transform: rotate(90deg); }
+.savgh.open { border-color: var(--gold); background: var(--goldbg); }
+.savgn { margin-left: auto; font-family: var(--f-ui); text-transform: none; letter-spacing: 0; font-size: 13px; font-weight: 400; color: var(--muted); }
 .savpair { display: flex; flex-direction: column; gap: 4px; }
 .savpick { text-align: left; border: 1px solid; border-left-width: 5px; border-radius: 9px; padding: 8px 10px; font-size: 14.5px; line-height: 1.35; cursor: pointer; }
 .savpick.t { background: var(--okbg); border-color: var(--ok); } .savpick.f { background: var(--evilbg); border-color: var(--evil); }

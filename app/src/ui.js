@@ -969,10 +969,13 @@ function savListCard() {
     if (!list) return `<div class="card" id="savlist">${head}</div>`;
     const on = t => sel.some(x => x.text === t), nT = sel.filter(x => x.truth).length;
     const btn = (i, text, tr) => `<button class="savpick ${tr ? 't' : 'f'}${on(text) ? ' on' : ''}" data-act="savPick" data-arg="${sv.id}|${i}|${tr ? 1 : 0}" aria-pressed="${on(text)}">${on(text) ? '✓ ' : ''}${esc(text)}</button>`;
-    const groups = IDEAS.SAVANT_GROUPS.map(g => { const its = list.map((it, i) => [it, i]).filter(([it]) => it.g === g);
-      return its.length ? `<div class="savgrp"><div class="lab">${g}</div>${its.map(([it, i]) => `<div class="savpair">${btn(i, it.yes, true)}${btn(i, it.no, false)}</div>`).join('')}</div>` : ''; }).join('');
+    // группы свёрнуты, пока их не раскроют (заметка пользователя 2026-10-16); раскрытые помнятся до перезагрузки (UI.savOpen)
+    const groups = IDEAS.SAVANT_GROUPS.map(g => { const its = list.map((it, i) => [it, i]).filter(([it]) => it.g === g); if (!its.length) return '';
+      const open = !!(UI.savOpen || {})[g], nSel = its.reduce((k, [it]) => k + on(it.yes) + on(it.no), 0);
+      return `<div class="savgrp"><button class="savgh${open ? ' open' : ''}" data-act="savGrp" data-arg="${esc(g)}" aria-expanded="${open}"><span class="chev" aria-hidden="true">▸</span><span>${g}</span><span class="savgn">${its.length}${nSel ? ` · выбрано ${nSel}` : ''}</span></button>
+        ${open ? its.map(([it, i]) => `<div class="savpair">${btn(i, it.yes, true)}${btn(i, it.no, false)}</div>`).join('') : ''}</div>`; }).join('');
     return `<div class="card" id="savlist">${head}
-      <div class="small muted">Зелёные — верные, красные — неверные. Нажмите, чтобы выбрать, ещё раз — убрать. Выбранные появятся в карточке Саванта на экране дня.</div>
+      <div class="small muted">Раскройте группу. Зелёные — верные, красные — неверные. Нажмите, чтобы выбрать, ещё раз — убрать. Выбранные появятся в карточке Саванта на экране дня.</div>
       <div class="savsel">Выбрано: верных ${nT}, неверных ${sel.length - nT}</div>${groups}</div>`;
   }).join('');
 }
@@ -1867,6 +1870,7 @@ const A = {
   // список фактов на вкладке «Гримуар»: выбрать / убрать факт (место в паре — случайное, чтобы порядок не выдавал правдивость)
   savGoList: () => { UI.tab = 'table'; savListEnsure(); render(); const c = document.getElementById('savlist'); if (c) c.scrollIntoView(); else window.scrollTo(0, 0); },
   savList: id => draft(S => { S.day.picks['savList_' + id] = IDEAS.savantList(S, id); }),
+  savGrp: g => { UI.savOpen = Object.assign({}, UI.savOpen, { [g]: !(UI.savOpen || {})[g] }); render(); },
   savPick: arg => { const [id, i, t] = arg.split('|'), it = (S.day.picks['savList_' + id] || [])[+i]; if (!it) return;
     const truth = t === '1', text = truth ? it.yes : it.no;
     draft(S => { const sel = S.day.picks['sav_' + id] || [], k = sel.findIndex(x => x.text === text), f = { text, truth };

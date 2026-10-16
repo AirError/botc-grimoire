@@ -251,8 +251,14 @@ details > .tale { margin-top: 10px; }
 /* список фактов Саванта (вкладка «Гримуар»): верные — зелёные, неверные — красные; выбранный — залит цветом */
 #savlist { scroll-margin-top: 72px; } /* «Выбрать из списка» прокручивает сюда — заголовок не под шапкой */
 .savsel { margin-top: 8px; font-weight: 700; }
-.savgrp { margin-top: 14px; display: flex; flex-direction: column; gap: 10px; }
-.savgrp .lab { font-family: var(--f-sc); text-transform: uppercase; letter-spacing: .08em; font-size: 13px; font-weight: 700; color: var(--gold); }
+.savgrp { margin-top: 8px; display: flex; flex-direction: column; gap: 10px; }
+/* заголовок группы — кнопка: свернуть / раскрыть */
+.savgh { display: flex; align-items: center; gap: 10px; width: 100%; min-height: 48px; padding: 10px 12px; text-align: left; cursor: pointer;
+  border: 1px solid var(--line); border-radius: 10px; background: var(--paper);
+  font-family: var(--f-sc); text-transform: uppercase; letter-spacing: .08em; font-size: 13.5px; font-weight: 700; color: var(--gold); }
+.savgh .chev { display: inline-block; transition: transform .15s; } .savgh.open .chev { transform: rotate(90deg); }
+.savgh.open { border-color: var(--gold); background: var(--goldbg); }
+.savgn { margin-left: auto; font-family: var(--f-ui); text-transform: none; letter-spacing: 0; font-size: 13px; font-weight: 400; color: var(--muted); }
 .savpair { display: flex; flex-direction: column; gap: 4px; }
 .savpick { text-align: left; border: 1px solid; border-left-width: 5px; border-radius: 9px; padding: 8px 10px; font-size: 14.5px; line-height: 1.35; cursor: pointer; }
 .savpick.t { background: var(--okbg); border-color: var(--ok); } .savpick.f { background: var(--evilbg); border-color: var(--evil); }
@@ -5459,10 +5465,13 @@ function savListCard() {
     if (!list) return `<div class="card" id="savlist">${head}</div>`;
     const on = t => sel.some(x => x.text === t), nT = sel.filter(x => x.truth).length;
     const btn = (i, text, tr) => `<button class="savpick ${tr ? 't' : 'f'}${on(text) ? ' on' : ''}" data-act="savPick" data-arg="${sv.id}|${i}|${tr ? 1 : 0}" aria-pressed="${on(text)}">${on(text) ? '✓ ' : ''}${esc(text)}</button>`;
-    const groups = IDEAS.SAVANT_GROUPS.map(g => { const its = list.map((it, i) => [it, i]).filter(([it]) => it.g === g);
-      return its.length ? `<div class="savgrp"><div class="lab">${g}</div>${its.map(([it, i]) => `<div class="savpair">${btn(i, it.yes, true)}${btn(i, it.no, false)}</div>`).join('')}</div>` : ''; }).join('');
+    // группы свёрнуты, пока их не раскроют (заметка пользователя 2026-10-16); раскрытые помнятся до перезагрузки (UI.savOpen)
+    const groups = IDEAS.SAVANT_GROUPS.map(g => { const its = list.map((it, i) => [it, i]).filter(([it]) => it.g === g); if (!its.length) return '';
+      const open = !!(UI.savOpen || {})[g], nSel = its.reduce((k, [it]) => k + on(it.yes) + on(it.no), 0);
+      return `<div class="savgrp"><button class="savgh${open ? ' open' : ''}" data-act="savGrp" data-arg="${esc(g)}" aria-expanded="${open}"><span class="chev" aria-hidden="true">▸</span><span>${g}</span><span class="savgn">${its.length}${nSel ? ` · выбрано ${nSel}` : ''}</span></button>
+        ${open ? its.map(([it, i]) => `<div class="savpair">${btn(i, it.yes, true)}${btn(i, it.no, false)}</div>`).join('') : ''}</div>`; }).join('');
     return `<div class="card" id="savlist">${head}
-      <div class="small muted">Зелёные — верные, красные — неверные. Нажмите, чтобы выбрать, ещё раз — убрать. Выбранные появятся в карточке Саванта на экране дня.</div>
+      <div class="small muted">Раскройте группу. Зелёные — верные, красные — неверные. Нажмите, чтобы выбрать, ещё раз — убрать. Выбранные появятся в карточке Саванта на экране дня.</div>
       <div class="savsel">Выбрано: верных ${nT}, неверных ${sel.length - nT}</div>${groups}</div>`;
   }).join('');
 }
@@ -6357,6 +6366,7 @@ const A = {
   // список фактов на вкладке «Гримуар»: выбрать / убрать факт (место в паре — случайное, чтобы порядок не выдавал правдивость)
   savGoList: () => { UI.tab = 'table'; savListEnsure(); render(); const c = document.getElementById('savlist'); if (c) c.scrollIntoView(); else window.scrollTo(0, 0); },
   savList: id => draft(S => { S.day.picks['savList_' + id] = IDEAS.savantList(S, id); }),
+  savGrp: g => { UI.savOpen = Object.assign({}, UI.savOpen, { [g]: !(UI.savOpen || {})[g] }); render(); },
   savPick: arg => { const [id, i, t] = arg.split('|'), it = (S.day.picks['savList_' + id] || [])[+i]; if (!it) return;
     const truth = t === '1', text = truth ? it.yes : it.no;
     draft(S => { const sel = S.day.picks['sav_' + id] || [], k = sel.findIndex(x => x.text === text), f = { text, truth };
