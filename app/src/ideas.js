@@ -51,9 +51,12 @@ const IDEAS = (() => {
   function savantTemplates(S, sv) {
     const core = coreOf(S), others = core.filter(p => p.id !== sv.id), demon = core.find(E.isDemon), alive = core.filter(p => p.alive);
     const noDemon = others.filter(p => !E.isDemon(p));
+    // ложь «злых среди троих» — правдоподобная: не больше 2 и не больше, чем злых в игре (заметки пользователя 2026-10-14 и 2026-10-16:
+    // «3 из 3 злые — слишком очевидная ложь»)
+    const lie3 = k => near(k, 0, Math.min(2, S.players.filter(evil).length));
     const T = [
-      () => { const ps = shuffle(others).slice(0, 3); if (ps.length < 3) return null; const k = ps.filter(evil).length;
-        return { yes: `Среди игроков ${join(ps)} злых: ${k}.`, no: `Среди игроков ${join(ps)} злых: ${near(k, 0, 3)}.` }; },
+      () => { const ps = shuffle(others).slice(0, 3); if (ps.length < 3) return null; const k = ps.filter(evil).length, f = lie3(k); if (f === k) return null;
+        return { yes: `Среди игроков ${join(ps)} злых: ${k}.`, no: `Среди игроков ${join(ps)} злых: ${f}.` }; },
       () => { const [a, b] = shuffle(others); if (!b) return null; const s = a.align === b.align;
         return { yes: `${a.name} и ${b.name} — ${s ? 'одной стороны' : 'разных сторон'}.`, no: `${a.name} и ${b.name} — ${s ? 'разных сторон' : 'одной стороны'}.` }; },
       () => { const k = core.filter(p => team(p) === 'outsider').length; return { yes: `Изгоев в игре: ${k}.`, no: `Изгоев в игре: ${near(k, 0, 5)}.` }; },
@@ -78,7 +81,7 @@ const IDEAS = (() => {
           no: y ? 'Со вчерашнего утра чья-то способность сработала не так, как должна (ложная информация или сбой).' : 'Со вчерашнего утра у всех способности сработали как надо.' }; },
       // ложь — правдоподобная: не больше 2 злых и не больше, чем злых в игре (заметка пользователя 2026-10-14: «три злых подряд — слишком очевидная ложь»)
       () => { const ps = coreOf(S), i = ps.indexOf(sv), n = ps.length; const three = [1, 2, 3].map(k => ps[(i + k) % n]).filter(p => p !== sv); const k = three.filter(evil).length;
-        const hi = Math.min(2, S.players.filter(evil).length), f = near(k, 0, hi); if (f === k) return null;
+        const f = lie3(k); if (f === k) return null;
         return { yes: `Среди трёх игроков по часовой стрелке от тебя злых: ${k}.`, no: `Среди трёх игроков по часовой стрелке от тебя злых: ${f}.` }; },
       () => { const [a, b] = shuffle(others); if (!b) return null; const y = !evil(a) && !evil(b);
         return { yes: y ? `${a.name} и ${b.name} — оба добрые.` : `Хотя бы один из игроков ${a.name} и ${b.name} — злой.`, no: y ? `Хотя бы один из игроков ${a.name} и ${b.name} — злой.` : `${a.name} и ${b.name} — оба добрые.` }; },
@@ -99,10 +102,13 @@ const IDEAS = (() => {
     ];
     return T;
   }
-  // пара фактов разных шаблонов: один правдивый, другой ложный, порядок случайный
+  // пара фактов разных шаблонов: один правдивый, другой ложный, порядок случайный. Факты, уже сказанные в этой игре
+  // (S.flags.savantFacts), не повторяются — ни сам факт, ни его противоположность (заметка пользователя 2026-10-16)
   function savantPair(S, svId) {
     const sv = E.P(S, svId); if (!sv) return null;
-    const res = shuffle(savantTemplates(S, sv)).map(f => { try { return f(); } catch (e) { return null; } }).filter(Boolean);
+    const used = new Set((S.flags.savantFacts || []).flatMap(x => x.facts.map(f => f.text)));
+    const res = shuffle(savantTemplates(S, sv)).map(f => { try { return f(); } catch (e) { return null; } })
+      .filter(r => r && !used.has(r.yes) && !used.has(r.no));
     if (res.length < 2) return null;
     const pair = [{ text: res[0].yes, truth: true }, { text: res[1].no, truth: false }];
     return Math.random() < 0.5 ? pair : pair.reverse();

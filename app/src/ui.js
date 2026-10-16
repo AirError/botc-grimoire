@@ -455,8 +455,10 @@ function fieldHtml(f, inp) {
 // слова рассказчика на рассвет: вариант закреплён за ночью, «другой вариант» листает по кругу
 function morningHtml(withNext) {
   const names = E.nightDeaths(S).map(d => `<b>${esc(E.nm(S, d.pid))}</b>`);
+  // снова живы этой ночью (Профессор, Аль-Адихия…) — свои тексты: «кто-то ожил» и «смерти и воскрешение» (заметка 2026-10-16)
+  const back = (S.night.revived || []).filter(id => E.P(S, id) && E.P(S, id).alive).map(id => `<b>${esc(E.nm(S, id))}</b>`);
   const seed = [...(S.id + ':' + S.n)].reduce((h, ch) => (h * 31 + ch.charCodeAt(0)) >>> 0, 7);
-  const m = morningText(names, S.n === 1, S.night.data.morn ?? seed);
+  const m = morningText(names, S.n === 1, S.night.data.morn ?? seed, back);
   return `<div class="tale"><div class="lab">Слова для утра</div><p>${m.text}</p>
     ${withNext ? `<button class="linkish" data-act="mornNext" data-arg="${m.i}">Другой вариант · ${m.i + 1} из ${m.total}</button>` : ''}</div>`;
 }
@@ -571,7 +573,7 @@ function viewSetup() {
   const prep = n >= 5 && S.players.every(p => p.role) ? `<div class="card"><h3>Подготовка</h3>
       <div class="field"><label>Блефы Демона: 3 добрые роли, которых нет в игре</label>
       ${[0, 1, 2].map(i => `<select data-act="bluff" data-arg="${i}">${roleOptions(r => r === S.bluffs[i] || (notIn(r) && !S.bluffs.some((b, j) => j !== i && b === r)), S.bluffs[i])}</select>`).join('')}</div>
-      ${S.script.roles.includes('drunk') || S.players.some(p => p.role === 'drunk') ? (() => { // Пьяница — кто из Горожан (заметки пользователя 2026-10-15)
+      ${S.players.some(p => p.role === 'drunk') || (S.pool || []).includes('drunk') ? (() => { // Пьяница — кто из Горожан (заметки 2026-10-15); не в игре — блока нет (2026-10-16)
         const cur = S.players.find(p => p.role === 'drunk'), cand = core.filter(p => p === cur || E.realTeam(p) === 'townsfolk');
         return `<div class="field"><label>Пьяница — кто из Горожан на самом деле Пьяница (будет считать себя своей ролью)</label>
           <select data-act="setDrunk"><option value="">— Пьяницы нет —</option>${cand.map(p => `<option value="${p.id}" ${p === cur ? 'selected' : ''}>${esc(p.name)} (${esc(E.rname(p === cur ? p.believes : p.role))})</option>`).join('')}</select>
@@ -680,7 +682,7 @@ function viewDay() {
   // Амнезиак: раз в день приватно угадывает свою способность
   for (const a of S.players.filter(p => p.role === 'amnesiac' && p.alive)) {
     const done = (d.amnesiac || {})[a.id], ab = S.flags['amnesiac_' + a.id];
-    parts.push(`<div class="card"><h3>Амнезиак: ${esc(a.name)}</h3>
+    parts.push(`<div class="card"><h3>Амнезиак</h3>
       ${boundsHtml([{ w: 'Игрок', t: 'раз в день приватно угадывает, какая у него способность' }, { w: 'Вы отвечаете', t: '«Холодно» — совсем не то, «Тепло» — в верную сторону, «Горячо» — очень близко, «В точку» — угадал (даже другими словами)' }])}
       <div class="small"><b>Его способность:</b> ${ab ? esc(ab) : '<span class="muted">не задана — впишите на подготовке или ночью на шаге Амнезиака</span>'}</div>
       ${done ? `<div class="note-ok">Сегодня: ${done.guess ? `«${esc(done.guess)}» — ` : ''}${esc(E.AMNESIAC_ANSWERS[done.answer])}</div>`
@@ -688,17 +690,21 @@ function viewDay() {
       <div class="seg">${Object.entries(E.AMNESIAC_ANSWERS).map(([k, l]) => `<button data-act="amnAnswer" data-arg="${a.id}|${k}">${esc(l)}</button>`).join('')}</div>`}</div>`);
   }
   // Савант: раз в день приватно — 2 факта, один правда, другой ложь (подбор из текущей игры — ideas.js)
+  // на экране дня — без пометок «правда / ложь» (их видно в Журнале → «Факты Саванта»); факты можно показать на весь экран
+  // (заметка пользователя 2026-10-16). Факты сказаны — записываются, и сегодня Саванту больше не подбираются
   for (const sv of S.players.filter(p => p.role === 'savant' && p.alive)) {
-    const pair = picks['sav_' + sv.id], off = E.abilityOff(S, sv);
-    parts.push(`<div class="card"><h3>Савант: ${esc(sv.name)}</h3>
+    const pair = picks['sav_' + sv.id], off = E.abilityOff(S, sv), told = (S.flags.savantFacts || []).some(x => x.n === S.n && x.pid === sv.id);
+    parts.push(`<div class="card"><h3>Савант</h3>
       ${boundsHtml([{ w: 'Игрок', t: 'раз в день может прийти к вам: приватно — 2 факта, один правда, другой ложь' }, { w: 'Вы решаете', t: off ? `Савант ${off}: можно оба правдой или оба ложью` : 'какие факты; Демона прямо не называйте' }])}
-      ${pair ? `<div class="reveal"><div class="lab">Скажите Саванту</div>${pair.map(x => `<div class="ln"><b>${esc(x.text)}</b> <span class="muted small">— ${x.truth ? 'правда' : 'ложь'}</span></div>`).join('')}</div>` : ''}
-      <div class="row"><button class="btn" data-act="savGen" data-arg="${sv.id}">${pair ? 'Другие факты' : 'Подобрать факты'}</button>${pair ? `<button class="btn" data-act="savLog" data-arg="${sv.id}">Записать в журнал</button>` : ''}</div></div>`);
+      ${told ? '<div class="note-ok">Сегодня факты уже сказаны — они в Журнале («Факты Саванта»).</div>' : `
+      ${pair ? `<div class="reveal"><div class="lab">Скажите Саванту</div>${pair.map(x => `<div class="ln"><b>${esc(x.text)}</b></div>`).join('')}
+        ${showButtons(pair.map(x => ({ label: 'Саванту', text: x.text })))}</div>` : ''}
+      <div class="row"><button class="btn" data-act="savGen" data-arg="${sv.id}">${pair ? 'Другие факты' : 'Подобрать факты'}</button>${pair ? `<button class="btn primary" data-act="savLog" data-arg="${sv.id}">Сказано — записать</button>` : ''}</div>`}</div>`);
   }
   // Рыбак: раз за игру днём — совет, что делать (ideas.js)
   for (const fm of S.players.filter(p => p.role === 'fisherman' && p.alive && !S.flags['fishUsed_' + p.id])) {
     const list = picks['fish_' + fm.id], sel = picks['fishSel_' + fm.id], off = E.abilityOff(S, fm);
-    parts.push(`<div class="card"><details ${list ? 'open' : ''}><summary class="small"><b>Рыбак (${esc(fm.name)})</b> — раз за игру совет, как победить</summary><div class="field" style="margin-top:8px">
+    parts.push(`<div class="card"><details ${list ? 'open' : ''}><summary class="small"><b>Рыбак</b> — раз за игру совет, как победить</summary><div class="field" style="margin-top:8px">
       ${boundsHtml([{ w: 'Вы решаете', t: off ? `Рыбак ${off}: можно дать плохой совет` : 'совет о том, что ДЕЛАТЬ, а не что ЕСТЬ; Демона прямо не называйте' }])}
       ${list ? `<div class="idealist">${list.map((t, i) => `<button class="idea ${sel === t ? 'on' : ''}" data-act="fishPick" data-arg="${fm.id}|${i}">${esc(t)}</button>`).join('')}</div>` : ''}
       <div class="row"><button class="btn" data-act="fishGen" data-arg="${fm.id}">${list ? 'Другие советы' : 'Подобрать советы'}</button>${sel ? `<button class="btn primary" data-act="fishUse" data-arg="${fm.id}">Совет дан</button>` : ''}</div></div></details></div>`);
@@ -730,7 +736,7 @@ function viewDay() {
   }
   for (const s of S.players.filter(p => E.actsAs(p) === 'slayer' && p.alive && !S.flags['slayerUsed_' + p.id])) { // и Философ со способностью Истребителя
     const t = (picks['slay_' + s.id] || [])[0] && E.P(S, picks['slay_' + s.id][0]);
-    parts.push(`<div class="card"><h3>Истребитель: ${esc(s.name)}</h3>${boundsHtml([{ w: 'Игрок выбирает', t: 'публично, 1 игрока, раз за игру' }])}
+    parts.push(`<div class="card"><h3>Истребитель</h3>${boundsHtml([{ w: 'Игрок выбирает', t: 'публично, 1 игрока, раз за игру' }])}
       ${t ? `<div class="small">Цель: <b>${esc(t.name)}</b></div>` : ''}${pickRingBtn('slay', s.id, !!t)}
       ${t ? `${slayRegHtml(t)}<button class="btn danger wide" data-act="slay" data-arg="${s.id}">Выстрел</button>` : ''}</div>`);
   }
@@ -747,13 +753,13 @@ function viewDay() {
   // Головоломщик (вики): раз за игру угадывает, кто пьян из-за него; вы приватно называете одно имя (Blind Hunt, 2026-10-15)
   for (const pm of S.players.filter(p => p.role === 'puzzlemaster' && p.alive && !S.flags['puzzleUsed_' + p.id])) {
     const st = pmState(pm);
-    parts.push(`<div class="card"><details ${st.g ? 'open' : ''}><summary class="small"><b>Головоломщик (${esc(pm.name)})</b> — раз за игру угадывает, кто пьян</summary><div class="field" style="margin-top:8px">
+    parts.push(`<div class="card"><details ${st.g ? 'open' : ''}><summary class="small"><b>Головоломщик</b> — раз за игру угадывает, кто пьян</summary><div class="field" style="margin-top:8px">
       ${boundsHtml([{ w: 'Игрок', t: 'публично или приватно называет игрока, которого считает пьяным из-за Головоломщика' },
         { w: 'Вы', t: 'приватно называете одно имя: угадал — Демона, не угадал — любого игрока, который не Демон. Угадал ли — не говорите' }])}
       <div class="flabel"><span>Кого он назвал пьяным</span></div>${chipsPlayers('pmg_' + pm.id, 1, () => true, st.g ? [st.g] : [], { act: 'dayPick', noRole: true })}
       ${st.g ? `<div class="reveal secret"><div class="lab">Только для вас</div><div class="ln">${st.hit ? (st.off ? `Угадал, но Головоломщик ${esc(st.off)}: можно назвать кого угодно` : 'Угадал — назовите Демона') : 'Не угадал — назовите любого игрока, который не Демон'}</div></div>
         <div class="flabel"><span>Какое имя назвать</span></div>${chipsPlayers('pmt_' + pm.id, 1, p => st.hit || st.off ? true : !E.isDemon(p), st.told ? [st.told] : [], { act: 'dayPick', noRole: true })}
-        ${st.told ? showButtons([{ label: pm.name, players: [st.told] }]) : ''}
+        ${st.told ? showButtons([{ label: 'Головоломщику', players: [st.told] }]) : ''}
         <button class="btn primary" data-act="pmGuess" data-arg="${pm.id}" ${st.told ? '' : 'disabled'}>Записать догадку</button>` : ''}</div></details></div>`);
   }
   // Безумие (вики): Цереновус и Уродец — нарушил, можно казнить (казнь за день, потом ночь); Гарпия — убить одного или обоих
@@ -764,7 +770,7 @@ function viewDay() {
     const exeBtn = (p, src, label) => `<button class="btn danger" data-act="madExe" data-arg="${p.id}|${src}" ${exeOk ? '' : 'disabled'}>${label}</button>`;
     const rows = [
       ...madC.map(p => `<div class="madrow"><div><b>${esc(p.name)}</b> — помешан на роли «${esc(tok(p, 'cerenovus').note || '')}» (Цереновус)</div>${exeBtn(p, 'cerenovus', 'Не помешан — казнить')}</div>`),
-      ...mutants.map(p => `<div class="madrow"><div><b>${esc(p.name)}</b> — Уродец</div>${exeBtn(p, 'mutant', 'Внушает, что он Изгой, — казнить')}</div>`),
+      ...mutants.map(p => `<div class="madrow"><div><b>Уродец</b></div>${exeBtn(p, 'mutant', 'Внушает, что он Изгой, — казнить')}</div>`),
       ...madH.map(p => { const b = E.P(S, tok(p, 'harpy').by);
         return `<div class="madrow"><div><b>${esc(p.name)}</b> — помешан на том, что ${esc(b ? b.name : '?')} злой (Гарпия)</div>
           <div class="seg"><button data-act="harpyKill" data-arg="${p.id}">Умирает ${esc(p.name)}</button>${b ? `<button data-act="harpyKill" data-arg="${b.id}">Умирает ${esc(b.name)}</button><button data-act="harpyKill" data-arg="${p.id},${b.id}">Умирают оба</button>` : ''}</div></div>`; })];
@@ -777,13 +783,13 @@ function viewDay() {
   for (const g of S.players.filter(p => p.role === 'gunslinger' && p.alive)) {
     if (d.gunUsed || !d.noms.length) continue;
     const first = d.noms[0], sel = picks.gun || [];
-    parts.push(`<div class="card"><h3>Стрелок: ${esc(g.name)}</h3>${boundsHtml([{ w: 'Игрок выбирает', t: `сразу после подсчёта 1-го голосования (за ${E.nm(S, first.on)}) — 1 проголосовавшего: тот умирает. Раз в день` }])}
+    parts.push(`<div class="card"><h3>Стрелок</h3>${boundsHtml([{ w: 'Игрок выбирает', t: `сразу после подсчёта 1-го голосования (за ${E.nm(S, first.on)}) — 1 проголосовавшего: тот умирает. Раз в день` }])}
       ${chipsPlayers('gun', 1, p => p.alive && first.voters.includes(p.id), sel, { act: 'dayPick', noRole: true })}
       <div class="row"><button class="btn danger" data-act="gunShoot" data-arg="${g.id}" ${sel.length ? '' : 'disabled'}>Выстрел</button><button class="btn" data-act="gunSkip">Стрелок не стреляет сегодня</button></div></div>`);
   }
   // Механик может умереть в любой момент — по решению рассказчика
   for (const t of S.players.filter(p => p.role === 'tinker' && p.alive))
-    parts.push(`<div class="card"><details><summary class="small"><b>Механик (${esc(t.name)})</b> может умереть в любой момент</summary><div class="field" style="margin-top:8px">
+    parts.push(`<div class="card"><details><summary class="small"><b>Механик</b> может умереть в любой момент</summary><div class="field" style="margin-top:8px">
       ${boundsHtml([{ w: 'Вы решаете', t: 'днём — объявите смерть сразу; не заканчивайте этим игру' }])}<button class="btn danger" data-act="tinkerDie" data-arg="${t.id}">Механик умирает сейчас</button></div></details></div>`);
   // Сказочник Фаталист: живой игрок раз за игру требует смерти игрока своей стороны
   if ((S.fabled || []).includes('doomsayer') && alive >= 4) {
@@ -830,7 +836,8 @@ function viewDay() {
     parts.push(`<div class="card"><div class="row ghead"><h3 class="hi">${art('vote', 'hg')}Голосование: ${esc(on.name)}</h3>${ringBtn()}</div><div class="small muted">Номинировал ${esc(by ? by.name : 'рассказчик')}${d.lastNom && d.lastNom.butcher ? ' (Мясник, после казни: порог тот же, превышать первую не нужно)' : ''}. Отметьте всех, кто поднял руку — по кругу, начиная с соседа номинированного; сам номинированный голосует последним.</div>
       ${boundsHtml(rules)}
       ${tiles('voters', 99, canVote, nm.voters, 'vote', { ghost: !vd, order: voteOrder(nm.on), mark: nm.on })}
-      <div class="reveal"><div class="lab">Голосов</div><div class="big">${cnt} из ${th}</div>${weighted.map(t => `<div class="ln">${esc(t)}</div>`).join('')}</div>
+      ${(() => { const vn = E.voteNeeds(S); return `<div class="reveal"><div class="lab">Голосов</div><div class="big">${cnt}</div>
+        <div class="ln">Для казни нужно — <b>${vn.exec}</b>${vn.cancel ? ` · для отмены (ничья, казни не будет) — <b>${vn.cancel}</b>` : ''}</div>${weighted.map(t => `<div class="ln">${esc(t)}</div>`).join('')}</div>`; })()}
       ${judgeHtml(nm.on, nm.by)}
       ${confirmRow('voteDone', 'Подтвердить голоса', true, 'voteCancel', 'Отменить номинацию')}</div>`);
   } else if (!d.executed || butcherTurn) {
@@ -1102,7 +1109,9 @@ function nomRing() {
       <path class="arr" d="M${f(s.x)} ${f(s.y)}Q${f(cx)} ${f(cy)} ${f(e.x)} ${f(e.y)}" marker-end="url(#rarr)"/></svg>`;
   }
   const by = nm.by === 'st' ? null : nm.by && E.P(S, nm.by), on = nm.on && E.P(S, nm.on);
-  const mid = vote ? `<b class="${E.voteCount(S, nm.voters) >= th ? 'enough' : ''}">${E.voteCount(S, nm.voters)}</b><span>из ${th} для казни</span><span class="small">за: ${esc(on ? on.name : '')}</span>`
+  // сколько голосов нужно для казни, а если кто-то уже на плахе — и для отмены (ничья) (заметка пользователя 2026-10-16)
+  const vn = vote ? E.voteNeeds(S) : null, vc = vote ? E.voteCount(S, nm.voters) : 0;
+  const mid = vote ? `<b class="${vc >= vn.exec ? 'enough' : vn.cancel && vc === vn.cancel ? 'tie' : ''}">${vc}</b><span>для казни — ${vn.exec}</span>${vn.cancel ? `<span>для отмены — ${vn.cancel}</span>` : ''}<span class="small">за: ${esc(on ? on.name : '')}</span>`
     : !open ? '<span>Казнь сегодня уже была</span>'
       : !bishop && !by ? '<span>Кто номинирует?</span>'
         : !on ? `<span>${bishop ? 'Номинирует рассказчик (Епископ)' : esc(by.name) + ' номинирует…'}</span><b class="q">кого?</b>`
@@ -1214,7 +1223,7 @@ function drawCard() {
   // кто ещё не открыл ячейку: нажатие — карточка игрока, там можно назначить роль или тип роли
   const waiting = d && !d.finished ? core.filter(p => !p.role) : [];
   return `<div class="card drawcard"><h3>Выдача ролей · каменная стена</h3>
-    <div class="small muted">Игроки по кругу открывают светящиеся ячейки — как тянут жетон из мешочка: роли разложены по ячейкам в случайном порядке, и какую ячейку игрок выберет, ту роль и получит. Где какая роль, не видит никто, и вы тоже. ${src} Пока игрок не открыл ячейку, в его карточке можно назначить роль или тип роли — назначенное выпадет ему из любой ячейки. Пьяница увидит роль, которой себя считает.</div>
+    <div class="small muted">Игроки по кругу открывают светящиеся ячейки — как тянут жетон из мешочка: роли разложены по ячейкам в случайном порядке, и какую ячейку игрок выберет, ту роль и получит. Где какая роль, не видит никто, и вы тоже. ${src} Пока игрок не открыл ячейку, в его карточке можно назначить роль или тип роли — назначенное выпадет ему из любой ячейки. Пьяница увидит роль, которой себя считает. Свернуть стену — невидимой кнопкой в <b>левом нижнем углу</b> экрана.</div>
     ${!ok ? '<div class="warn">Нужно от 5 до 15 игроков (без Странников) — рассадку заполните на вкладке «Игра».</div>'
       : d && d.finished ? '<div class="note-ok">Роли выданы жребием. Заново их не раздать; роль можно сменить только на роль сценария, которой нет в игре.</div>'
       : d ? `<div class="note-ok">Жребий идёт: осталось ячеек — ${left}. Очередь: ${esc(E.nm(S, d.turn))}</div>
@@ -1276,9 +1285,11 @@ function wallOverlay() {
       ${rune}${crack}</button>`;
   }).join('');
   const others = d.order.filter(id => (id === d.turn || !d.cells.some(c => c.pid === id)) && E.P(S, id)); // кто ещё не открывал (и тот, чья ячейка открыта сейчас)
+  // свернуть стену — невидимой кнопкой в левом нижнем углу (.grimx, как у Гримуара Шпиона): игроки не закроют её случайно
+  // и не увидят чужих ролей на экране рассказчика (заметка пользователя 2026-10-16)
   return `<div class="ov wallov" role="dialog" aria-label="Каменная стена: выдача ролей">
     <div class="wall ${UI.wallAnim ? 'roll' : ''}"><div class="wscroll">
-      <div class="wtop"><button class="wbtn" data-act="wallHide" aria-label="Свернуть стену">×</button>
+      <div class="wtop"><span aria-hidden="true"></span>
         <div class="wturn">${!turn ? '<b>Все роли выданы</b>' : others.length > 1
           // очередь по кругу; другой игрок — выбором из списка (компактно, не занимает экран)
           ? `<label for="wsel">Ячейку открывает</label><span class="wsel"><select id="wsel" data-act="drawTurn" aria-label="Кто открывает ячейку" ${d.open !== null ? 'disabled' : ''}>${others.map(id => `<option value="${id}" ${id === d.turn ? 'selected' : ''}>${esc(E.nm(S, id))}</option>`).join('')}</select><span aria-hidden="true">▾</span></span>`
@@ -1287,6 +1298,7 @@ function wallOverlay() {
       <div class="wgrid">${cells}</div>
       <div class="whint">${turn ? 'Нажмите на светящуюся ячейку' : '<button class="btn primary" data-act="wallHide">Готово</button>'}</div>
     </div></div>
+    <button class="grimx" data-act="wallHide" aria-label="Свернуть стену"></button>
     ${open ? (() => { const op = E.P(S, open.pid), r = (op && seenRole(op)) || E.drawShown(open), al = isGoodRole(r) ? 'good' : 'evil';
       // ячейка «распахивается»: роль вырастает из её места на стене; за иконкой — вспышка и магический круг цвета её рун.
       // Имени нет — только «Ваша роль»; закрыть можно через 3 секунды (подсказка появляется тогда же)
@@ -1348,7 +1360,9 @@ function viewLog() {
   const cls = e => e.k === 'death' ? 'death' : e.k === 'revive' || /воскреш|снова жив/i.test(e.t) ? 'revive' : e.k === 'save' ? 'saved' : /отрав|травит|пьян|напои/i.test(e.t) ? 'poison' : e.k;
   const txt = e => esc(e.t).replace(/(отрав[а-яё]*|травит|пьян[а-яё]*|напои[а-яё]*|трезв[а-яё]*|защи[щт][а-яё]*|прокл[а-яё]*|помешан[а-яё]*|безуми[а-яё]*|воскреш[а-яё]*|снова жив)/gi, '<b>$1</b>');
   const row = e => logEditable(e) ? `<button class="e ${cls(e)} edit" data-act="logEdit" data-arg="${e.r}"><span>${txt(e)}</span><span class="ed" aria-hidden="true">✎</span></button>` : `<div class="e ${cls(e)}">${txt(e)}</div>`;
-  return `<div class="card"><h3>Журнал</h3>${any ? '<div class="small muted">Записи с ✎ — выбор последней ночи: нажмите, чтобы изменить (игрок не понял, шаг пропущен, ошибка). Сначала приложение покажет, что это изменит.</div>' : ''}
+  // Савант в игре — кнопка со всеми сказанными ему фактами и пометками П/Л (заметка пользователя 2026-10-16)
+  const sav = (S.flags.savantFacts || []).length || S.players.some(p => p.role === 'savant');
+  return `<div class="card"><div class="row ghead"><h3>Журнал</h3>${sav ? `<button class="btn" data-act="savFacts">Факты Саванта${(S.flags.savantFacts || []).length ? ` · ${S.flags.savantFacts.length}` : ''}</button>` : ''}</div>${any ? '<div class="small muted">Записи с ✎ — выбор последней ночи: нажмите, чтобы изменить (игрок не понял, шаг пропущен, ошибка). Сначала приложение покажет, что это изменит.</div>' : ''}
     <div class="log">${groups.slice().reverse().map(g => `<div class="ph">${esc(phaseName(g.p))}</div>${g.items.map(row).join('')}`).join('') || '<div class="muted">Пока пусто</div>'}</div></div>`;
 }
 // правка выбора шага из журнала: поля шага в том состоянии, в каком он был (до него); «Что изменится» — переигрывание ночи
@@ -1482,17 +1496,28 @@ function viewOver() {
   return `<div class="phase-wrap">${art(r.winner === 'good' ? 'win_good' : 'win_evil', 'win-art')}</div><div class="banner"><div class="w">${r.winner === 'good' ? 'Победа добра' : 'Победа зла'}</div><div>${esc(r.reason)}</div></div>
     ${politicianHtml()}${viewTable()}${viewLog()}`;
 }
-// Политик (вики): игра окончена, его команда проиграла — если больше всех виноват он, он меняет сторону и тоже побеждает
-// (решает рассказчик; пьяный или отравленный — не меняет). Сценарий Blind Hunt, 2026-10-15
+// Политик (вики): если больше всех виноват в поражении своей команды — меняет сторону и побеждает (пьяный или отравленный — нет).
+// Игра окончена — до объявления победы окно со статистикой: сколько номинировал сам и за казнь кого голосовал; кнопки «Добрый»
+// (синяя) и «Злой» (красная) — на чьей стороне Политик в итоге (заметка пользователя 2026-10-16)
 function politicianHtml() {
-  const r = S.result, list = S.players.filter(p => p.role === 'politician' && p.align !== r.winner && !S.flags['polWon_' + p.id]);
-  const done = S.players.filter(p => p.role === 'politician' && S.flags['polWon_' + p.id]);
-  if (!list.length && !done.length) return '';
-  return `<div class="card"><h3>Политик</h3>${done.map(p => `<div class="note-ok">${esc(p.name)} меняет сторону и побеждает вместе ${r.winner === 'good' ? 'с добром' : 'со злом'}.</div>`).join('')}
-    ${list.map(p => { const off = E.abilityOff(S, p);
-      return `<div class="small"><b>${esc(p.name)}</b> (${p.align === 'good' ? 'добрый' : 'злой'}) — его команда проиграла. ${off ? `Политик ${esc(off)}: сторону не меняет.`
-        : `Если вы считаете, что поражение — во многом из-за его слов и поступков (больше, чем из-за любого другого игрока его команды), объявите: Политик становится ${r.winner === 'good' ? 'добрым' : 'злым'} и тоже побеждает.`}</div>
-      ${off ? '' : `<button class="btn" data-act="polWin" data-arg="${p.id}">Политик меняет сторону и побеждает</button>`}`; }).join('')}</div>`;
+  const r = S.result, done = S.players.filter(p => p.role === 'politician' && S.flags['polDone_' + p.id]);
+  if (!done.length) return '';
+  return `<div class="card"><h3>Политик</h3>${done.map(p => `<div class="${p.align === r.winner ? 'note-ok' : 'small'}">${esc(p.name)} в итоге ${p.align === 'good' ? 'добрый' : 'злой'} —
+    ${p.align === r.winner ? 'побеждает' : 'проигрывает'} вместе ${p.align === 'good' ? 'с добром' : 'со злом'}.</div>`).join('')}</div>`;
+}
+function polOverlay() {
+  const p = E.politiciansPending(S)[0]; if (!p) return '';
+  const r = S.result, st = E.politicianStats(S, p.id), off = E.abilityOff(S, p);
+  const row = (l, v) => `<tr><td>${l}</td><td><b>${v}</b></td></tr>`;
+  return `<div class="ov editres" role="alertdialog" aria-label="Политик"><div class="erbox statbox polbox">
+    <div class="lab">Игра окончена — до объявления победы</div><h3>Политик: ${esc(p.name)}</h3>
+    <div class="small muted">Победа ${r.winner === 'good' ? 'добра' : 'зла'}. Вики: если поражение своей команды — больше всего из-за слов и поступков Политика, он меняет сторону и тоже побеждает. Решаете вы.</div>
+    <div class="small">Сейчас: <b class="t-${p.align === 'good' ? 'townsfolk' : 'demon'}">${p.align === 'good' ? 'добрый' : 'злой'}</b>${off ? ` · <b>${esc(off)}</b> — по вики сторону не меняет` : ''}</div>
+    <table class="dist polstat">${row('Номинировал сам', `${st.noms} (добрых ${st.nomGood}, злых ${st.nomEvil})`)}
+      ${row('Голосовал за казнь добрых', st.voteGood)}${row('Голосовал за казнь злых', st.voteEvil)}</table>
+    <div class="small muted">Сторона — на момент номинации или голосования.</div>
+    <div class="flabel"><span>На чьей стороне Политик в итоге?</span></div>
+    <div class="confirm"><button class="btn pgood" data-act="polSide" data-arg="${p.id}|good">Добрый</button><button class="btn pevil" data-act="polSide" data-arg="${p.id}|evil">Злой</button></div></div></div>`;
 }
 
 function render() {
@@ -1520,13 +1545,13 @@ function render() {
       <button class="hundo" data-act="undo" ${last ? '' : 'disabled'} aria-label="${last ? esc('Отменить: ' + last.label) : 'Нечего отменять'}" title="${last ? esc('Отменить: ' + last.label) : ''}">↶</button><span class="save"></span></header>
     <main>${body}</main>
     <nav class="tabs">${[['game', S.phase === 'night' ? 'Ночь' : S.phase === 'day' ? 'День' : 'Игра'], ['table', 'Гримуар'], ['log', 'Журнал'], ['roles', 'Роли'], ['menu', 'Ещё']].map(([k, l]) => `<button class="${UI.tab === k ? 'on' : ''}" data-act="tab" data-arg="${k}">${l}</button>`).join('')}</nav>
-    ${legendOverlay()}${wallOverlay()}${grimOverlay()}${ringOverlay()}${sheetOverlay()}${editOverlay()}${fateOverlay()}${statOverlay()}${tipHtml()}${gossipAskHtml()}${exeAskHtml()}${exeResHtml()}${showOverlay()}${noteViewOverlay()}`;
+    ${legendOverlay()}${wallOverlay()}${grimOverlay()}${ringOverlay()}${sheetOverlay()}${editOverlay()}${fateOverlay()}${statOverlay()}${tipHtml()}${savFactsHtml()}${ghostLostHtml()}${polOverlay()}${gossipAskHtml()}${exeAskHtml()}${exeResHtml()}${showOverlay()}${noteViewOverlay()}`;
   // круг рассадки — только на подготовке, круг номинации — только днём, Гримуар кругом — во время игры (после смены фазы закрываются сами)
   if ((UI.ring === 'seat' && S.phase !== 'setup') || ((UI.ring === 'nom' || UI.ring === 'pick') && S.phase !== 'day') || (UI.ring === 'grim' && S.phase === 'setup')) UI.ring = null;
   // под полноэкранными слоями страница не прокручивается
   if (UI.fate && !(S.phase === 'day' && S.day.picks && S.day.picks.fate)) UI.fate = false; // день кончился — выбор казни закрыт
   if (UI.stat && S.phase !== 'day') UI.stat = false;
-  document.documentElement.classList.toggle('locked', !!(UI.show || UI.legend || UI.ring || UI.noteView || UI.edit || UI.fate || UI.stat || UI.tip || UI.gossipAsk || UI.exeAsk || UI.exeRes || (UI.open && E.P(S, UI.open)) || (UI.wall && S.draw) || (UI.grimShow && S.phase === 'night')));
+  document.documentElement.classList.toggle('locked', !!(UI.show || UI.legend || UI.ring || UI.noteView || UI.edit || UI.fate || UI.stat || UI.tip || UI.savFacts || UI.ghostLost || E.politiciansPending(S).length || UI.gossipAsk || UI.exeAsk || UI.exeRes || (UI.open && E.P(S, UI.open)) || (UI.wall && S.draw) || (UI.grimShow && S.phase === 'night')));
   app.querySelectorAll('details > summary').forEach(s => { if (opened.has(s.textContent)) s.parentElement.open = true; });
   if (UI.tab === 'roles') filterRefs();
   paintSave();
@@ -1628,7 +1653,7 @@ const A = {
   ringPickOpen: arg => { const [kind, a] = arg.split('|'); UI.ringPick = { kind, arg: a }; UI.ring = 'pick'; render(); },
   madExe: arg => { const [pid, src] = arg.split('|'), before = exeMark(); act(S => E.madnessExecute(S, pid, src), 'казнь за нарушенное безумие'); window.scrollTo(0, 0); showExeResult(before); },
   harpyKill: arg => act(S => E.harpyKill(S, arg.split(',')), 'Гарпия: смерть'),
-  polWin: id => act(S => { const p = E.P(S, id); S.flags['polWon_' + id] = true; p.align = S.result.winner; E.log(S, `Политик (${p.name}) меняет сторону и побеждает вместе ${S.result.winner === 'good' ? 'с добром' : 'со злом'}`, 'win'); }, 'Политик'),
+  polSide: arg => { const [id, a] = arg.split('|'); act(S => E.politicianSide(S, id, a), 'Политик: ' + (a === 'good' ? 'добрый' : 'злой')); },
   pmGuess: id => { const pm = E.P(S, id), st = pmState(pm); if (!st.g || !st.told) return;
     act(S => { E.puzzleGuess(S, id, st.g, st.told); S.day.picks['pmg_' + id] = []; S.day.picks['pmt_' + id] = []; }, 'догадка Головоломщика'); },
   damselGuess: () => { const by = (S.day.picks.dgBy || [])[0], on = (S.day.picks.dgOn || [])[0]; if (by && on) act(S => { E.damselGuess(S, by, on); S.day.picks.dgBy = []; S.day.picks.dgOn = []; }, 'догадка о Девице'); },
@@ -1671,7 +1696,10 @@ const A = {
     showExeResult(before); // Девственница: номинировавший Горожанин казнён
   },
   vote: arg => { const id = arg.split('|')[1]; draft(S => { const v = S.day.draft.voters; if (v.includes(id)) v.splice(v.indexOf(id), 1); else v.push(id); }); },
-  voteDone: () => { const d0 = clone(S.day.draft); act(S => { E.recordVote(S, d0.on, d0.voters); S.day.draft = { by: null, on: null, voters: [], stage: 'pick', spy: false }; }); },
+  voteDone: () => { const d0 = clone(S.day.draft), lost = E.ghostSpent(S, d0.voters).map(p => p.name);
+    act(S => { E.recordVote(S, d0.on, d0.voters); S.day.draft = { by: null, on: null, voters: [], stage: 'pick', spy: false }; });
+    if (lost.length) { UI.ghostLost = lost; render(); } }, // окно: кто лишился последнего голоса (заметка пользователя 2026-10-16)
+  ghostLostClose: () => { UI.ghostLost = null; render(); },
   voteCancel: () => act(S => { S.day.draft = { by: null, on: null, voters: [], stage: 'pick', spy: false }; }, 'номинация отменена'),
   pacifist: () => draft(S => { S.day.picks.pacifist = !S.day.picks.pacifist; }),
   // «Завершить день»: если казнят доброго при Пацифисте или Психопата — сначала окно с решением (заметка пользователя 2026-10-14),
@@ -1769,7 +1797,12 @@ const A = {
   drawStart: () => { if (S.draw) return wallIn(); const pr = E.drawProblem(S); if (pr) return alertNote(pr); act(S => E.drawStart(S), 'жребий: стена'); wallIn(); },
   // Савант, Рыбак, Мецефель (день)
   savGen: id => draft(S => { S.day.picks['sav_' + id] = IDEAS.savantPair(S, id); }),
-  savLog: id => { const pair = S.day.picks['sav_' + id]; if (pair) act(S => E.log(S, `Савант (${E.nm(S, id)}): ${pair.map(x => `«${x.text}» — ${x.truth ? 'правда' : 'ложь'}`).join('; ')}`, 'day'), 'факты Саванта'); },
+  savLog: id => { const pair = S.day.picks['sav_' + id]; if (pair) act(S => {
+    S.flags.savantFacts = (S.flags.savantFacts || []).concat({ n: S.n, pid: id, facts: pair.map(x => ({ text: x.text, truth: !!x.truth })) });
+    S.day.picks['sav_' + id] = null;
+    E.log(S, `Савант (${E.nm(S, id)}): ${pair.map(x => `«${x.text}» — ${x.truth ? 'правда' : 'ложь'}`).join('; ')}`, 'day'); }, 'факты Саванта'); },
+  savFacts: () => { UI.savFacts = true; render(); },
+  savFactsClose: () => { UI.savFacts = false; render(); },
   fishGen: id => draft(S => { S.day.picks['fish_' + id] = IDEAS.fishermanAdvice(S, id); S.day.picks['fishSel_' + id] = null; }),
   fishPick: arg => { const [id, i] = arg.split('|'); draft(S => { S.day.picks['fishSel_' + id] = S.day.picks['fish_' + id][+i]; }); },
   fishUse: id => { const t = S.day.picks['fishSel_' + id]; act(S => { S.flags['fishUsed_' + id] = true; E.log(S, `Рыбак (${E.nm(S, id)}) получает совет: «${t}»`, 'day'); }, 'совет Рыбаку'); },
@@ -1859,6 +1892,25 @@ function exeAskHtml() {
   return `<div class="ov editres" role="alertdialog" aria-label="Решение о казни"><div class="statbg" data-act="exeAskClose"></div><div class="erbox statbox">${body}
     <button class="btn wide" data-act="exeAskClose">Отмена — вернуться к дню</button></div></div>`;
 }
+// после подсчёта голосов: мёртвые, которые проголосовали и потратили голос призрака
+const shroudMini = () => SHROUD_SVG.replace('class="shroud"', 'class="glmini"');
+function ghostLostHtml() {
+  const list = UI.ghostLost; if (!list || !list.length || S.phase !== 'day') return '';
+  return `<div class="ov editres" role="alertdialog" aria-label="Голоса призраков"><div class="statbg" data-act="ghostLostClose"></div><div class="erbox statbox">
+    <h3>Последнего голоса лишились</h3><div class="ghostlost">${list.map(n => `<div>${shroudMini()}<b>${esc(n)}</b></div>`).join('')}</div>
+    <div class="small muted">Голос призрака потрачен — больше эти игроки голосовать не могут.</div>
+    <button class="btn primary wide" data-act="ghostLostClose">Понятно</button></div></div>`;
+}
+// все факты, сказанные Саванту за игру: по дням, П — правда, Л — ложь
+function savFactsHtml() {
+  if (!UI.savFacts) return '';
+  const list = S.flags.savantFacts || [];
+  const body = list.length ? list.map(x => `<div class="savday"><div class="lab">День ${x.n}${S.players.filter(p => p.role === 'savant').length > 1 ? ` · ${esc(E.nm(S, x.pid))}` : ''}</div>
+    ${x.facts.map(f => `<div class="savf"><b class="savtag ${f.truth ? 't' : 'f'}">${f.truth ? 'П' : 'Л'}</b><span>${esc(f.text)}</span></div>`).join('')}</div>`).join('')
+    : '<div class="small muted">Пока ни одного факта не сказано. Факты попадают сюда кнопкой «Сказано — записать» на экране дня.</div>';
+  return `<div class="ov editres" role="dialog" aria-label="Факты Саванта"><div class="statbg" data-act="savFactsClose"></div><div class="erbox statbox">
+    <h3>Факты Саванта</h3>${body}<button class="btn wide" data-act="savFactsClose">Закрыть</button></div></div>`;
+}
 // окно с советами вики (Яга создала Демона): {title, lines, src}
 function tipHtml() {
   const t = UI.tip; if (!t) return '';
@@ -1870,7 +1922,7 @@ function tipHtml() {
 function gossipAskHtml() {
   const a = UI.gossipAsk, p = a && E.P(S, a.pid); if (!p || S.phase !== 'day') return '';
   return `<div class="ov editres" role="alertdialog" aria-label="Сплетница"><div class="statbg" data-act="gossipClose"></div><div class="erbox statbox">
-    <h3>Сплетница: ${esc(p.name)}</h3>${p.role !== 'gossip' ? `<div class="small muted">На самом деле ${esc(E.rname(p.role))} — считает себя Сплетницей.</div>` : ''}
+    <h3>Сплетница</h3>${p.role !== 'gossip' ? `<div class="small muted">На самом деле ${esc(E.rname(p.role))} — считает себя Сплетницей.</div>` : ''}
     <div>Сделала ли Сплетница сегодня публичное заявление?</div>
     <div class="small muted">Вики: считается только ясное заявление, которое слышали все и про которое вы знаете, верно оно или нет. Верное — этой ночью кто-то умирает (выберете на её шаге); неверное или не было — никто.</div>
     <textarea id="gossipText" placeholder="Заявление — необязательно, напомнит ночью" aria-label="Заявление Сплетницы"></textarea>

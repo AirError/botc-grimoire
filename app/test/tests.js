@@ -1070,8 +1070,43 @@ try {
     ok('Головоломщик: догадка одна за игру', G.flags['puzzleUsed_' + pm.id] && E.hasTok(pm, 'guessused') && !E.puzzleGuess(G, pm.id, pmDrunk.id, byRole(G, 'imp').id));
   }
 
+  // 35. заметки пользователя 2026-10-16: рассвет с воскрешением, Савант, Политик
+  {
+    const mb = morningText([], false, 3, ['Женя']), mm = morningText(['Саша'], false, 5, ['Женя']), m0 = morningText([], false, 1, []);
+    ok('рассвет: ожил — свои тексты; смерть и воскрешение — свои', mb.total === MORNING.back.length && /Женя/.test(mb.text) && !/\{/.test(mb.text)
+      && mm.total === MORNING.mixed.length && /Женя/.test(mm.text) && /Саша/.test(mm.text) && !/\{/.test(mm.text) && m0.total === MORNING.none.length, mb.text + ' | ' + mm.text);
+    let G = game(['savant', 'chef', 'empath', 'monk', 'soldier', 'mayor', 'poisoner', 'spy', 'imp'], 'snv'); E.autoSetup(G, true); E.startGame(G); runNight(G);
+    const sv = byRole(G, 'savant');
+    let bad3 = 0, rep = 0;
+    for (let k = 0; k < 200; k++) { const pr = IDEAS.savantPair(G, sv.id); if (!pr) continue;
+      if (pr.some(x => !x.truth && /злых: 3\./.test(x.text))) bad3++; }
+    const first = IDEAS.savantPair(G, sv.id); G.flags.savantFacts = [{ n: 1, pid: sv.id, facts: first }];
+    for (let k = 0; k < 100; k++) { const pr = IDEAS.savantPair(G, sv.id); if (pr && pr.some(x => first.some(f => f.text === x.text))) rep++; }
+    ok('Савант: ложь «злых: 3» не выдаётся; сказанные факты не повторяются', bad3 === 0 && rep === 0, `ложь 3: ${bad3}, повторов: ${rep}`);
+    G = game(['washerwoman', 'politician', 'empath', 'monk', 'soldier', 'chef', 'poisoner', 'imp'], 'blindhunt'); E.autoSetup(G, true); E.startGame(G); runNight(G);
+    const pol = byRole(G, 'politician'), mk = byRole(G, 'monk'), po = byRole(G, 'poisoner');
+    E.nominate(G, pol.id, mk.id); E.recordVote(G, mk.id, [pol.id, po.id]);
+    E.nominate(G, po.id, po.id); E.recordVote(G, po.id, [pol.id]);
+    const ps = E.politicianStats(G, pol.id);
+    ok('Политик: статистика номинаций и голосов', ps.noms === 1 && ps.nomGood === 1 && ps.voteGood === 1 && ps.voteEvil === 1, JSON.stringify(ps));
+    E.endGame(G, 'evil', 'тест');
+    ok('Политик: до объявления победы — решение о стороне', E.politiciansPending(G).includes(pol));
+    E.politicianSide(G, pol.id, 'evil');
+    ok('Политик: выбрали «Злой» — злой и побеждает со злом', pol.align === 'evil' && !E.politiciansPending(G).length);
+    // голосование: сколько нужно для казни и для отмены; кто тратит голос призрака
+    G = game(['washerwoman', 'librarian', 'empath', 'monk', 'soldier', 'chef', 'poisoner', 'imp'], 'tb'); E.autoSetup(G, true); E.startGame(G); runNight(G);
+    const [a0, a1, a2, a3, a4, a5] = G.players;
+    const th = E.voteThreshold(G), n0 = E.voteNeeds(G);
+    E.nominate(G, a0.id, a1.id); E.recordVote(G, a1.id, G.players.slice(0, th + 1).map(p => p.id));
+    const n1 = E.voteNeeds(G);
+    ok('голосование: для казни — порог; кто-то на плахе — на 1 больше, для отмены — столько же', n0.exec === th && n0.cancel === null && n1.exec === th + 2 && n1.cancel === th + 1, JSON.stringify([th, n0, n1]));
+    a5.alive = false; a5.ghost = true; a4.alive = false; a4.ghost = false;
+    const gs = E.ghostSpent(G, [a5.id, a4.id, a3.id]);
+    ok('голос призрака: тратит только мёртвый, у которого он был', gs.length === 1 && gs[0] === a5);
+  }
+
   // 30. казнь на выбор: 30 одобренных текстов, у каждого — имя казнённого и своё название
-  ok('казни: 30 историй, названия разные, в каждой есть имя', EXECUTIONS.length === 30 && new Set(EXECUTIONS.map(x => x.t)).size === 30
+  ok('казни: 37 историй, названия разные, в каждой есть имя', EXECUTIONS.length === 37 && new Set(EXECUTIONS.map(x => x.t)).size === 37
     && EXECUTIONS.every(x => x.t && x.s.includes('{name}') && !/\[Имя\]/.test(x.s)));
 
   for (const k of Object.keys(DATA.scripts)) ok('сценарий ' + k + ' — все роли в данных', DATA.scripts[k].roles.every(r => DATA.roles[r]));

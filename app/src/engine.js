@@ -900,6 +900,7 @@ function nominate(S, byId, onId, opts) {
   if (by) d.nominators.push(byId);
   d.nominated.push(onId); d.lastNom = { by: byId, on: onId, butcher: !!d.butcherOpen };
   d.nomBy = Object.assign({}, d.nomBy, { [onId]: byId }); // кто кого номинировал (Психопат играет с номинировавшим)
+  S.flags.nomHist = (S.flags.nomHist || []).concat({ n: S.n, by: by ? byId : null, on: onId, onAlign: on.align }); // история для итога Политика
   if (by && realTeam(by) === 'minion') d.minionNominated = true;
   log(S, `${by ? by.name : 'Рассказчик'} номинирует ${on.name}${d.butcherOpen ? ' (Мясник, после казни)' : ''}`, 'day');
   if (!by) { if (actsAs(on) === 'virgin') S.flags['virginUsed_' + on.id] = true; return res; }
@@ -941,11 +942,24 @@ function recordVote(S, onId, voterIds) {
   const count = voteCount(S, voterIds), raw = voterIds.length;
   Object.assign(nomi, { voters: voterIds.slice(), count, open: false, butcher: !!d.butcherOpen });
   if (!d.noms.includes(nomi)) d.noms.push(nomi);
+  // история голосов за всю игру (итог Политика): сторона номинированного — на момент голосования
+  S.flags.voteHist = (S.flags.voteHist || []).concat({ n: S.n, on: onId, onAlign: P(S, onId) ? P(S, onId).align : null, voters: voterIds.slice() });
   d.butcherOpen = false; // Мясник номинирует ещё раз только однажды
   log(S, `Голосование за ${nm(S, onId)}: ${count}${count !== raw ? ` (рук ${raw})` : ''} (нужно ${voteThreshold(S)})`, 'day');
   return block(S);
 }
 
+// кто из голосующих сейчас потратит голос призрака: мёртвые, у которых он ещё был (при Шамане Вуду голос не тратится).
+// После подсчёта — окно «последнего голоса лишились» (заметка пользователя 2026-10-16)
+const ghostSpent = (S, voterIds) => voudonActive(S) ? [] : voterIds.map(id => P(S, id)).filter(v => v && !v.alive && v.ghost);
+// сколько голосов нужно текущей номинации (заметка пользователя 2026-10-16): для казни — порог, а если кто-то уже на плахе —
+// на 1 больше, чем у него; для отмены — столько же, сколько у него (ничья — никого не казнят). Номинация Мясника — только порог
+function voteNeeds(S) {
+  const th = voteThreshold(S), d = S.day;
+  if (d.lastNom && d.lastNom.butcher) return { exec: th, cancel: null };
+  const top = Math.max(0, ...d.noms.filter(x => !x.butcher && !x.open && x.count >= th).map(x => x.count));
+  return top ? { exec: top + 1, cancel: top } : { exec: th, cancel: null };
+}
 function block(S) { // кто на плахе: больше всех голосов и не меньше порога; ничья — никто (номинация Мясника — отдельно)
   const th = voteThreshold(S), noms = S.day.noms.filter(x => !x.butcher && x.count >= th);
   if (!noms.length) return null;
@@ -1058,6 +1072,21 @@ function pithagAdvice(S) {
   else if (a.kind === 'evil') lines.push(`Создан новый злой Демон (${who}). Лучше убить старого Демона и ещё одного игрока — это знак добрым, что Демон сменился.`);
   else lines.push(`Создан добрый Демон (${who}). Если это последняя ночь — лучше убить одного из Демонов, чтобы днём был жив только один. Если нет — можно оставить двух Демонов, но осторожно: чтобы победило добро, должны умереть все Демоны.`);
   return { title: 'Яга создала Демона', lines, src: 'Вики, страница Яги (How to Run)' };
+}
+// Политик (вики): в конце игры — если больше всех виноват в поражении своей команды, меняет сторону и побеждает. Перед объявлением
+// победы рассказчик видит его статистику — сколько номинировал сам (добрых / злых) и за казнь кого голосовал — и решает, на чьей
+// он стороне (заметка пользователя 2026-10-16). Сторона номинированного — на момент номинации или голосования
+function politicianStats(S, pid) {
+  const noms = (S.flags.nomHist || []).filter(x => x.by === pid), votes = (S.flags.voteHist || []).filter(x => x.voters.includes(pid));
+  const of = (list, a) => list.filter(x => x.onAlign === a).length;
+  return { noms: noms.length, nomGood: of(noms, 'good'), nomEvil: of(noms, 'evil'), votes: votes.length, voteGood: of(votes, 'good'), voteEvil: of(votes, 'evil') };
+}
+const politiciansPending = S => S.phase === 'over' && S.result ? S.players.filter(p => p.role === 'politician' && !S.flags['polDone_' + p.id]) : [];
+function politicianSide(S, pid, align) {
+  const p = P(S, pid); if (!p || !S.result) return;
+  const was = p.align; p.align = align === 'evil' ? 'evil' : 'good'; S.flags['polDone_' + pid] = true;
+  const win = p.align === S.result.winner;
+  log(S, `Политик (${p.name}) в итоге ${p.align === 'good' ? 'добрый' : 'злой'}${was !== p.align ? ' — меняет сторону' : ''}: ${win ? 'побеждает' : 'проигрывает'} вместе ${p.align === 'good' ? 'с добром' : 'со злом'}`, win ? 'win' : 'day');
 }
 // Сплетница: в конце дня рассказчик отмечает, делала ли она публичное заявление (заметка пользователя 2026-10-15).
 // Спрашиваем о каждой живой «Сплетнице» (и Пьянице, который ею себя считает: он тоже делает заявления)
@@ -2784,7 +2813,7 @@ function klutzChoose(S, pid) {
 }
 
 
-const ENGINE = { canBluff, nightDeaths, revive, psychopathKill, exeQuestions, roleWorks, makeMarionette, makeDrunk, setupRole, storytellerRole, gossipPending, setGossip, pithagAdvice, puzzleHit, puzzleGuess, demonSeatNeighbours, generalGuess, choiceCount, newGame, newPlayer, P, nm, rname, realTeam, actsAs, aliveCount, aliveAll, coreCount, isTraveller, exile, exileThreshold, addTraveller, meetingBlocker, isDemon, distribution, setupDistribution, distCheck, unknownSetup, countTeams, randomDeal,
+const ENGINE = { canBluff, nightDeaths, revive, psychopathKill, exeQuestions, roleWorks, makeMarionette, makeDrunk, setupRole, storytellerRole, gossipPending, setGossip, pithagAdvice, puzzleHit, puzzleGuess, politicianStats, politiciansPending, politicianSide, voteNeeds, ghostSpent, demonSeatNeighbours, generalGuess, choiceCount, newGame, newPlayer, P, nm, rname, realTeam, actsAs, aliveCount, aliveAll, coreCount, isTraveller, exile, exileThreshold, addTraveller, meetingBlocker, isDemon, distribution, setupDistribution, distCheck, unknownSetup, countTeams, randomDeal,
   amnesiacGuess, AMNESIAC_ANSWERS, storytellerKill, voteCount, voteWeight, voudonActive, bishopActive, travellerWorks, executeNow,
   judgeRuling, gunslingerShot, tinkerDies, doomsayerKill, fiddlerEnd, swapSeats, goonWarn, damselGuess, changeRole, madnessExecute, harpyKill,
   finishRoles, autoSetup, setupProblems, drawStart, drawOpen, drawClose, drawCancel, drawShown, drawLocked, drawProblem, distortion,
