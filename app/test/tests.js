@@ -685,6 +685,7 @@ try {
   S = E.newGame('tb'); for (let i = 0; i < 8; i++) S.players.push(E.newPlayer('W' + i)); S.pool = POOL8.slice();
   E.drawStart(S);
   ok('жребий: до открытия ячеек ролей ни у кого нет, жребий не закончен', S.players.every(p => !p.role) && S.draw.cells.length === 8 && S.draw.bag.length === 8 && E.setupProblems(S).some(t => /Жребий не закончен/.test(t)));
+  ok('жребий: роли на экране рассказчика сразу скрыты «шторкой»', S.draw.hidden === true);
   ok('жребий: во время жребия случайная раздача недоступна', E.randomDeal(S) === false && S.players.every(p => !p.role));
   const k0 = S.draw.cells.findIndex(c => !c.pid); E.drawOpen(S, 0); E.drawClose(S);
   ok('жребий: роль выпадает только открывшему ячейку', S.players.filter(p => p.role).length === 1 && S.draw.bag.length === 7, k0);

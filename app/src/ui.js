@@ -526,8 +526,7 @@ const freeRole = p => r => !S.players.some(q => q !== p && q.role === r);
 function dealButtons() {
   const d = S.draw;
   if (d && d.finished) return '<div class="note-ok">Роли выданы жребием (стена). Заново не раздаются; роль можно сменить только на роль сценария, которой нет в игре.</div>';
-  if (d) return `<div class="row"><button class="btn primary" data-act="wallShow">Продолжить жребий</button><button class="btn danger" data-act="drawCancel">Отменить жребий</button></div>
-    <div class="small muted">Пока идёт жребий, роли закреплены за игроками — случайная раздача недоступна.</div>`;
+  if (d) return '<div class="small muted">Идёт жребий (карточка «Выдача ролей» выше): роли закреплены за игроками — случайная раздача недоступна.</div>';
   const prob = E.drawProblem(S);
   return `<div class="row"><button class="btn" data-act="deal">${E.validPool(S) ? 'Раздать выбранные роли случайно' : 'Раздать роли случайно'}</button><button class="btn" data-act="drawStart" ${prob ? 'disabled' : ''}>Жребий: каменная стена</button></div>
     ${prob && S.pool && S.pool.length ? `<div class="small muted">${esc(prob)}</div>` : ''}`;
@@ -602,9 +601,10 @@ function viewSetup() {
       <div class="row" style="flex-wrap:nowrap"><input type="text" id="newName" placeholder="Имя игрока" aria-label="Имя нового игрока"><button class="btn" data-act="addP">Добавить</button></div>
       <details><summary class="small">Вставить список имён</summary><div class="field" style="margin-top:8px"><textarea id="bulkNames" placeholder="Аня, Борис, Вика…"></textarea><button class="btn" data-act="bulk">Заменить список</button></div></details>
       ${travellerForm()}</div>
-    ${roles}${prep}${fabledZone()}
+    ${(n >= 5 && n <= 15) || S.draw ? drawCard() : ''}
+    ${rolesHidden() ? rolesCurtain() : roles + prep}${fabledZone()}
     ${jinx.length ? `<div class="card"><h3>Джинксы</h3>${jinx.map(j => `<div class="small"><b>${esc(E.rname(j.a))} и ${esc(E.rname(j.b))}:</b> ${esc(j.text)}</div>`).join('')}</div>` : ''}
-    ${probs.length ? `<div class="warn">${probs.map(esc).join('<br>')}</div>` : ''}
+    ${probs.length ? `<div class="warn">${rolesHidden() ? 'Подготовка не закончена — покажите роли, чтобы увидеть, что осталось.' : probs.map(esc).join('<br>')}</div>` : ''}
     <button class="btn primary wide" data-act="start" ${probs.length ? 'disabled' : ''}>Начать игру: первая ночь</button>`;
 }
 
@@ -912,11 +912,35 @@ function grimCell(p, i) {
 }
 const bluffsHtml = () => S.bluffs.filter(Boolean).length ? `<div class="gbluffs"><span class="small muted">Блефы Демона</span><div>${S.bluffs.filter(Boolean).map(r => `<span class="gbl">${ico(r, null, 'gbi')}${esc(E.rname(r))}</span>`).join('')}</div></div>` : '';
 // Гримуар: большие квадраты по 3 в ряд — иконка и роль в квадрате, имя игрока под ним; нажатие — карточка игрока
+/* Пароль на «Показать роли» (заметка пользователя 2026-10-16): по умолчанию — заданный пользователем (в коде только его хэш),
+   сменить можно на вкладке «Ещё» → «Защита», только введя текущий. Хранится на этом устройстве (localStorage), хэшем — у сайта
+   на телефоне и у программы на компьютере пароли свои. Защита от случайного взгляда, а не от взлома: код приложения открыт. */
+const PIN_KEY = 'botc-grimoire-pin', PIN_DEFAULT = 'hiwc8w';
+const pinHash = s => { let h = 2166136261; for (const ch of String(s)) { h ^= ch.charCodeAt(0); h = Math.imul(h, 16777619) >>> 0; } return h.toString(36); };
+const pinStored = () => { try { return localStorage.getItem(PIN_KEY) || PIN_DEFAULT; } catch (e) { return PIN_DEFAULT; } };
+const pinCheck = s => pinHash(String(s || '').trim()) === pinStored();
+const pinSave = s => { try { localStorage.setItem(PIN_KEY, pinHash(String(s).trim())); return true; } catch (e) { return false; } };
+function pinAskHtml() {
+  const a = UI.pinAsk; if (!a) return '';
+  return `<div class="ov editres" role="dialog" aria-label="Пароль"><div class="statbg" data-act="pinClose"></div><div class="erbox statbox">
+    <h3>Показать роли</h3><div class="small muted">Введите пароль рассказчика.</div>
+    <input type="password" id="pinIn" inputmode="numeric" autocomplete="off" aria-label="Пароль">
+    ${a.err ? '<div class="warn">Неверный пароль</div>' : ''}
+    <div class="confirm"><button class="btn ok" data-act="pinOk">Показать</button><button class="btn" data-act="pinClose">Отмена</button></div></div></div>`;
+}
+const pinFocus = () => setTimeout(() => { const el = document.getElementById('pinIn'); if (el) el.focus(); }, 30);
+// роли скрыты «шторкой» после стены жребия, пока рассказчик сам не нажмёт «Показать роли» (заметка пользователя 2026-10-16)
+const rolesHidden = () => S.phase === 'setup' && !!S.draw && S.draw.hidden !== false;
+function rolesCurtain() {
+  return `<div class="card curtain"><h3>Роли скрыты</h3><div class="small muted">После стены жребия роли на экране закрыты: вдруг стену случайно закроют при игроках.
+    Убедитесь, что экран видите только вы.</div><button class="btn primary wide" data-act="rolesShow">Показать роли (только для рассказчика)</button></div>`;
+}
 function viewTable() {
+  if (rolesHidden()) return poolCard() + rolesCurtain(); // стена — на вкладке «Игра»; Гримуар с ролями — под «шторкой»
   const cells = S.players.map((p, i) => grimCell(p, i)).join('');
   // «Кругом»: на подготовке — рассадка с перетаскиванием, во время игры — Гримуар рассказчика кругом
   const ringB = S.players.length > 1 ? `<button class="btn ringbtn" data-act="${S.phase === 'setup' ? 'ringSeat' : 'ringGrim'}">◯ Кругом</button>` : '';
-  return `${S.phase === 'setup' ? poolCard() + drawCard() : ''}<div class="card"><div class="row ghead"><h3>Гримуар · ${esc(S.script.name)}</h3><span class="row gbtns">${ringB}<button class="btn lgbtn" data-act="legend" aria-label="Что значат значки"><span class="lgq" aria-hidden="true">?</span>Значки</button></span></div>
+  return `${S.phase === 'setup' ? poolCard() : ''}<div class="card"><div class="row ghead"><h3>Гримуар · ${esc(S.script.name)}</h3><span class="row gbtns">${ringB}<button class="btn lgbtn" data-act="legend" aria-label="Что значат значки"><span class="lgq" aria-hidden="true">?</span>Значки</button></span></div>
     ${cells ? `<div class="grim">${cells}</div>` : '<div class="muted">Игроков пока нет — добавьте их на вкладке «Игра»</div>'}${bluffsHtml()}${S.phase === 'setup' ? '' : travellerForm()}</div>${S.phase === 'setup' ? '' : fabledZone()}`;
 }
 /* ---------- Гримуар для Шпиона и Вдовы — как в игре: жетоны по кругу, напоминания — к центру ---------- */
@@ -1073,7 +1097,7 @@ function ringPick(key, n, filter, sel) {
 function seatRing() {
   const n = S.players.length, g = ringGeom(Math.max(n, 1), false, 250);
   // назначение для жребия и раздачи (роль или тип) — под именем; нажатие на место открывает карточку игрока, там его и меняют
-  const asg = p => { const a = !p.role && !E.isTraveller(p) && (S.assign || {})[p.id]; return a ? `<span class="rasg">→ ${esc(assignLabel(a))}</span>` : ''; };
+  const asg = p => { const a = !rolesHidden() && !p.role && !E.isTraveller(p) && (S.assign || {})[p.id]; return a ? `<span class="rasg">→ ${esc(assignLabel(a))}</span>` : ''; }; // роли скрыты — и назначения тоже
   const seats = S.players.map((p, i) => seatHtml(p, i, g, 'drag', `data-rdrag="${p.id}"`, asg(p))).join('');
   return `<div class="ov ringov" role="dialog" aria-label="Рассадка по кругу">
     <div class="ringtop"><span></span><b>Рассадка</b><button class="wbtn" data-act="ringClose" aria-label="Закрыть">×</button></div>
@@ -1221,14 +1245,16 @@ function drawCard() {
   const src = (E.validPool(S) ? 'В мешочке — выбранные «Роли на игру».' : 'Роли на игру не выбраны — приложение наберёт их по раскладке случайно.')
     + (held && !d ? ` Роли, уже выданные игрокам (${held}), останутся за ними.` : '');
   // кто ещё не открыл ячейку: нажатие — карточка игрока, там можно назначить роль или тип роли
-  const waiting = d && !d.finished ? core.filter(p => !p.role) : [];
+  const waiting = d && !d.finished ? core.filter(p => !p.role) : [], hid = rolesHidden();
+  // роли открыты — можно снова закрыть «шторкой» (например, перед тем как снова выкатить стену)
+  const hideBtn = d && !hid ? '<button class="btn" data-act="rolesHide">Скрыть роли</button>' : '';
   return `<div class="card drawcard"><h3>Выдача ролей · каменная стена</h3>
-    <div class="small muted">Игроки по кругу открывают светящиеся ячейки — как тянут жетон из мешочка: роли разложены по ячейкам в случайном порядке, и какую ячейку игрок выберет, ту роль и получит. Где какая роль, не видит никто, и вы тоже. ${src} Пока игрок не открыл ячейку, в его карточке можно назначить роль или тип роли — назначенное выпадет ему из любой ячейки. Пьяница увидит роль, которой себя считает. Свернуть стену — невидимой кнопкой в <b>левом нижнем углу</b> экрана.</div>
-    ${!ok ? '<div class="warn">Нужно от 5 до 15 игроков (без Странников) — рассадку заполните на вкладке «Игра».</div>'
-      : d && d.finished ? '<div class="note-ok">Роли выданы жребием. Заново их не раздать; роль можно сменить только на роль сценария, которой нет в игре.</div>'
+    <div class="small muted">Игроки по кругу открывают светящиеся ячейки — как тянут жетон из мешочка: роли разложены по ячейкам в случайном порядке, и какую ячейку игрок выберет, ту роль и получит. Где какая роль, не видит никто, и вы тоже. ${src} Пока игрок не открыл ячейку, в его карточке можно назначить роль или тип роли — назначенное выпадет ему из любой ячейки. Пьяница увидит роль, которой себя считает. Свернуть стену — невидимой кнопкой в <b>левом нижнем углу</b> экрана; после неё роли на экране закрыты, пока вы не нажмёте «Показать роли».</div>
+    ${!ok ? '<div class="warn">Нужно от 5 до 15 игроков (без Странников).</div>'
+      : d && d.finished ? `<div class="note-ok">Роли выданы жребием. Заново их не раздать; роль можно сменить только на роль сценария, которой нет в игре.</div>${hideBtn}`
       : d ? `<div class="note-ok">Жребий идёт: осталось ячеек — ${left}. Очередь: ${esc(E.nm(S, d.turn))}</div>
-        ${waiting.length ? `<div class="flabel"><span>Ещё не открыли — нажмите, чтобы назначить роль или тип</span></div><div class="seg">${waiting.map(p => `<button data-act="openP" data-arg="${p.id}">${esc(p.name)}${(S.assign || {})[p.id] ? ' → ' + esc(assignLabel(S.assign[p.id])) : ''}</button>`).join('')}</div>` : ''}
-        <div class="row"><button class="btn primary" data-act="wallShow">Продолжить жребий</button><button class="btn danger" data-act="drawCancel">Отменить жребий</button></div>`
+        ${waiting.length ? `<div class="flabel"><span>Ещё не открыли — нажмите, чтобы назначить роль или тип</span></div><div class="seg">${waiting.map(p => `<button data-act="openP" data-arg="${p.id}">${esc(p.name)}${!hid && (S.assign || {})[p.id] ? ' → ' + esc(assignLabel(S.assign[p.id])) : ''}</button>`).join('')}</div>` : ''}
+        <div class="row"><button class="btn primary" data-act="wallShow">Продолжить жребий</button><button class="btn danger" data-act="drawCancel">Отменить жребий</button>${hideBtn}</div>`
       : prob ? `<div class="warn">${esc(prob)}</div>`
       : '<button class="btn primary wide" data-act="drawStart">Выкатить стену</button>'}</div>`;
 }
@@ -1296,7 +1322,7 @@ function wallOverlay() {
           : `<span>Ячейку открывает</span><b>${esc(turn.name)}</b>`}</div>
         <button class="wbtn" data-act="undo" ${HISTORY.length ? '' : 'disabled'} aria-label="Отменить последнее">↶</button></div>
       <div class="wgrid">${cells}</div>
-      <div class="whint">${turn ? 'Нажмите на светящуюся ячейку' : '<button class="btn primary" data-act="wallHide">Готово</button>'}</div>
+      <div class="whint">${turn ? 'Нажмите на светящуюся ячейку' : 'Все роли выданы. Верните телефон рассказчику'}</div>
     </div></div>
     <button class="grimx" data-act="wallHide" aria-label="Свернуть стену"></button>
     ${open ? (() => { const op = E.P(S, open.pid), r = (op && seenRole(op)) || E.drawShown(open), al = isGoodRole(r) ? 'good' : 'evil';
@@ -1432,7 +1458,8 @@ function refScriptSelect() {
 function refCard(rid) {
   const r = DATA.roles[rid], g = DATA.guide[rid] || {}, li = a => (a || []).map(t => `<li>${esc(t)}</li>`).join('');
   const setup = (r.ability.match(/\[[^\]]+\]/) || [])[0];
-  const who = S.players.filter(p => p.role === rid || p.gained === rid || p.believes === rid).map(p => p.name + (p.role !== rid ? ` (${p.gained === rid ? 'способность' : 'считает себя'})` : ''));
+  // после стены роли скрыты — справочник тоже не говорит, у кого роль
+  const who = rolesHidden() ? [] : S.players.filter(p => p.role === rid || p.gained === rid || p.believes === rid).map(p => p.name + (p.role !== rid ? ` (${p.gained === rid ? 'способность' : 'считает себя'})` : ''));
   const jx = Object.entries(DATA.jinxes).filter(([k]) => k.split('|').includes(rid)).map(([k, t]) => `<li><b>${esc(E.rname(k.split('|').find(x => x !== rid) || rid))}:</b> ${esc(t)}</li>`).join('');
   const night = (lab, txt) => `<div><b>${lab}:</b> ${txt ? fmtInstr(txt) : '<span class="muted">не просыпается</span>'}</div>`;
   return `<div class="refcard">
@@ -1488,7 +1515,13 @@ function viewMenu() {
       <button class="btn" data-act="copyJson">Скопировать игру</button>${UI.copied ? `<div class="note-ok">${esc(UI.copied)}</div>` : ''}
       <textarea id="importJson" data-act="importText" placeholder="Вставьте сюда скопированную игру">${esc(UI.importText)}</textarea>
       <button class="btn" data-act="importJson">Загрузить игру</button></div>
-    <div class="card"><h3>О приложении</h3><div class="small muted">Тексты ролей, ночной порядок и джинксы — из официальных данных The Pandemonium Institute (русский перевод). Где правила оставляют выбор рассказчику, приложение подсказывает, но решаете вы.</div></div>`;
+    <div class="card"><h3>О приложении</h3><div class="small muted">Тексты ролей, ночной порядок и джинксы — из официальных данных The Pandemonium Institute (русский перевод). Где правила оставляют выбор рассказчику, приложение подсказывает, но решаете вы.</div></div>
+    <div class="card"><h3>Защита</h3><div class="small muted">Пароль нужен, чтобы показать роли после стены жребия. Он хранится только на этом устройстве; сменить его можно, только зная текущий.</div>
+      <input type="password" id="pinOld" inputmode="numeric" autocomplete="off" placeholder="Текущий пароль" aria-label="Текущий пароль">
+      <input type="password" id="pinNew" autocomplete="off" placeholder="Новый пароль (не короче 4 символов)" aria-label="Новый пароль">
+      <input type="password" id="pinNew2" autocomplete="off" placeholder="Новый пароль ещё раз" aria-label="Повтор нового пароля">
+      <button class="btn" data-act="pinChange">Сменить пароль</button>
+      ${UI.pinMsg ? `<div class="${UI.pinMsg.ok ? 'note-ok' : 'warn'}">${esc(UI.pinMsg.t)}</div>` : ''}</div>`;
 }
 
 function viewOver() {
@@ -1545,13 +1578,13 @@ function render() {
       <button class="hundo" data-act="undo" ${last ? '' : 'disabled'} aria-label="${last ? esc('Отменить: ' + last.label) : 'Нечего отменять'}" title="${last ? esc('Отменить: ' + last.label) : ''}">↶</button><span class="save"></span></header>
     <main>${body}</main>
     <nav class="tabs">${[['game', S.phase === 'night' ? 'Ночь' : S.phase === 'day' ? 'День' : 'Игра'], ['table', 'Гримуар'], ['log', 'Журнал'], ['roles', 'Роли'], ['menu', 'Ещё']].map(([k, l]) => `<button class="${UI.tab === k ? 'on' : ''}" data-act="tab" data-arg="${k}">${l}</button>`).join('')}</nav>
-    ${legendOverlay()}${wallOverlay()}${grimOverlay()}${ringOverlay()}${sheetOverlay()}${editOverlay()}${fateOverlay()}${statOverlay()}${tipHtml()}${savFactsHtml()}${ghostLostHtml()}${polOverlay()}${gossipAskHtml()}${exeAskHtml()}${exeResHtml()}${showOverlay()}${noteViewOverlay()}`;
+    ${legendOverlay()}${wallOverlay()}${grimOverlay()}${ringOverlay()}${sheetOverlay()}${editOverlay()}${fateOverlay()}${statOverlay()}${tipHtml()}${savFactsHtml()}${ghostLostHtml()}${pinAskHtml()}${polOverlay()}${gossipAskHtml()}${exeAskHtml()}${exeResHtml()}${showOverlay()}${noteViewOverlay()}`;
   // круг рассадки — только на подготовке, круг номинации — только днём, Гримуар кругом — во время игры (после смены фазы закрываются сами)
   if ((UI.ring === 'seat' && S.phase !== 'setup') || ((UI.ring === 'nom' || UI.ring === 'pick') && S.phase !== 'day') || (UI.ring === 'grim' && S.phase === 'setup')) UI.ring = null;
   // под полноэкранными слоями страница не прокручивается
   if (UI.fate && !(S.phase === 'day' && S.day.picks && S.day.picks.fate)) UI.fate = false; // день кончился — выбор казни закрыт
   if (UI.stat && S.phase !== 'day') UI.stat = false;
-  document.documentElement.classList.toggle('locked', !!(UI.show || UI.legend || UI.ring || UI.noteView || UI.edit || UI.fate || UI.stat || UI.tip || UI.savFacts || UI.ghostLost || E.politiciansPending(S).length || UI.gossipAsk || UI.exeAsk || UI.exeRes || (UI.open && E.P(S, UI.open)) || (UI.wall && S.draw) || (UI.grimShow && S.phase === 'night')));
+  document.documentElement.classList.toggle('locked', !!(UI.show || UI.legend || UI.ring || UI.noteView || UI.edit || UI.fate || UI.stat || UI.tip || UI.savFacts || UI.ghostLost || UI.pinAsk || E.politiciansPending(S).length || UI.gossipAsk || UI.exeAsk || UI.exeRes || (UI.open && E.P(S, UI.open)) || (UI.wall && S.draw) || (UI.grimShow && S.phase === 'night')));
   app.querySelectorAll('details > summary').forEach(s => { if (opened.has(s.textContent)) s.parentElement.open = true; });
   if (UI.tab === 'roles') filterRefs();
   paintSave();
@@ -1815,7 +1848,22 @@ const A = {
   assign: (pid, el) => act(S => { S.assign = Object.assign({}, S.assign); const v = el.value;
     if (!v) delete S.assign[pid]; else S.assign[pid] = v.startsWith('r:') ? { role: v.slice(2) } : { team: v.slice(2) }; }, 'назначение для жребия'),
   wallShow: () => wallIn(),
-  wallHide: () => { UI.wall = false; render(); },
+  // стена свёрнута — роли закрыты «шторкой», экран — вкладка «Игра» с карточкой стены (заметка пользователя 2026-10-16)
+  wallHide: () => { UI.wall = false; UI.tab = 'game'; draft(S => { if (S.draw) S.draw.hidden = true; }); window.scrollTo(0, 0); },
+  // показать роли — только по паролю (заметка пользователя 2026-10-16)
+  rolesShow: () => { UI.pinAsk = { err: false }; render(); pinFocus(); },
+  pinOk: () => { const el = document.getElementById('pinIn');
+    if (!pinCheck(el && el.value)) { UI.pinAsk = { err: true }; render(); pinFocus(); return; }
+    UI.pinAsk = null; draft(S => { if (S.draw) S.draw.hidden = false; }); },
+  pinClose: () => { UI.pinAsk = null; render(); },
+  // «Ещё» → «Защита»: новый пароль — только после ввода текущего
+  pinChange: () => { const v = id => ((document.getElementById(id) || {}).value || '').trim(), old = v('pinOld'), nw = v('pinNew'), nw2 = v('pinNew2');
+    UI.pinMsg = !pinCheck(old) ? { ok: false, t: 'Текущий пароль неверный — пароль не изменён' }
+      : nw.length < 4 ? { ok: false, t: 'Новый пароль — не короче 4 символов' }
+      : nw !== nw2 ? { ok: false, t: 'Новый пароль и повтор не совпадают' }
+      : pinSave(nw) ? { ok: true, t: 'Пароль изменён (на этом устройстве)' } : { ok: false, t: 'Не получилось сохранить: хранилище браузера недоступно' };
+    render(); },
+  rolesHide: () => { draft(S => { if (S.draw) S.draw.hidden = true; }); window.scrollTo(0, 0); },
   drawTurn: (a, el) => { const id = el && el.value; if (id) draft(S => { S.draw.turn = id; }); },
   drawOpen: i => { UI.openAt = Date.now(); act(S => E.drawOpen(S, +i), 'жребий: ячейка открыта'); },
   // закрыть роль можно не раньше чем через 3 секунды — чтобы игрок успел прочитать (и не закрыл случайно)
@@ -1957,7 +2005,7 @@ document.addEventListener('input', ev => {
   const el = ev.target; if (!el.dataset || !el.dataset.act || (el.tagName !== 'TEXTAREA' && !el.dataset.live)) return;
   const f = A[el.dataset.act]; if (f) f(el.dataset.arg, el);
 });
-document.addEventListener('keydown', ev => { if (ev.key === 'Enter' && ev.target.id === 'newName') A.addP(); });
+document.addEventListener('keydown', ev => { if (ev.key === 'Enter' && ev.target.id === 'newName') A.addP(); if (ev.key === 'Enter' && ev.target.id === 'pinIn') A.pinOk(); });
 // круг Гримуара для Шпиона подстраивается под экран (поворот телефона, размер окна)
 let resizeTimer = null;
 window.addEventListener('resize', () => { if (!UI.grimShow) return; clearTimeout(resizeTimer); resizeTimer = setTimeout(render, 150); });

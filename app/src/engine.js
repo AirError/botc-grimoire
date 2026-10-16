@@ -626,7 +626,9 @@ function drawStart(S) {
   bag = marionetteSwap(S, bag);
   const glyphs = shuffle([...Array(24).keys()]);
   const hid = shuffle(bag.concat(Array(Math.max(0, core.length - bag.length)).fill(null))); // роли по ячейкам; пустые — для уже выданных
-  S.draw = { prev, bag, order: core.map(p => p.id), turn: core[0] ? core[0].id : null, open: null,
+  // hidden — роли на экране рассказчика закрыты «шторкой», пока он сам не нажмёт «Показать роли» (заметка пользователя 2026-10-16:
+  // «вдруг случайно закроют стену» — за ней не должно быть видно ролей)
+  S.draw = { prev, bag, hidden: true, order: core.map(p => p.id), turn: core[0] ? core[0].id : null, open: null,
     cells: core.map((x, i) => ({ hid: hid[i] || null, role: null, believes: null, glyph: glyphs[i % glyphs.length], color: RUNE_COLORS[Math.floor(Math.random() * 4)], pid: null, done: false })) };
   return true;
 }
