@@ -697,9 +697,13 @@ function viewDay() {
     parts.push(`<div class="card"><h3>Савант</h3>
       ${boundsHtml([{ w: 'Игрок', t: 'раз в день может прийти к вам: приватно — 2 факта, один правда, другой ложь' }, { w: 'Вы решаете', t: off ? `Савант ${off}: можно оба правдой или оба ложью` : 'какие факты; Демона прямо не называйте' }])}
       ${told ? '<div class="note-ok">Сегодня факты уже сказаны — они в Журнале («Факты Саванта»).</div>' : `
-      ${pair ? `<div class="reveal"><div class="lab">Скажите Саванту</div>${pair.map(x => `<div class="ln"><b>${esc(x.text)}</b></div>`).join('')}
+      ${pair ? `<div class="reveal"><div class="lab">Скажите Саванту</div>${pair.map((x, i) => `<div class="ln savln"><b>${esc(x.text)}</b><button class="savdel" data-act="savDel" data-arg="${sv.id}|${i}" aria-label="Убрать факт">✕</button></div>`).join('')}
         ${showButtons(pair.map(x => ({ label: 'Саванту', text: x.text })))}</div>` : ''}
-      <div class="row"><button class="btn" data-act="savGen" data-arg="${sv.id}">${pair ? 'Другие факты' : 'Подобрать факты'}</button>${pair ? `<button class="btn primary" data-act="savLog" data-arg="${sv.id}">Сказано — записать</button>` : ''}</div>`}</div>`);
+      <div class="row"><button class="btn" data-act="savGoList">Выбрать из списка</button><button class="btn" data-act="savGen" data-arg="${sv.id}">${pair ? 'Другие случайные' : 'Подобрать случайно'}</button>${pair ? `<button class="btn primary" data-act="savLog" data-arg="${sv.id}">Сказано — записать</button>` : ''}</div>
+      <details class="savown"${picks['savOwn_' + sv.id] ? ' open' : ''}><summary class="small">Добавить свой факт</summary>
+        <textarea data-act="savOwnText" data-arg="${sv.id}" placeholder="Например: «Отравитель сидит не дальше 3 мест от вас»" aria-label="Свой факт для Саванта">${esc(picks['savOwn_' + sv.id] || '')}</textarea>
+        <div class="row"><button class="btn" data-act="savOwn" data-arg="${sv.id}|1">Правдивый</button><button class="btn" data-act="savOwn" data-arg="${sv.id}|0">Ложный</button></div>
+        <div class="small muted">Свой факт заменит подобранный той же правдивости, второй подберётся сам. «Другие случайные» свой факт не трогают, убрать — ✕.</div></details>`}</div>`);
   }
   // Рыбак: раз за игру днём — совет, что делать (ideas.js)
   for (const fm of S.players.filter(p => p.role === 'fisherman' && p.alive && !S.flags['fishUsed_' + p.id])) {
@@ -941,7 +945,29 @@ function viewTable() {
   // «Кругом»: на подготовке — рассадка с перетаскиванием, во время игры — Гримуар рассказчика кругом
   const ringB = S.players.length > 1 ? `<button class="btn ringbtn" data-act="${S.phase === 'setup' ? 'ringSeat' : 'ringGrim'}">◯ Кругом</button>` : '';
   return `${S.phase === 'setup' ? poolCard() : ''}<div class="card"><div class="row ghead"><h3>Гримуар · ${esc(S.script.name)}</h3><span class="row gbtns">${ringB}<button class="btn lgbtn" data-act="legend" aria-label="Что значат значки"><span class="lgq" aria-hidden="true">?</span>Значки</button></span></div>
-    ${cells ? `<div class="grim">${cells}</div>` : '<div class="muted">Игроков пока нет — добавьте их на вкладке «Игра»</div>'}${bluffsHtml()}${S.phase === 'setup' ? '' : travellerForm()}</div>${S.phase === 'setup' ? '' : fabledZone()}`;
+    ${cells ? `<div class="grim">${cells}</div>` : '<div class="muted">Игроков пока нет — добавьте их на вкладке «Игра»</div>'}${bluffsHtml()}${S.phase === 'setup' ? '' : travellerForm()}</div>${S.phase === 'setup' ? '' : fabledZone()}${savListCard()}`;
+}
+// Савант: все факты списком (заметка пользователя 2026-10-16) — верные зелёным, неверные красным; нажатие выбирает (ещё раз — убирает),
+// выбранные — в карточке Саванта на экране дня. Список составляется при открытии вкладки днём и живёт до конца дня («Обновить список» — заново)
+const savAlive = () => S.phase === 'day' && S.day ? S.players.filter(p => p.role === 'savant' && p.alive) : [];
+const savTold = id => (S.flags.savantFacts || []).some(x => x.n === S.n && x.pid === id);
+function savListEnsure() {
+  for (const sv of savAlive()) if (!S.day.picks['savList_' + sv.id] && !savTold(sv.id)) { S.day.picks['savList_' + sv.id] = IDEAS.savantList(S, sv.id); S.updated = Date.now(); persist(); }
+}
+function savListCard() {
+  return savAlive().map(sv => {
+    const list = S.day.picks['savList_' + sv.id], sel = S.day.picks['sav_' + sv.id] || [], told = savTold(sv.id);
+    const head = `<div class="row ghead"><h3>Факты Саванта${S.players.filter(p => p.role === 'savant').length > 1 ? ' · ' + esc(sv.name) : ''}</h3>${told ? '' : `<button class="btn" data-act="savList" data-arg="${sv.id}">${list ? 'Обновить список' : 'Составить список'}</button>`}</div>`;
+    if (told) return `<div class="card" id="savlist">${head}<div class="note-ok">Сегодня факты уже сказаны — они в Журнале («Факты Саванта»).</div></div>`;
+    if (!list) return `<div class="card" id="savlist">${head}</div>`;
+    const on = t => sel.some(x => x.text === t), nT = sel.filter(x => x.truth).length;
+    const btn = (i, text, tr) => `<button class="savpick ${tr ? 't' : 'f'}${on(text) ? ' on' : ''}" data-act="savPick" data-arg="${sv.id}|${i}|${tr ? 1 : 0}" aria-pressed="${on(text)}">${on(text) ? '✓ ' : ''}${esc(text)}</button>`;
+    const groups = IDEAS.SAVANT_GROUPS.map(g => { const its = list.map((it, i) => [it, i]).filter(([it]) => it.g === g);
+      return its.length ? `<div class="savgrp"><div class="lab">${g}</div>${its.map(([it, i]) => `<div class="savpair">${btn(i, it.yes, true)}${btn(i, it.no, false)}</div>`).join('')}</div>` : ''; }).join('');
+    return `<div class="card" id="savlist">${head}
+      <div class="small muted">Зелёные — верные, красные — неверные. Нажмите, чтобы выбрать, ещё раз — убрать. Выбранные появятся в карточке Саванта на экране дня.</div>
+      <div class="savsel">Выбрано: верных ${nT}, неверных ${sel.length - nT}</div>${groups}</div>`;
+  }).join('');
 }
 /* ---------- Гримуар для Шпиона и Вдовы — как в игре: жетоны по кругу, напоминания — к центру ---------- */
 // жетон роли, как настоящий: светлый кружок, иконка, название роли дугой по низу. Пьяница — как в Гримуаре рассказчика:
@@ -1604,7 +1630,7 @@ function pmState(pm) {
   return { g, hit, off, told };
 }
 const A = {
-  tab: k => { UI.tab = k; render(); window.scrollTo(0, 0); },
+  tab: k => { UI.tab = k; if (k === 'table') savListEnsure(); render(); window.scrollTo(0, 0); },
   undo: () => undo(),
   // подготовка
   // Сказочники сценария (Джинн, Привратник, Ловец Бури…) входят в игру вместе с ним
@@ -1829,9 +1855,28 @@ const A = {
   // жребий: каменная стена
   drawStart: () => { if (S.draw) return wallIn(); const pr = E.drawProblem(S); if (pr) return alertNote(pr); act(S => E.drawStart(S), 'жребий: стена'); wallIn(); },
   // Савант, Рыбак, Мецефель (день)
-  savGen: id => draft(S => { S.day.picks['sav_' + id] = IDEAS.savantPair(S, id); }),
+  // свои факты рассказчика (own) остаются, подбирается только факт другой правдивости
+  savGen: id => draft(S => { const own = (S.day.picks['sav_' + id] || []).filter(x => x.own);
+    const pair = own.concat((IDEAS.savantPair(S, id) || []).filter(g => !own.some(o => o.truth === g.truth)));
+    S.day.picks['sav_' + id] = pair.length ? E.shuffle(pair) : null; }),
+  // свой факт с пометкой «правда» или «ложь» (заметка пользователя 2026-10-16): заменяет факт той же правдивости; второго нет — подбирается
+  savOwnText: (id, el) => { S.day.picks['savOwn_' + id] = el.value; S.updated = Date.now(); persist(); },
+  savOwn: arg => { const [id, t] = arg.split('|'), text = (S.day.picks['savOwn_' + id] || '').trim(); if (!text) return;
+    draft(S => { const truth = t === '1', pair = (S.day.picks['sav_' + id] || []).filter(x => x.truth !== truth).concat({ text, truth, own: true });
+      if (pair.length < 2) { const g = (IDEAS.savantPair(S, id) || []).find(x => x.truth !== truth); if (g) pair.push(g); }
+      S.day.picks['sav_' + id] = E.shuffle(pair); delete S.day.picks['savOwn_' + id]; }); },
+  savDel: arg => { const [id, i] = arg.split('|');
+    draft(S => { const pair = (S.day.picks['sav_' + id] || []).filter((x, k) => k !== +i); S.day.picks['sav_' + id] = pair.length ? pair : null; }); },
+  // список фактов на вкладке «Гримуар»: выбрать / убрать факт (место в паре — случайное, чтобы порядок не выдавал правдивость)
+  savGoList: () => { UI.tab = 'table'; savListEnsure(); render(); const c = document.getElementById('savlist'); if (c) c.scrollIntoView(); else window.scrollTo(0, 0); },
+  savList: id => draft(S => { S.day.picks['savList_' + id] = IDEAS.savantList(S, id); }),
+  savPick: arg => { const [id, i, t] = arg.split('|'), it = (S.day.picks['savList_' + id] || [])[+i]; if (!it) return;
+    const truth = t === '1', text = truth ? it.yes : it.no;
+    draft(S => { const sel = S.day.picks['sav_' + id] || [], k = sel.findIndex(x => x.text === text), f = { text, truth };
+      const next = k >= 0 ? sel.filter((x, j) => j !== k) : Math.random() < 0.5 ? [f, ...sel] : [...sel, f];
+      S.day.picks['sav_' + id] = next.length ? next : null; }); },
   savLog: id => { const pair = S.day.picks['sav_' + id]; if (pair) act(S => {
-    S.flags.savantFacts = (S.flags.savantFacts || []).concat({ n: S.n, pid: id, facts: pair.map(x => ({ text: x.text, truth: !!x.truth })) });
+    S.flags.savantFacts = (S.flags.savantFacts || []).concat({ n: S.n, pid: id, facts: pair.map(x => ({ text: x.text, truth: !!x.truth, own: !!x.own })) });
     S.day.picks['sav_' + id] = null;
     E.log(S, `Савант (${E.nm(S, id)}): ${pair.map(x => `«${x.text}» — ${x.truth ? 'правда' : 'ложь'}`).join('; ')}`, 'day'); }, 'факты Саванта'); },
   savFacts: () => { UI.savFacts = true; render(); },
@@ -1954,7 +1999,7 @@ function savFactsHtml() {
   if (!UI.savFacts) return '';
   const list = S.flags.savantFacts || [];
   const body = list.length ? list.map(x => `<div class="savday"><div class="lab">День ${x.n}${S.players.filter(p => p.role === 'savant').length > 1 ? ` · ${esc(E.nm(S, x.pid))}` : ''}</div>
-    ${x.facts.map(f => `<div class="savf"><b class="savtag ${f.truth ? 't' : 'f'}">${f.truth ? 'П' : 'Л'}</b><span>${esc(f.text)}</span></div>`).join('')}</div>`).join('')
+    ${x.facts.map(f => `<div class="savf"><b class="savtag ${f.truth ? 't' : 'f'}">${f.truth ? 'П' : 'Л'}</b><span>${esc(f.text)}${f.own ? ' <span class="muted small">(свой)</span>' : ''}</span></div>`).join('')}</div>`).join('')
     : '<div class="small muted">Пока ни одного факта не сказано. Факты попадают сюда кнопкой «Сказано — записать» на экране дня.</div>';
   return `<div class="ov editres" role="dialog" aria-label="Факты Саванта"><div class="statbg" data-act="savFactsClose"></div><div class="erbox statbox">
     <h3>Факты Саванта</h3>${body}<button class="btn wide" data-act="savFactsClose">Закрыть</button></div></div>`;

@@ -1106,6 +1106,101 @@ try {
     ok('голос призрака: тратит только мёртвый, у которого он был', gs.length === 1 && gs[0] === a5);
   }
 
+  // 36. факты Саванта от пользователя (2026-10-16): данные игры подставляются, правда — правда, ложь — ложь
+  {
+    const facts = (G, sv, re) => IDEAS.savantTemplates(G, sv).map(f => f()).filter(r => r && re.test(r.yes));
+    const roles9 = ['savant', 'poisoner', 'chef', 'empath', 'monk', 'imp', 'soldier', 'mayor', 'recluse'];
+    let G = game(roles9, 'snv'); E.autoSetup(G, true); E.startGame(G);
+    const sv = byRole(G, 'savant'), imp = byRole(G, 'imp');
+    runNight(G, { poisoner: { t: [imp.id] } });
+    // ни одного сломанного факта: правда и ложь различаются, без пустых подстановок
+    let broken = [];
+    for (const dir of ['cw', 'ccw']) { G.flags.seatDir = dir;
+      for (let k = 0; k < 60; k++) for (const f of IDEAS.savantTemplates(G, sv)) { const r = f();
+        if (r && (r.yes === r.no || /undefined|NaN|null|\{/.test(r.yes + r.no))) broken.push(r.yes + ' / ' + r.no); } }
+    G.flags.seatDir = 'cw';
+    ok('Савант: все шаблоны дают разные правду и ложь без пустых подстановок', !broken.length, broken.slice(0, 3).join(' | '));
+    // «на местах с a по b — ровно k Приспешников / Изгоев»: правда совпадает с игрой, ложь — нет
+    const W = { 'нет ни одного': 0, 'ровно один': 1, 'ровно два': 2, 'ровно три': 3, 'ровно четыре': 4 };
+    const cnt = t => { const m = t.match(/с (\d+) по (\d+) (?:сидит |сидят )?(нет ни одного|ровно \S+)/); const tp = /Приспешник/.test(t) ? 'minion' : 'outsider';
+      return { real: G.players.slice(m[1] - 1, +m[2]).filter(p => E.realTeam(p) === tp).length, said: W[m[3]] }; };
+    let rg = 0, rgBad = 0;
+    for (let k = 0; k < 80; k++) for (const r of facts(G, sv, /^На местах/)) { rg++; const y = cnt(r.yes), n = cnt(r.no); if (y.said !== y.real || n.said === n.real) rgBad++; }
+    ok('Савант: «на местах с … по …» — число по игре', rg > 0 && rgBad === 0, `фактов ${rg}, ошибок ${rgBad}`);
+    // ближайший злой слева/справа: по часовой — это слева; при номерах против часовой — наоборот
+    const H = game(['savant', 'poisoner', 'chef', 'empath', 'monk', 'imp', 'soldier', 'mayor', 'oracle'], 'snv'); H.players.forEach(p => { p.align = ['poisoner', 'imp'].includes(p.role) ? 'evil' : 'good'; });
+    const hs = byRole(H, 'savant'), side = () => facts(H, hs, /^Ближайш\S* к вам/)[0].yes;
+    const cwSide = side(); H.flags.seatDir = 'ccw'; const ccwSide = side();
+    ok('Савант: ближайший злой слева / справа — по направлению номеров', /слева/.test(cwSide) && /справа/.test(ccwSide), cwSide + ' | ' + ccwSide);
+    H.flags.seatDir = 'cw';
+    const three = facts(H, hs, /^Среди трёх ближайших/).map(r => r.yes);
+    ok('Савант: трое слева от вас — по местам', three.every(t => t === (/слева/.test(t) ? 'Среди трёх ближайших игроков слева от вас злых: 1.' : 'Среди трёх ближайших игроков справа от вас злых: 0.')), three.join(' | '));
+    // прошлой ночью Отравитель выбрал Демона
+    const pick = facts(G, sv, /^Прошлой ночью/)[0];
+    ok('Савант: «прошлой ночью один из игроков выбрал своей целью Демона»', pick && /один из игроков выбрал/.test(pick.yes) && /никто/.test(pick.no), pick && pick.yes);
+    // вчерашние номинации: злой участвовал в 1 из 2
+    const po = byRole(G, 'poisoner'), ch = byRole(G, 'chef'), so = byRole(G, 'soldier'), mk = byRole(G, 'monk');
+    E.nominate(G, po.id, ch.id); E.nominate(G, so.id, mk.id); E.endDay(G);
+    runNight(G, { poisoner: { t: [ch.id] }, monk: { t: [ch.id] }, imp: { t: [so.id] } });
+    const nm = facts(G, sv, /^Вчера/)[0], pk2 = facts(G, sv, /^Прошлой ночью/)[0];
+    ok('Савант: вчерашние номинации со злым — 1 из 2', nm && nm.yes === 'Вчера злой игрок (номинировавший или номинированный) участвовал в 1 из 2 номинаций.' && /в (0|2) из 2|ни в одной/.test(nm.no), nm && nm.yes + ' | ' + nm.no);
+    ok('Савант: прошлой ночью Демона никто не выбирал (Демон сам себя не считается)', pk2 && /никто/.test(pk2.yes), pk2 && pk2.yes);
+    // Приспешник-Эмпат: правда — число одного из живых Приспешников, ложь — ни одного
+    let emBad = 0, em = 0;
+    for (let k = 0; k < 40; k++) for (const r of facts(G, sv, /Эмпатом/)) { em++;
+      const v = G.players.filter(p => E.realTeam(p) === 'minion' && p.alive).map(m => E.aliveNeighbours(G, m).filter(q => q.align === 'evil').length);
+      if (!v.includes(+r.yes.match(/(\d)\.$/)[1]) || v.includes(+r.no.match(/(\d)\.$/)[1])) emBad++; }
+    ok('Савант: «если бы Приспешник был Эмпатом» — по живым соседям', em > 0 && emBad === 0, `фактов ${em}, ошибок ${emBad}`);
+    // Демон — «А» или «Б»: в правде есть настоящий Демон, в лжи — нет
+    const dm = facts(G, sv, /^Демон в игре/)[0];
+    ok('Савант: «Демон в игре — А или Б»', dm && dm.yes.includes(E.rname('imp')) && !dm.no.includes(E.rname('imp')), dm && dm.yes + ' | ' + dm.no);
+
+    // 37. факты из списка пользователя (2026-10-16) и история игры; список фактов по группам
+    const Hs = G.flags.hist;
+    ok('история: выборы двух ночей, кто был отравлен', Hs && Hs.picks.filter(x => x.role === 'poisoner').length === 2 && Hs.poison.includes(imp.id) && Hs.poison.includes(ch.id), Hs && JSON.stringify(Hs.picks.map(x => x.role + x.n)));
+    const same = facts(G, sv, /каждую ночь выбирал|выбирал разных/)[0];
+    ok('Савант: «Отравитель каждую ночь выбирал одного и того же» — выбирал разных', same && /разных/.test(same.yes), same && same.yes);
+    let pkBad = 0, pkN = 0;
+    for (let k = 0; k < 60; k++) for (const r of facts(G, sv, /^Прошлой ночью обладатель роли/)) { pkN++;
+      const chk = t => { const m = t.match(/роли «(.+?)» выбрал (?:игрока с ролью «(.+?)»|(\S+))\.$/); const x = G.night.data.picks.find(x => E.rname(x.role) === m[1]);
+        return m[2] ? x.roles.some(r => E.rname(r) === m[2]) : x.types.some(tp => ({ townsfolk: 'Горожанина', outsider: 'Изгоя', minion: 'Приспешника', demon: 'Демона' })[tp] === m[3]); };
+      if (!chk(r.yes) || chk(r.no)) pkBad++; }
+    ok('Савант: «прошлой ночью обладатель роли … выбрал …» — по выбору ночи', pkN > 0 && pkBad === 0, `фактов ${pkN}, ошибок ${pkBad}`);
+    const dp = facts(G, sv, /Демон (не )?выбирал мёртвого|Демон выбрал мёртвого/)[0];
+    ok('Савант: Демон не выбирал мёртвого', dp && /не выбирал/.test(dp.yes), dp && dp.yes);
+    // расстояние до злой роли: «не больше / не меньше N игроков между вами»
+    let dBad = 0, dN = 0; const po2 = byRole(G, 'poisoner');
+    const K = game(['savant', 'chef', 'empath', 'monk', 'poisoner', 'imp', 'soldier', 'mayor', 'oracle', 'recluse'], 'snv'), b0 = 3; // между Савантом и Отравителем — трое
+    for (let k = 0; k < 60; k++) for (const r of facts(K, byRole(K, 'savant'), /^Между вами и обладателем/)) { dN++;
+      const tr = t => { const m = t.match(/не (больше|меньше) (\d+)/); return m[1] === 'больше' ? b0 <= +m[2] : b0 >= +m[2]; }; if (!tr(r.yes) || tr(r.no)) dBad++; }
+    ok('Савант: «между вами и Отравителем не больше / не меньше N»', dN > 0 && dBad === 0, `фактов ${dN}, ошибок ${dBad}`);
+    // цепочка добрых подряд — по местам
+    const chainOf = ok2 => { let best = 0; const n = G.players.length; for (let i = 0; i < n; i++) { let k = 0; while (k < n && ok2(G.players[(i + k) % n])) k++; best = Math.max(best, k); } return best; };
+    let chBad = 0;
+    for (let k = 0; k < 40; k++) for (const r of facts(G, sv, /^Самая длинная цепочка/)) {
+      const ok2 = /добрых/.test(r.yes) ? (p => p.align !== 'evil') : /злых/.test(r.yes) ? (p => p.align === 'evil') : (p => E.realTeam(p) === 'townsfolk');
+      if (+r.yes.match(/(\d+)\.$/)[1] !== chainOf(ok2) || +r.no.match(/(\d+)\.$/)[1] === chainOf(ok2)) chBad++; }
+    ok('Савант: самая длинная цепочка подряд', chBad === 0, `ошибок ${chBad}`);
+    // новая роль прошлой ночью (как будто Яга сделала Повара из Монаха)
+    G.night.data.start.roles[ch.id] = 'monk';
+    const nr = facts(G, sv, /^Прошлой ночью (появил|не появилось)/).map(r => r.yes);
+    ok('Савант: «прошлой ночью появился новый Горожанин»', nr.length && nr.every(t => /новый Горожанин/.test(t)), nr.join(' | '));
+    G.night.data.start.roles[ch.id] = 'chef';
+    // казнь Приспешника попадает в историю
+    E.nominate(G, ch.id, po2.id); E.execute(G, po2.id);
+    const ex = facts(G, sv, /казнили/)[0];
+    ok('Савант: «Приспешника уже казнили»', ex && /уже казнили/.test(ex.yes) && G.flags.hist.exe.some(x => x.team === 'minion'), ex && ex.yes);
+    // список: все шаблоны по группам, в каждом — верный и неверный
+    const list = IDEAS.savantList(G, sv.id), gi = list.map(x => IDEAS.SAVANT_GROUPS.indexOf(x.g));
+    ok('Савант: список фактов по группам, без пустых', list.length >= 35 && gi.every((g, i) => g >= 0 && (!i || g >= gi[i - 1])) && list.every(x => x.yes !== x.no && !/undefined|NaN|null/.test(x.yes + x.no)), `фактов ${list.length}`);
+    // во всех встроенных сценариях шаблоны не падают и не дают пустых подстановок
+    let crash = [];
+    for (const key of Object.keys(DATA.scripts)) { try { const Q = E.newGame(key); for (let i = 0; i < 10; i++) Q.players.push(E.newPlayer('И' + i)); E.randomDeal(Q); if (!Q.players.some(p => p.role === 'savant')) Q.players[0].role = 'savant';
+      E.finishRoles(Q); E.autoSetup(Q, true); E.startGame(Q); runNight(Q); const s = Q.players.find(p => p.role === 'savant');
+      for (const f of IDEAS.savantTemplates(Q, s)) { const r = f(); if (r && (r.yes === r.no || /undefined|NaN|null/.test(r.yes + r.no))) crash.push(key + ': ' + r.yes); } } catch (e) { crash.push(key + ': ' + e.message); } }
+    ok('Савант: шаблоны во всех сценариях без ошибок', !crash.length, crash.slice(0, 3).join(' | '));
+  }
+
   // 30. казнь на выбор: 30 одобренных текстов, у каждого — имя казнённого и своё название
   ok('казни: 37 историй, названия разные, в каждой есть имя', EXECUTIONS.length === 37 && new Set(EXECUTIONS.map(x => x.t)).size === 37
     && EXECUTIONS.every(x => x.t && x.s.includes('{name}') && !/\[Имя\]/.test(x.s)));

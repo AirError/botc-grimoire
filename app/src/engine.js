@@ -755,16 +755,24 @@ function startGame(S) {
     const q = S.flags[flag] && P(S, S.flags[flag]);
     if (q && inPlay(S, rid)) addTok(S, q, tok, rid); else S.flags[flag] = null;
   }
+  // история для фактов Саванта (2026-10-16): есть только у игр, начатых после обновления (`hist` — признак)
+  const tm = countTeams(S);
+  S.flags.hist = { teams: { townsfolk: tm.townsfolk, outsider: tm.outsider }, picks: [], exe: [], poison: [], off: [], abn: [] };
   log(S, `Игра началась: ${S.players.length} игроков, сценарий «${S.script.name}»`, 'phase');
   startNight(S);
 }
+// пьян или отравлен (Пьяница и Марионетка — тоже пьяны; Безумец — нет)
+const droisoned = (S, p) => { const o = abilityOff(S, p) || ''; return /^отравл/.test(o) ? 'poison' : /^(пьян|Пьяница|Марионетка)/.test(o) ? 'drunk' : null; };
 
 /* ------------------------------------------------------------ ночь */
 
 function startNight(S) {
   S.n += 1; S.phase = 'night';
   expire(S, 'dusk');
-  S.night = { i: 0, deaths: [], woke: [], data: {}, steps: [] };
+  // для фактов Саванта: picks — кого игроки выбирали способностью; start — роли и мёртвые злые в начале ночи
+  const deadEvil = () => S.players.filter(p => !p.alive && p.align === 'evil' && !isTraveller(p)).length;
+  S.night = { i: 0, deaths: [], woke: [], steps: [], data: { picks: [], pv: 2,
+    start: { roles: Object.fromEntries(S.players.map(p => [p.id, p.role])), deadEvil: deadEvil() } } };
   S.night.steps = buildSteps(S);
   log(S, `Наступила ночь ${S.n}`, 'phase');
   rpStart(S);
@@ -846,6 +854,17 @@ function currentStep(S) { return S.night && S.night.steps[S.night.i]; }
 function endNight(S) {
   expire(S, 'dawn');
   S.flags.abnPrev = S.flags.abn || []; // для фактов Саванта: сбои со вчерашнего утра
+  // факты Саванта: кто на рассвете пьян/отравлен, сколько мёртвых злых; история игры (выборы, яд, сбои) — если игра её ведёт
+  const offNow = S.players.filter(p => p.alive && !isTraveller(p) && droisoned(S, p)), poisonNow = offNow.filter(p => droisoned(S, p) === 'poison').map(p => p.id);
+  if (S.night.data.pv) Object.assign(S.night.data, { off: offNow.map(p => p.id), dawnDeadEvil: S.players.filter(p => !p.alive && p.align === 'evil' && !isTraveller(p)).length });
+  const H = S.flags.hist;
+  if (H && S.night.data.pv) {
+    S.night.data.newPoison = poisonNow.filter(id => !H.poison.includes(id));
+    H.poison = [...new Set(H.poison.concat(poisonNow))];
+    H.off = [...new Set(H.off.concat(offNow.map(p => p.id)))];
+    H.abn = [...new Set(H.abn.concat(S.flags.abnPrev.map(a => a.pid)))];
+    H.picks = H.picks.concat(S.night.data.picks.map(x => Object.assign({ n: S.n }, x)));
+  }
   S.flags.abn = []; // Математик считает «с рассвета»
   const deaths = nightDeaths(S).map(d => nm(S, d.pid)), back = (S.night.revived || []).filter(id => P(S, id) && P(S, id).alive).map(id => nm(S, id));
   S.phase = 'day';
@@ -902,7 +921,7 @@ function nominate(S, byId, onId, opts) {
   if (by) d.nominators.push(byId);
   d.nominated.push(onId); d.lastNom = { by: byId, on: onId, butcher: !!d.butcherOpen };
   d.nomBy = Object.assign({}, d.nomBy, { [onId]: byId }); // кто кого номинировал (Психопат играет с номинировавшим)
-  S.flags.nomHist = (S.flags.nomHist || []).concat({ n: S.n, by: by ? byId : null, on: onId, onAlign: on.align }); // история для итога Политика
+  S.flags.nomHist = (S.flags.nomHist || []).concat({ n: S.n, by: by ? byId : null, byAlign: by ? by.align : null, on: onId, onAlign: on.align }); // история для итога Политика и фактов Саванта
   if (by && realTeam(by) === 'minion') d.minionNominated = true;
   log(S, `${by ? by.name : 'Рассказчик'} номинирует ${on.name}${d.butcherOpen ? ' (Мясник, после казни)' : ''}`, 'day');
   if (!by) { if (actsAs(on) === 'virgin') S.flags['virginUsed_' + on.id] = true; return res; }
@@ -978,6 +997,7 @@ function execute(S, pid, opts) {
     log(S, `Козёл Отпущения (${sg.name}) казнён вместо ${p.name}`, 'effect'); p = sg; pid = sg.id;
   }
   S.day.executed = pid;
+  if (S.flags.hist) S.flags.hist.exe.push({ n: S.n, pid, team: realTeam(p) }); // история казней (факты Саванта)
   log(S, `Казнь: ${p.name}`, 'day');
   if (S.flags.goodTwin === pid && S.players.some(q => q.role === 'eviltwin' && q.alive && !abilityOff(S, q)))
     return endGame(S, 'evil', 'казнён добрый близнец');
@@ -2587,6 +2607,14 @@ function applyStep(S, step, inp) {
   const k = rpRec(S, { t: 'step', key: step.key, title: spec.title + (spec.who ? ` (${spec.who})` : ''), inp: JSON.parse(JSON.stringify(inp || {})), dist: spec.active && spec.dist ? spec.dist.label : null }), l0 = S.log.length;
   if (spec.active) {
     if (step.pid && !S.night.woke.includes(step.pid)) S.night.woke.push(step.pid);
+    // выбор самого игрока (в рамках выбора «Игрок выбирает») — для фактов Саванта: кто, какой ролью (own — это правда его роль,
+    // а не Пьяница/Философ), кого выбрал; тип, сторона, жизнь и роль выбранных — на момент выбора
+    if (step.pid && S.night.data.picks && (spec.bounds || []).some(b => b.w === 'Игрок выбирает')) {
+      const a = P(S, step.pid), ts = ((inp || {}).t || []).map(id => P(S, id)).filter(Boolean);
+      S.night.data.picks.push({ by: a.id, role: step.id, own: a.role === step.id, team: realTeam(a), evil: a.align === 'evil', t: ts.map(q => q.id),
+        types: ts.map(realTeam), roles: ts.map(q => q.role), demon: ts.filter(q => q !== a && isDemon(q)).map(q => q.id),
+        bad: ts.filter(q => q.align === 'evil').map(q => q.id), dead: ts.filter(q => !q.alive).map(q => q.id) });
+    }
     if (goonHit(S, step, spec, inp || {})) spec = stepSpec(S, step); // выбравший Наёмника пьян — пересчитываем шаг
     spec.apply(inp || {});
   }
@@ -2815,7 +2843,7 @@ function klutzChoose(S, pid) {
 }
 
 
-const ENGINE = { canBluff, nightDeaths, revive, psychopathKill, exeQuestions, roleWorks, makeMarionette, makeDrunk, setupRole, storytellerRole, gossipPending, setGossip, pithagAdvice, puzzleHit, puzzleGuess, politicianStats, politiciansPending, politicianSide, voteNeeds, ghostSpent, demonSeatNeighbours, generalGuess, choiceCount, newGame, newPlayer, P, nm, rname, realTeam, actsAs, aliveCount, aliveAll, coreCount, isTraveller, exile, exileThreshold, addTraveller, meetingBlocker, isDemon, distribution, setupDistribution, distCheck, unknownSetup, countTeams, randomDeal,
+const ENGINE = { canBluff, droisoned, nightDeaths, revive, psychopathKill, exeQuestions, roleWorks, makeMarionette, makeDrunk, setupRole, storytellerRole, gossipPending, setGossip, pithagAdvice, puzzleHit, puzzleGuess, politicianStats, politiciansPending, politicianSide, voteNeeds, ghostSpent, demonSeatNeighbours, generalGuess, choiceCount, newGame, newPlayer, P, nm, rname, realTeam, actsAs, aliveCount, aliveAll, coreCount, isTraveller, exile, exileThreshold, addTraveller, meetingBlocker, isDemon, distribution, setupDistribution, distCheck, unknownSetup, countTeams, randomDeal,
   amnesiacGuess, AMNESIAC_ANSWERS, storytellerKill, voteCount, voteWeight, voudonActive, bishopActive, travellerWorks, executeNow,
   judgeRuling, gunslingerShot, tinkerDies, doomsayerKill, fiddlerEnd, swapSeats, goonWarn, damselGuess, changeRole, madnessExecute, harpyKill,
   finishRoles, autoSetup, setupProblems, drawStart, drawOpen, drawClose, drawCancel, drawShown, drawLocked, drawProblem, distortion,
