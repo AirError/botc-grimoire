@@ -862,6 +862,9 @@ img.shroud { object-fit: contain; }
 .ringdir { justify-content: center; }
 .ringdirbox summary { cursor: pointer; text-align: center; color: var(--gold); }
 .ringdirbox[open] { display: flex; flex-direction: column; gap: 8px; }
+/* вкладка «Гримуар»: переключатель «Кругом / Плиткой», круг — прямо в карточке */
+.seg.gview { margin: 2px 0 10px; } .seg.gview button { flex: 1; }
+.card > .gcirc { margin: 4px 0 8px; } .card > .ringdirbox { margin-bottom: 6px; }
 /* кнопки в шапке вкладки «Гримуар»: «Кругом» и «Значки» */
 .gbtns { flex-wrap: nowrap; gap: 6px; flex: none; }
 .gbtns .btn { min-height: 34px; padding: 4px 10px; }
@@ -5422,17 +5425,24 @@ function pinAskHtml() {
 const pinFocus = () => setTimeout(() => { const el = document.getElementById('pinIn'); if (el) el.focus(); }, 30);
 // роли скрыты «шторкой» после стены жребия, пока рассказчик сам не нажмёт «Показать роли» (заметка пользователя 2026-10-16)
 const rolesHidden = () => S.phase === 'setup' && !!S.draw && S.draw.hidden !== false;
+// текст — по просьбе пользователя (2026-10-16): без длинного пояснения
 function rolesCurtain() {
-  return `<div class="card curtain"><h3>Роли скрыты</h3><div class="small muted">После стены жребия роли на экране закрыты: вдруг стену случайно закроют при игроках.
-    Убедитесь, что экран видите только вы.</div><button class="btn primary wide" data-act="rolesShow">Показать роли (только для рассказчика)</button></div>`;
+  return `<div class="card curtain"><h3>Роли скрыты</h3><div class="small muted">Чтобы увидеть роли, введите пароль.</div>
+    <button class="btn primary wide" data-act="rolesShow">Показать роли</button></div>`;
 }
+// Гримуар рассказчика: по умолчанию кругом прямо на вкладке, переключатель — на плитку (заметка пользователя 2026-10-16;
+// выбор запоминается на устройстве: localStorage botc-grimoire-grimgrid). Кругом: роли, имена, все отметки; нажатие на жетон — карточка игрока.
+// На подготовке переставить игроков — «Рассадка» (круг с перетаскиванием)
 function viewTable() {
   if (rolesHidden()) return poolCard() + rolesCurtain(); // стена — на вкладке «Игра»; Гримуар с ролями — под «шторкой»
-  const cells = S.players.map((p, i) => grimCell(p, i)).join('');
-  // «Кругом»: на подготовке — рассадка с перетаскиванием, во время игры — Гримуар рассказчика кругом
-  const ringB = S.players.length > 1 ? `<button class="btn ringbtn" data-act="${S.phase === 'setup' ? 'ringSeat' : 'ringGrim'}">◯ Кругом</button>` : '';
-  return `${S.phase === 'setup' ? poolCard() : ''}<div class="card"><div class="row ghead"><h3>Гримуар · ${esc(S.script.name)}</h3><span class="row gbtns">${ringB}<button class="btn lgbtn" data-act="legend" aria-label="Что значат значки"><span class="lgq" aria-hidden="true">?</span>Значки</button></span></div>
-    ${cells ? `<div class="grim">${cells}</div>` : '<div class="muted">Игроков пока нет — добавьте их на вкладке «Игра»</div>'}${bluffsHtml()}${S.phase === 'setup' ? '' : travellerForm()}</div>${S.phase === 'setup' ? '' : fabledZone()}${savListCard()}`;
+  const n = S.players.length, ring = !UI.grimGrid && n > 1;
+  const seatB = S.phase === 'setup' && n > 1 ? '<button class="btn ringbtn" data-act="ringSeat">Рассадка</button>' : '';
+  const viewSeg = n > 1 ? `<div class="seg gview" role="group" aria-label="Вид Гримуара"><button class="${ring ? 'on' : ''}" data-act="grimGrid" data-arg="0">◯ Кругом</button><button class="${ring ? '' : 'on'}" data-act="grimGrid" data-arg="1">▦ Плиткой</button></div>` : '';
+  const body = !n ? '<div class="muted">Игроков пока нет — добавьте их на вкладке «Игра»</div>'
+    : ring ? `${grimCircle({ names: true, notes: true, act: 'openP' })}<details class="ringdirbox"><summary class="small">Первый — внизу, у вас; номера идут ${dirName()} — изменить</summary>${dirSeg()}</details>`
+      : `<div class="grim">${S.players.map((p, i) => grimCell(p, i)).join('')}</div>`;
+  return `${S.phase === 'setup' ? poolCard() : ''}<div class="card"><div class="row ghead"><h3>Гримуар · ${esc(S.script.name)}</h3><span class="row gbtns">${seatB}<button class="btn lgbtn" data-act="legend" aria-label="Что значат значки"><span class="lgq" aria-hidden="true">?</span>Значки</button></span></div>
+    ${viewSeg}${body}${bluffsHtml()}${S.phase === 'setup' ? '' : travellerForm()}</div>${S.phase === 'setup' ? '' : fabledZone()}${savListCard()}`;
 }
 // Савант: все факты списком (заметка пользователя 2026-10-16) — верные зелёным, неверные красным; нажатие выбирает (ещё раз — убирает),
 // выбранные — в карточке Саванта на экране дня. Список составляется при открытии вкладки днём и живёт до конца дня («Обновить список» — заново)
@@ -5670,15 +5680,6 @@ function nomRing() {
         : open ? confirmRow('nominate', 'Подтвердить номинацию', (bishop || nm.by) && nm.on, 'nomClear', 'Сбросить') : ''}
       <button class="btn wide" data-act="ringClose">Вернуться к экрану дня</button></div></div>`;
 }
-// Гримуар рассказчика кругом (вкладка «Гримуар», во время игры): роли, имена, все отметки; нажатие на жетон — карточка игрока
-function stGrimRing() {
-  return `<div class="ov ringov" role="dialog" aria-label="Гримуар кругом">
-    <div class="ringtop"><span></span><b>Гримуар</b><button class="wbtn" data-act="ringClose" aria-label="Закрыть">×</button></div>
-    <div class="ringbox"><div class="small muted ringhint">Первый — внизу, у вас. Нажмите на жетон — откроется карточка игрока.</div>
-      <details class="ringdirbox"><summary class="small">Номера идут ${dirName()} — изменить</summary>${dirSeg()}</details>
-      ${grimCircle({ names: true, notes: true, act: 'openP' })}${bluffsHtml()}${fabledList()}
-      <button class="btn wide" data-act="ringClose">Закрыть</button></div></div>`;
-}
 const fabledList = () => (S.fabled || []).length ? `<div class="gbluffs"><span class="small muted">Сказочники</span><div>${S.fabled.map(r => `<span class="gbl">${ico(r, 'good', 'gbi')}${esc(E.rname(r))}</span>`).join('')}</div></div>` : '';
 /* ---------- публичный выбор днём кругом: Истребитель, Дитя Луны, Растяпа — только имена и места ---------- */
 const PICK_RINGS = {
@@ -5706,7 +5707,6 @@ function ringOverlay() {
   if (UI.ring === 'pick' && S.phase === 'day') return pickRing();
   if (UI.ring === 'seat' && S.phase === 'setup') return seatRing();
   if (UI.ring === 'nom' && S.phase === 'day') return nomRing();
-  if (UI.ring === 'grim' && S.phase !== 'setup') return stGrimRing();
   return '';
 }
 
@@ -6093,7 +6093,7 @@ function render() {
     <nav class="tabs">${[['game', S.phase === 'night' ? 'Ночь' : S.phase === 'day' ? 'День' : 'Игра'], ['table', 'Гримуар'], ['log', 'Журнал'], ['roles', 'Роли'], ['menu', 'Ещё']].map(([k, l]) => `<button class="${UI.tab === k ? 'on' : ''}" data-act="tab" data-arg="${k}">${l}</button>`).join('')}</nav>
     ${legendOverlay()}${wallOverlay()}${grimOverlay()}${ringOverlay()}${sheetOverlay()}${editOverlay()}${fateOverlay()}${statOverlay()}${tipHtml()}${savFactsHtml()}${ghostLostHtml()}${pinAskHtml()}${polOverlay()}${gossipAskHtml()}${exeAskHtml()}${exeResHtml()}${showOverlay()}${noteViewOverlay()}`;
   // круг рассадки — только на подготовке, круг номинации — только днём, Гримуар кругом — во время игры (после смены фазы закрываются сами)
-  if ((UI.ring === 'seat' && S.phase !== 'setup') || ((UI.ring === 'nom' || UI.ring === 'pick') && S.phase !== 'day') || (UI.ring === 'grim' && S.phase === 'setup')) UI.ring = null;
+  if ((UI.ring === 'seat' && S.phase !== 'setup') || ((UI.ring === 'nom' || UI.ring === 'pick') && S.phase !== 'day') || UI.ring === 'grim') UI.ring = null;
   // под полноэкранными слоями страница не прокручивается
   if (UI.fate && !(S.phase === 'day' && S.day.picks && S.day.picks.fate)) UI.fate = false; // день кончился — выбор казни закрыт
   if (UI.stat && S.phase !== 'day') UI.stat = false;
@@ -6318,7 +6318,7 @@ const A = {
   // круг игроков: рассадка (подготовка) и номинация (день)
   ringSeat: () => { UI.ring = 'seat'; render(); },
   ringNom: () => { UI.ring = 'nom'; render(); },
-  ringGrim: () => { UI.ring = 'grim'; render(); },
+  grimGrid: v => { UI.grimGrid = v === '1'; try { localStorage.setItem('botc-grimoire-grimgrid', UI.grimGrid ? '1' : ''); } catch (e) { /* без хранилища — до перезагрузки */ } render(); },
   ringClose: () => { UI.ring = null; render(); },
   seatDir: v => { if ((S.flags.seatDir || 'cw') !== v) act(S => { S.flags.seatDir = v; }, v === 'ccw' ? 'номера против часовой' : 'номера по часовой'); },
   // номинация кругом: первое нажатие — кто номинирует, второе — кого; повторное нажатие снимает выбор
@@ -6617,7 +6617,8 @@ function boot(hotData) {
   if (!S) S = sampleGame();
   S = upgrade(S);
   // настройки этого устройства: показ игрокам горизонтально и каким боком
-  try { UI.showLand = localStorage.getItem('botc-grimoire-showland') === '1'; UI.showFlip = localStorage.getItem('botc-grimoire-showflip') === '1'; UI.pickRing = localStorage.getItem('botc-grimoire-pickring') === '1'; } catch (e) { /* по умолчанию — вертикально, квадратиками */ }
+  try { UI.showLand = localStorage.getItem('botc-grimoire-showland') === '1'; UI.showFlip = localStorage.getItem('botc-grimoire-showflip') === '1'; UI.pickRing = localStorage.getItem('botc-grimoire-pickring') === '1';
+    UI.grimGrid = localStorage.getItem('botc-grimoire-grimgrid') === '1'; } catch (e) { /* по умолчанию — вертикально, квадратиками; Гримуар — кругом */ }
   if (!document.getElementById('artvars')) artVars();
   render();
   connectCloud();

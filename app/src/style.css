@@ -859,6 +859,9 @@ img.shroud { object-fit: contain; }
 .ringdir { justify-content: center; }
 .ringdirbox summary { cursor: pointer; text-align: center; color: var(--gold); }
 .ringdirbox[open] { display: flex; flex-direction: column; gap: 8px; }
+/* вкладка «Гримуар»: переключатель «Кругом / Плиткой», круг — прямо в карточке */
+.seg.gview { margin: 2px 0 10px; } .seg.gview button { flex: 1; }
+.card > .gcirc { margin: 4px 0 8px; } .card > .ringdirbox { margin-bottom: 6px; }
 /* кнопки в шапке вкладки «Гримуар»: «Кругом» и «Значки» */
 .gbtns { flex-wrap: nowrap; gap: 6px; flex: none; }
 .gbtns .btn { min-height: 34px; padding: 4px 10px; }
