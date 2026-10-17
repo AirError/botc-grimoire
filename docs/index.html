@@ -2801,15 +2801,22 @@ const LOGIC = {
     ps.forEach((q, i) => { if (realTeam(q) === 'minion') { const k = Math.abs(i - d); best = Math.min(best, k, n - k); } });
     return { n: best === n ? '—' : best, lines: regNote(S, ps.map(q => q.id)) };
   }, 'Шагов от Демона до ближайшего Приспешника'),
-  // Сновидец (вики): игрок не он сам и не Странник; 1 добрая и 1 злая роль, одна из них — его. Роли выбирает рассказчик
-  // (по умолчанию — рекомендация); своя роль Сновидцу не предлагается. Доброму игроку ложной лучше показать Приспешника
-  // из игры (вики: «почти всегда показывайте Приспешников из игры»). Пьян, отравлен, Вортокс — рекомендация: обе ложные
+  // Сновидец (вики): игрок не он сам и не Странник; 1 добрая и 1 злая роль, одна из них — его. Роли выбирает рассказчик,
+  // в списках они уже стоят по умолчанию (заметка пользователя 2026-10-17): роль стороны игрока — настоящая (если Сновидец трезв
+  // и здоров), ложная добрая — роль, которой нет в игре (и не блеф Демона, не «кем себя считает» Пьяница); ложная злая — Приспешник
+  // из игры. В списках сверху — роли, которых нет в игре. Своя роль Сновидцу не предлагается. Пьян, отравлен, Вортокс — обе ложные
   dreamer: (S, p, first, off) => {
     const dist = distortion(S, p), mine = new Set([p.role, actsAs(p)]);
     const side = good => r => R(r) && isGoodTeam(R(r).team) === good && !mine.has(r);
+    const named = new Set([...(S.bluffs || []), ...S.players.map(q => q.believes).filter(Boolean)]); // их называют, хотя их нет в игре
+    const absent = good => scriptRoles(S, r => side(good)(r) && !inPlay(S, r));
+    const groups = good => [{ label: 'Нет в игре', roles: absent(good).filter(r => !named.has(r)) },
+      { label: 'Нет в игре — блефы Демона, кем себя считает Пьяница', roles: absent(good).filter(r => named.has(r)) },
+      { label: 'В игре', roles: scriptRoles(S, r => side(good)(r) && inPlay(S, r)) }];
     const fakeFor = (t, good) => { const pool = scriptRoles(S, r => side(good)(r) && r !== t.role);
-      const minIn = good ? [] : pool.filter(r => R(r).team === 'minion' && inPlay(S, r));
-      return pick(minIn.length ? minIn : pool) || null; };
+      const pref = good ? pool.filter(r => !inPlay(S, r) && !named.has(r)) : pool.filter(r => R(r).team === 'minion' && inPlay(S, r));
+      const out = good ? pool.filter(r => !inPlay(S, r)) : [];
+      return pick(pref.length ? pref : out.length ? out : pool) || null; };
     const rec = t => stable(S, `dream:${p.id}:${t.id}:${dist ? 'f' : 't'}`, () => {
       const tg = isGoodTeam(realTeam(t));
       if (dist) return { g: fakeFor(t, true), e: fakeFor(t, false) };
@@ -2819,9 +2826,10 @@ const LOGIC = {
     const shown = inp => { const t = pickT(inp); if (!t) return null; const d = rec(t); return { g: inp.g || d.g, e: inp.e || d.e }; };
     return {
       inputs: [PL('t', 1, 'Сновидец выбирает игрока (не себя и не Странника)', q => q.id !== p.id && !isTraveller(q))],
-      more: inp => { const t = pickT(inp); if (!t) return []; const d = rec(t);
-        return [ROLE('g', `Добрая роль (не выбрано — рекомендация: ${rname(d.g)})`, side(true), { optional: true }),
-          ROLE('e', `Злая роль (не выбрано — рекомендация: ${rname(d.e)})`, side(false), { optional: true })]; },
+      more: inp => { const t = pickT(inp); if (!t) return []; const d = rec(t), real = good => !dist && isGoodTeam(realTeam(t)) === good;
+        const lab = good => `${good ? 'Добрая' : 'Злая'} роль (по умолчанию — ${real(good) ? 'настоящая' : good ? 'ложная, нет в игре' : 'ложная'})`;
+        return [ROLE('g', lab(true), side(true), { optional: true, groups: groups(true), def: d.g }),
+          ROLE('e', lab(false), side(false), { optional: true, groups: groups(false), def: d.e })]; },
       info: inp => {
         const t = pickT(inp), s = shown(inp); if (!t || !s) return null;
         const ok = s.g === t.role || s.e === t.role;
@@ -3463,7 +3471,7 @@ const BOUNDS = {
   po: { other: [I('1 игрока или никого; после «никого» в следующую ночь — 3 игроков')] },
   lunatic: { all: [I('как будто он Демон — ничего не происходит'), Y('Что показать Безумцу; настоящий Демон узнаёт его выбор')] },
   clockmaker: { first: [Y('Число шагов от Демона до ближайшего Приспешника')] },
-  dreamer: { all: [I('1 игрока, не себя и не Странника'), Y('1 добрую и 1 злую роль, одна из них — его; доброму игроку ложной лучше показать Приспешника из игры')] },
+  dreamer: { all: [I('1 игрока, не себя и не Странника'), Y('1 добрую и 1 злую роль, одна из них — его; ложная — любая роль другой стороны (по умолчанию: добрая — которой нет в игре, злая — Приспешник из игры)')] },
   harpy: { all: [I('2 игроков по очереди'), Y('Будите только первого: «ОБЛАДАТЕЛЬ ЭТОЙ РОЛИ ВЫБРАЛ ВАС», жетон Гарпии, укажите на второго. Завтра первый «помешан», что второй злой, — иначе можете убить одного или обоих')] },
   snakecharmer: { all: [I('1 живого игрока: если это Демон — они меняются ролями и сторонами')] },
   mathematician: { all: [Y('Число игроков, чьи способности сработали неправильно из-за чужих способностей')] },
@@ -4931,7 +4939,7 @@ function roleGroupOptions(groups, selected, placeholder) {
 const plainOptions = (ids, selected, placeholder) => `<option value="">${placeholder || '— выберите —'}</option>` + ids.map(r => `<option value="${r}" ${r === selected ? 'selected' : ''}>${esc(E.rname(r))}</option>`).join('');
 
 function fieldHtml(f, inp) {
-  const v = inp[f.key];
+  const v = inp[f.key] || (f.type === 'role' ? f.def : undefined); // def — роль, выбранная по умолчанию (Сновидец)
   if (f.type === 'players') {
     const sel = v || [], ringOk = S.phase === 'night' && S.players.length >= 3;
     // ночью — выбор квадратиками или кругом (как сидят за столом); выбор запоминается на устройстве (просьба пользователя 2026-10-14)

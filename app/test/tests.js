@@ -264,7 +264,18 @@ try {
   ok('Сновидец: своя роль не показывается ни разу (40 игр)', !dreamOwn);
   ok('Сновидец: доброму игроку ложной показывается Приспешник из игры', dreamMin);
   { const dsp3 = E.stepSpec(S, S.night.steps.find(s => s.id === 'dreamer')), inf = dsp3.info({ t: ids(S, 'oracle'), g: 'oracle', e: 'witch' });
-    ok('Сновидец: роли можно выбрать самому', inf.tokens.map(t => t.role).sort().join() === 'oracle,witch'); }
+    ok('Сновидец: роли можно выбрать самому', inf.tokens.map(t => t.role).sort().join() === 'oracle,witch');
+    // роли по умолчанию (заметка пользователя 2026-10-17): своя сторона — настоящая, ложная добрая — нет в игре; «Нет в игре» — сверху
+    let dBad = [];
+    for (let k = 0; k < 30; k++) {
+      const G = game(['clockmaker', 'dreamer', 'oracle', 'seamstress', 'mathematician', 'sweetheart', 'eviltwin', 'nodashii'], 'snv'); // Сновидец не сосед Но Даши — трезв
+      G.players.forEach(p => { if (['eviltwin', 'nodashii'].includes(p.role)) p.align = 'evil'; }); E.autoSetup(G, true); E.startGame(G);
+      const sp = E.stepSpec(G, G.night.steps.find(s => s.id === 'dreamer')), inG = r => G.players.some(p => p.role === r);
+      const fe = sp.more({ t: ids(G, 'eviltwin') }), fg = sp.more({ t: ids(G, 'oracle') });
+      if (fe[1].def !== 'eviltwin' || inG(fe[0].def) || G.bluffs.includes(fe[0].def) || fe[0].groups[0].label !== 'Нет в игре' || fe[0].groups[0].roles.some(inG)) dBad.push('злой: ' + fe[0].def + '/' + fe[1].def);
+      if (fg[0].def !== 'oracle' || fg[1].def !== 'eviltwin') dBad.push('добрый: ' + fg[0].def + '/' + fg[1].def);
+    }
+    ok('Сновидец: по умолчанию настоящая роль и ложная, которой нет в игре; «Нет в игре» — первой группой', !dBad.length, dBad.slice(0, 3).join(' | ')); }
   // Гарпия: будят только первого; второй — отметка; день: убить одного или обоих
   S = game(['dreamer', 'clockmaker', 'oracle', 'seamstress', 'mathematician', 'sweetheart', 'harpy', 'nodashii'], 'snv'); S.script.roles = S.script.roles.concat('harpy');
   S.players.forEach(p => { if (['harpy', 'nodashii'].includes(p.role)) p.align = 'evil'; }); E.autoSetup(S, true); E.startGame(S);

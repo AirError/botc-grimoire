@@ -435,7 +435,7 @@ function roleGroupOptions(groups, selected, placeholder) {
 const plainOptions = (ids, selected, placeholder) => `<option value="">${placeholder || '— выберите —'}</option>` + ids.map(r => `<option value="${r}" ${r === selected ? 'selected' : ''}>${esc(E.rname(r))}</option>`).join('');
 
 function fieldHtml(f, inp) {
-  const v = inp[f.key];
+  const v = inp[f.key] || (f.type === 'role' ? f.def : undefined); // def — роль, выбранная по умолчанию (Сновидец)
   if (f.type === 'players') {
     const sel = v || [], ringOk = S.phase === 'night' && S.players.length >= 3;
     // ночью — выбор квадратиками или кругом (как сидят за столом); выбор запоминается на устройстве (просьба пользователя 2026-10-14)
