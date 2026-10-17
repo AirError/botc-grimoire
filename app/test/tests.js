@@ -271,11 +271,29 @@ try {
       const G = game(['clockmaker', 'dreamer', 'oracle', 'seamstress', 'mathematician', 'sweetheart', 'eviltwin', 'nodashii'], 'snv'); // Сновидец не сосед Но Даши — трезв
       G.players.forEach(p => { if (['eviltwin', 'nodashii'].includes(p.role)) p.align = 'evil'; }); E.autoSetup(G, true); E.startGame(G);
       const sp = E.stepSpec(G, G.night.steps.find(s => s.id === 'dreamer')), inG = r => G.players.some(p => p.role === r);
-      const fe = sp.more({ t: ids(G, 'eviltwin') }), fg = sp.more({ t: ids(G, 'oracle') });
-      if (fe[1].def !== 'eviltwin' || inG(fe[0].def) || G.bluffs.includes(fe[0].def) || fe[0].groups[0].label !== 'Нет в игре' || fe[0].groups[0].roles.some(inG)) dBad.push('злой: ' + fe[0].def + '/' + fe[1].def);
+      const fd = sp.more({ t: ids(G, 'nodashii') }), fg = sp.more({ t: ids(G, 'oracle') });
+      if (fd[1].def !== 'nodashii' || inG(fd[0].def) || G.bluffs.includes(fd[0].def) || fd[0].groups[0].label !== 'Нет в игре' || fd[0].groups[0].roles.some(inG)) dBad.push('Демон: ' + fd[0].def + '/' + fd[1].def);
       if (fg[0].def !== 'oracle' || fg[1].def !== 'eviltwin') dBad.push('добрый: ' + fg[0].def + '/' + fg[1].def);
+      // близнецы (заметка пользователя 2026-10-17; вики): Злому Близнецу — роль доброго близнеца, доброму близнецу — Злой Близнец
+      const gt = E.P(G, G.flags.goodTwin), fe = sp.more({ t: ids(G, 'eviltwin') });
+      if (gt && gt.role !== 'dreamer') { const fgt = sp.more({ t: [gt.id] });
+        if (fe[0].def !== gt.role || fe[1].def !== 'eviltwin' || !/доброго близнеца/.test(fe[0].label)) dBad.push('Злой Близнец: ' + fe[0].def + ' вместо ' + gt.role);
+        if (fgt[0].def !== gt.role || fgt[1].def !== 'eviltwin') dBad.push('добрый близнец: ' + fgt[0].def + '/' + fgt[1].def); }
     }
-    ok('Сновидец: по умолчанию настоящая роль и ложная, которой нет в игре; «Нет в игре» — первой группой', !dBad.length, dBad.slice(0, 3).join(' | ')); }
+    ok('Сновидец: по умолчанию настоящая роль и ложная (нет в игре; близнецам — роль второго близнеца); «Нет в игре» — первой группой', !dBad.length, dBad.slice(0, 3).join(' | '));
+    // Безумец и Демон: Безумцу — Демон, которым он себя считает; Демону — Безумец
+    const L = game(['clockmaker', 'dreamer', 'oracle', 'seamstress', 'mathematician', 'lunatic', 'witch', 'vigormortis'], 'snv'); L.script.roles = L.script.roles.concat('lunatic');
+    L.players.forEach(p => { if (['witch', 'vigormortis'].includes(p.role)) p.align = 'evil'; }); E.autoSetup(L, true); E.startGame(L);
+    const lsp = E.stepSpec(L, L.night.steps.find(s => s.id === 'dreamer')), lu = byRole(L, 'lunatic');
+    const onLu = lsp.more({ t: [lu.id] }), onDe = lsp.more({ t: ids(L, 'vigormortis') });
+    ok('Сновидец: Безумцу — Демон, которым он себя считает; Демону — Безумец', onLu[0].def === 'lunatic' && onLu[1].def === lu.believes && onDe[0].def === 'lunatic' && onDe[1].def === 'vigormortis',
+      [onLu[0].def, onLu[1].def, lu.believes, onDe[0].def].join(' / '));
+    // обмен ролями (как после Заклинателя змей): злой Часовщик и добрый Вигормортис — ложной показывается роль «напарника»
+    const W = game(['clockmaker', 'dreamer', 'oracle', 'seamstress', 'mathematician', 'sweetheart', 'witch', 'vigormortis'], 'snv');
+    E.autoSetup(W, true); E.startGame(W); W.players.forEach(p => { p.align = ['witch', 'clockmaker'].includes(p.role) ? 'evil' : 'good'; }); // стороны после обмена
+    const wsp = E.stepSpec(W, W.night.steps.find(s => s.id === 'dreamer')), onCm = wsp.more({ t: ids(W, 'clockmaker') }), onVg = wsp.more({ t: ids(W, 'vigormortis') });
+    ok('Сновидец: после обмена ролями ложная — роль «напарника» по обмену', onCm[0].def === 'clockmaker' && onCm[1].def === 'vigormortis' && onVg[0].def === 'clockmaker' && onVg[1].def === 'vigormortis',
+      [onCm[0].def, onCm[1].def, onVg[0].def, onVg[1].def].join(' / ')); }
   // Гарпия: будят только первого; второй — отметка; день: убить одного или обоих
   S = game(['dreamer', 'clockmaker', 'oracle', 'seamstress', 'mathematician', 'sweetheart', 'harpy', 'nodashii'], 'snv'); S.script.roles = S.script.roles.concat('harpy');
   S.players.forEach(p => { if (['harpy', 'nodashii'].includes(p.role)) p.align = 'evil'; }); E.autoSetup(S, true); E.startGame(S);

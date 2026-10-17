@@ -1866,8 +1866,9 @@ const LOGIC = {
   }, 'Шагов от Демона до ближайшего Приспешника'),
   // Сновидец (вики): игрок не он сам и не Странник; 1 добрая и 1 злая роль, одна из них — его. Роли выбирает рассказчик,
   // в списках они уже стоят по умолчанию (заметка пользователя 2026-10-17): роль стороны игрока — настоящая (если Сновидец трезв
-  // и здоров), ложная добрая — роль, которой нет в игре (и не блеф Демона, не «кем себя считает» Пьяница); ложная злая — Приспешник
-  // из игры. В списках сверху — роли, которых нет в игре. Своя роль Сновидцу не предлагается. Пьян, отравлен, Вортокс — обе ложные
+  // и здоров), ложная — роль «пары» (близнецы, Безумец и Демон, Марионетка, обмен ролями — pairFor), иначе добрая — которой нет в игре
+  // (и не блеф Демона, не «кем себя считает» Пьяница), злая — Приспешник из игры. В списках сверху — роли, которых нет в игре.
+  // Своя роль Сновидцу не предлагается. Пьян, отравлен, Вортокс — обе ложные
   dreamer: (S, p, first, off) => {
     const dist = distortion(S, p), mine = new Set([p.role, actsAs(p)]);
     const side = good => r => R(r) && isGoodTeam(R(r).team) === good && !mine.has(r);
@@ -1876,21 +1877,40 @@ const LOGIC = {
     const groups = good => [{ label: 'Нет в игре', roles: absent(good).filter(r => !named.has(r)) },
       { label: 'Нет в игре — блефы Демона, кем себя считает Пьяница', roles: absent(good).filter(r => named.has(r)) },
       { label: 'В игре', roles: scriptRoles(S, r => side(good)(r) && inPlay(S, r)) }];
-    const fakeFor = (t, good) => { const pool = scriptRoles(S, r => side(good)(r) && r !== t.role);
+    // ложная роль «по паре» (заметка пользователя 2026-10-17; вики, Злой Близнец: Сновидцу про близнеца рассказчик скажет «Злой Близнец
+    // или роль, которую он называет»): два игрока, которых легко спутать, — ложной показываем роль второго. why — подпись в списке
+    const core = S.players.filter(q => !isTraveller(q)), gt = S.flags.goodTwin && P(S, S.flags.goodTwin);
+    const pairFor = (t, good) => {
+      const c = [];
+      if (good && t.role === 'eviltwin' && gt) c.push([gt.role, 'роль доброго близнеца']);
+      if (!good && gt && gt.id === t.id && inPlay(S, 'eviltwin')) c.push(['eviltwin', 'его близнец — Злой Близнец']);
+      // Безумец считает себя Демоном: ему — Демон, которым он себя считает; Демону — Безумец
+      if (!good && t.role === 'lunatic') { if (t.believes) c.push([t.believes, 'Демон, которым он себя считает']); core.filter(isDemon).forEach(q => c.push([q.role, 'Демон в игре (Безумец считает себя Демоном)'])); }
+      if (good && isDemon(t) && inPlay(S, 'lunatic')) c.push(['lunatic', 'Безумец тоже считает себя Демоном']);
+      // Марионетка считает себя доброй ролью — ею и показываем
+      if (good && t.role === 'marionette' && t.believes) c.push([t.believes, 'роль, которой Марионетка себя считает']);
+      // обмен ролями (Заклинатель змей, Цирюльник): роль одной стороны, а игрок — другой; ложная — роль «напарника» по обмену
+      if (!good && isGoodTeam(realTeam(t)) && t.align === 'evil') core.filter(q => q !== t && q.align === 'good' && !isGoodTeam(realTeam(q))).forEach(q => c.push([q.role, 'роль, с которой он, похоже, обменялся']));
+      if (good && !isGoodTeam(realTeam(t)) && t.align === 'good') core.filter(q => q !== t && q.align === 'evil' && isGoodTeam(realTeam(q))).forEach(q => c.push([q.role, 'роль, с которой он, похоже, обменялся']));
+      const hit = c.find(([r]) => r && R(r) && side(good)(r) && r !== t.role);
+      return hit ? { r: hit[0], why: hit[1] } : null;
+    };
+    const fakeFor = (t, good) => { const pr = pairFor(t, good); if (pr) return pr;
+      const pool = scriptRoles(S, r => side(good)(r) && r !== t.role);
       const pref = good ? pool.filter(r => !inPlay(S, r) && !named.has(r)) : pool.filter(r => R(r).team === 'minion' && inPlay(S, r));
       const out = good ? pool.filter(r => !inPlay(S, r)) : [];
-      return pick(pref.length ? pref : out.length ? out : pool) || null; };
-    const rec = t => stable(S, `dream:${p.id}:${t.id}:${dist ? 'f' : 't'}`, () => {
-      const tg = isGoodTeam(realTeam(t));
-      if (dist) return { g: fakeFor(t, true), e: fakeFor(t, false) };
-      return tg ? { g: t.role, e: fakeFor(t, false) } : { g: fakeFor(t, true), e: t.role };
+      const r = pick(pref.length ? pref : out.length ? out : pool) || null;
+      return { r, why: !r ? '' : good && !inPlay(S, r) ? 'нет в игре' : !good && R(r).team === 'minion' && inPlay(S, r) ? 'Приспешник из игры' : '' }; };
+    const rec = t => stable(S, `dream2:${p.id}:${t.id}:${dist ? 'f' : 't'}`, () => {
+      const tg = isGoodTeam(realTeam(t)), fg = dist || !tg ? fakeFor(t, true) : null, fe = dist || tg ? fakeFor(t, false) : null;
+      return { g: fg ? fg.r : t.role, e: fe ? fe.r : t.role, gw: fg ? fg.why : '', ew: fe ? fe.why : '' };
     });
     const pickT = inp => inp.t && P(S, inp.t[0]);
     const shown = inp => { const t = pickT(inp); if (!t) return null; const d = rec(t); return { g: inp.g || d.g, e: inp.e || d.e }; };
     return {
       inputs: [PL('t', 1, 'Сновидец выбирает игрока (не себя и не Странника)', q => q.id !== p.id && !isTraveller(q))],
       more: inp => { const t = pickT(inp); if (!t) return []; const d = rec(t), real = good => !dist && isGoodTeam(realTeam(t)) === good;
-        const lab = good => `${good ? 'Добрая' : 'Злая'} роль (по умолчанию — ${real(good) ? 'настоящая' : good ? 'ложная, нет в игре' : 'ложная'})`;
+        const lab = good => { const w = good ? d.gw : d.ew; return `${good ? 'Добрая' : 'Злая'} роль (по умолчанию — ${real(good) ? 'настоящая' : 'ложная' + (w ? ': ' + w : '')})`; };
         return [ROLE('g', lab(true), side(true), { optional: true, groups: groups(true), def: d.g }),
           ROLE('e', lab(false), side(false), { optional: true, groups: groups(false), def: d.e })]; },
       info: inp => {
@@ -2534,7 +2554,7 @@ const BOUNDS = {
   po: { other: [I('1 игрока или никого; после «никого» в следующую ночь — 3 игроков')] },
   lunatic: { all: [I('как будто он Демон — ничего не происходит'), Y('Что показать Безумцу; настоящий Демон узнаёт его выбор')] },
   clockmaker: { first: [Y('Число шагов от Демона до ближайшего Приспешника')] },
-  dreamer: { all: [I('1 игрока, не себя и не Странника'), Y('1 добрую и 1 злую роль, одна из них — его; ложная — любая роль другой стороны (по умолчанию: добрая — которой нет в игре, злая — Приспешник из игры)')] },
+  dreamer: { all: [I('1 игрока, не себя и не Странника'), Y('1 добрую и 1 злую роль, одна из них — его; ложная — любая роль другой стороны (по умолчанию: близнецам — роль второго близнеца, иначе добрая — которой нет в игре, злая — Приспешник из игры)')] },
   harpy: { all: [I('2 игроков по очереди'), Y('Будите только первого: «ОБЛАДАТЕЛЬ ЭТОЙ РОЛИ ВЫБРАЛ ВАС», жетон Гарпии, укажите на второго. Завтра первый «помешан», что второй злой, — иначе можете убить одного или обоих')] },
   snakecharmer: { all: [I('1 живого игрока: если это Демон — они меняются ролями и сторонами')] },
   mathematician: { all: [Y('Число игроков, чьи способности сработали неправильно из-за чужих способностей')] },
