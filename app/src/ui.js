@@ -65,6 +65,7 @@ const LS_KEY = 'botc-grimoire-v1', LS_HIST = 'botc-grimoire-history-v1';
 let dbRef = null, saveTimer = null, saving = false, saveAgain = false;
 function persist() {
   try { localStorage.setItem(LS_KEY, JSON.stringify(S)); } catch (e) { /* хранилище недоступно */ }
+  if (S && S.result && typeof gameArchiveSoon === 'function') gameArchiveSoon(S); // игра окончена — в историю прошлых игр (archive.js)
   try { localStorage.setItem(LS_HIST, JSON.stringify(HISTORY)); }
   catch (e) { HISTORY = HISTORY.slice(-10); try { localStorage.setItem(LS_HIST, JSON.stringify(HISTORY)); } catch (e2) { /* место кончилось */ } }
   if (!dbRef) return;
@@ -1462,19 +1463,52 @@ function fateOverlay() {
 }
 // записи шагов последней ночи (с ✎) — кнопки: выбор можно изменить, приложение переиграет ночь и покажет, что изменится
 const logEditable = e => !!(S.rp && e.w === S.rp.id && e.r != null && S.phase !== 'setup');
-function viewLog() {
+// цвета журнала (просьба пользователя 2026-10-14): смерть — красным, воскрешение — зелёным, яд и пьянство — фиолетовым; состояния — жирным
+// класс «save» занят значком сохранения в шапке — у записи «не умирает» свой (saved)
+const logCls = e => e.k === 'death' ? 'death' : e.k === 'revive' || /воскреш|снова жив/i.test(e.t) ? 'revive' : e.k === 'save' ? 'saved' : /отрав|травит|пьян|напои/i.test(e.t) ? 'poison' : e.k;
+const logTxt = e => esc(e.t).replace(/(отрав[а-яё]*|травит|пьян[а-яё]*|напои[а-яё]*|трезв[а-яё]*|защи[щт][а-яё]*|прокл[а-яё]*|помешан[а-яё]*|безуми[а-яё]*|воскреш[а-яё]*|снова жив)/gi, '<b>$1</b>');
+// записи по фазам, новые сверху; editable — записи последней ночи с ✎ (только у текущей игры, не у прошлых)
+function logHtml(entries, editable) {
   const groups = [];
-  for (const e of S.log) { const g = groups[groups.length - 1]; if (!g || g.p !== e.p) groups.push({ p: e.p, items: [e] }); else g.items.push(e); }
+  for (const e of entries) { const g = groups[groups.length - 1]; if (!g || g.p !== e.p) groups.push({ p: e.p, items: [e] }); else g.items.push(e); }
+  const row = e => editable && logEditable(e) ? `<button class="e ${logCls(e)} edit" data-act="logEdit" data-arg="${e.r}"><span>${logTxt(e)}</span><span class="ed" aria-hidden="true">✎</span></button>` : `<div class="e ${logCls(e)}">${logTxt(e)}</div>`;
+  return `<div class="log">${groups.slice().reverse().map(g => `<div class="ph">${esc(phaseName(g.p))}</div>${g.items.map(row).join('')}`).join('') || '<div class="muted">Пока пусто</div>'}</div>`;
+}
+function viewLog() {
   const any = S.log.some(logEditable);
-  // цвета (просьба пользователя 2026-10-14): смерть — красным, воскрешение — зелёным, яд и пьянство — фиолетовым; состояния — жирным
-  // класс «save» занят значком сохранения в шапке — у записи «не умирает» свой (saved)
-  const cls = e => e.k === 'death' ? 'death' : e.k === 'revive' || /воскреш|снова жив/i.test(e.t) ? 'revive' : e.k === 'save' ? 'saved' : /отрав|травит|пьян|напои/i.test(e.t) ? 'poison' : e.k;
-  const txt = e => esc(e.t).replace(/(отрав[а-яё]*|травит|пьян[а-яё]*|напои[а-яё]*|трезв[а-яё]*|защи[щт][а-яё]*|прокл[а-яё]*|помешан[а-яё]*|безуми[а-яё]*|воскреш[а-яё]*|снова жив)/gi, '<b>$1</b>');
-  const row = e => logEditable(e) ? `<button class="e ${cls(e)} edit" data-act="logEdit" data-arg="${e.r}"><span>${txt(e)}</span><span class="ed" aria-hidden="true">✎</span></button>` : `<div class="e ${cls(e)}">${txt(e)}</div>`;
   // Савант в игре — кнопка со всеми сказанными ему фактами и пометками П/Л (заметка пользователя 2026-10-16)
   const sav = (S.flags.savantFacts || []).length || S.players.some(p => p.role === 'savant');
   return `<div class="card"><div class="row ghead"><h3>Журнал</h3>${sav ? `<button class="btn" data-act="savFacts">Факты Саванта${(S.flags.savantFacts || []).length ? ` · ${S.flags.savantFacts.length}` : ''}</button>` : ''}</div>${any ? '<div class="small muted">Записи с ✎ — выбор последней ночи: нажмите, чтобы изменить (игрок не понял, шаг пропущен, ошибка). Сначала приложение покажет, что это изменит.</div>' : ''}
-    <div class="log">${groups.slice().reverse().map(g => `<div class="ph">${esc(phaseName(g.p))}</div>${g.items.map(row).join('')}`).join('') || '<div class="muted">Пока пусто</div>'}</div></div>`;
+    ${logHtml(S.log, true)}</div>${pastGamesHtml()}`;
+}
+/* ---------- прошлые игры (archive.js; просьба пользователя 2026-10-18): под журналом, каждая свёрнута ---------- */
+const pgDate = t => { const d = new Date(t); return d.toLocaleDateString('ru-RU', { day: 'numeric', month: 'long', year: 'numeric' }) + ', ' + d.toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit' }); };
+const pgRole = (r, b) => r ? E.rname(r) + (b ? ` (считает себя: ${E.rname(b)})` : '') : 'без роли';
+function pgPlayer(p) {
+  const moved = p.start && (p.start !== p.role || (p.startAlign && p.startAlign !== p.align));
+  return `<div class="pgp ${p.alive ? '' : 'dead'}"><span class="pgn">${p.seat}</span>${p.role ? ico(p.role, p.align, 'pgi') : '<span class="pgi"></span>'}
+    <span class="pgt"><span class="pgnm">${p.alive ? '' : '† '}${esc(p.name)}</span><span class="pgr side-${p.align}">${esc(pgRole(p.role, p.believes))}${p.tr ? ' · Странник' : ''}</span>
+    ${moved ? `<span class="pgst">в начале: ${esc(pgRole(p.start, p.startBelieves))}${p.startAlign && p.startAlign !== p.align ? (p.startAlign === 'good' ? ', добрый' : ', злой') : ''}</span>` : ''}</span></div>`;
+}
+function pgItem(g) {
+  const res = g.result ? `<span class="pgres ${g.result.winner}">Победа ${g.result.winner === 'good' ? 'добра' : 'зла'}</span>` : '<span class="pgres none">Не окончена</span>';
+  // скрытый id в заголовке: render() помнит раскрытые <details> по тексту заголовка — у каждой игры он свой
+  return `<details class="pg"><summary><span class="pgd">${esc(pgDate(g.saved))}</span><span class="pgs">${esc(g.script)} · ${g.players.length} игроков</span>${res}<span hidden>${g.id}</span></summary>
+    <div class="pgbody">
+      <div class="small">${g.result ? esc(g.result.reason) : 'Начали новую игру до конца этой.'}</div>
+      <div class="small muted">Начата ${esc(pgDate(g.created))}${g.n ? ` · дошли до ${g.phase === 'night' ? 'ночи' : 'дня'} ${g.n}` : ''}</div>
+      <div class="pgpl">${g.players.map(pgPlayer).join('')}</div>
+      ${g.bluffs.length ? `<div class="small"><b>Блефы Демона:</b> ${g.bluffs.map(r => esc(E.rname(r))).join(', ')}</div>` : ''}
+      ${g.fabled.length ? `<div class="small"><b>Сказочники:</b> ${g.fabled.map(r => esc(E.rname(r))).join(', ')}</div>` : ''}
+      <details class="pglog"><summary class="small">Журнал игры · ${g.log.length}<span hidden>${g.id}</span></summary>${logHtml(g.log, false)}</details>
+      ${UI.confirm === 'pg:' + g.id ? `<div class="warn">Удалить эту игру из истории? Это нельзя отменить.</div><div class="row"><button class="btn danger" data-act="pgDel" data-arg="${g.id}">Да, удалить</button><button class="btn" data-act="cancelConfirm">Отмена</button></div>`
+        : `<button class="btn danger pgdel" data-act="pgDelAsk" data-arg="${g.id}">Удалить из истории</button>`}
+    </div></details>`;
+}
+function pastGamesHtml() {
+  const list = (typeof GAMES !== 'undefined' ? GAMES : []).filter(g => g.id !== S.id); // текущая игра — в журнале выше
+  return `<div class="card pgcard"><h3>Прошлые игры${list.length ? ' · ' + list.length : ''}</h3>
+    ${list.length ? list.map(pgItem).join('') : '<div class="small muted">Здесь появятся сыгранные партии: игра сохраняется сама, когда заканчивается и когда вы начинаете новую. Хранится на этом устройстве.</div>'}</div>`;
 }
 // правка выбора шага из журнала: поля шага в том состоянии, в каком он был (до него); «Что изменится» — переигрывание ночи
 function editOverlay() {
@@ -2021,8 +2055,11 @@ const A = {
   skin: k => { if (!SKINS.some(s => s[0] === k)) return; UI.skin = k; try { localStorage.setItem(SKIN_KEY, k); } catch (e) { /* без хранилища — до перезагрузки */ } render(); },
   splashOff: () => { UI.splash = false; render(); },
   askNew: () => { UI.confirm = 'new'; render(); },
+  pgDelAsk: id => { UI.confirm = 'pg:' + id; render(); },
+  pgDel: id => { UI.confirm = null; gameDelete(id).then(render); render(); },
   cancelConfirm: () => { UI.confirm = null; render(); },
   newGame: () => {
+    gameArchive(S); // прошлая игра — в историю (archive.js); подготовку без ночей не храним
     const key = S.script.key === 'custom' ? 'ecbe' : S.script.key, names = S.players.filter(p => !E.isTraveller(p)).map(p => p.name), dir = S.flags.seatDir;
     HISTORY = []; S = E.newGame(key); S.players = names.map(n => E.newPlayer(n)); if (dir) S.flags.seatDir = dir; // направление мест — как в прошлой игре
     UI.confirm = null; UI.tab = 'game'; persist(); render();
@@ -2034,7 +2071,7 @@ const A = {
     catch (e) { UI.importText = text; UI.copied = 'Текст игры в поле ниже — выделите и скопируйте его.'; render(); }
   },
   importText: (a, el) => { UI.importText = el.value; },
-  importJson: () => { try { const s = JSON.parse(UI.importText); if (!s.players || !s.script) throw 0; HISTORY.push({ s: JSON.stringify(S), label: 'загрузка игры' }); S = upgrade(s); S.updated = Date.now(); UI.importText = ''; UI.copied = ''; UI.tab = 'game'; persist(); render(); } catch (e) { alertNote('Это не похоже на сохранённую игру.'); } },
+  importJson: () => { try { const s = JSON.parse(UI.importText); if (!s.players || !s.script) throw 0; if (s.id !== S.id) gameArchive(S); HISTORY.push({ s: JSON.stringify(S), label: 'загрузка игры' }); S = upgrade(s); S.updated = Date.now(); UI.importText = ''; UI.copied = ''; UI.tab = 'game'; persist(); render(); } catch (e) { alertNote('Это не похоже на сохранённую игру.'); } },
 };
 Object.assign(A, NOTE_ACTS); // заметки «что доработать» (notes.js)
 function alertNote(text) { UI.copied = ''; UI.notes = [text]; render(); }

@@ -924,6 +924,30 @@ img.shroud { object-fit: contain; }
 /* безумие нарушено (Цереновус, Уродец, Гарпия) */
 .madrow { display: flex; flex-direction: column; gap: 6px; padding: 8px 0; border-top: 1px solid var(--line); }
 .madrow .btn { align-self: flex-start; }
+/* прошлые игры (вкладка «Журнал»): каждая — свёрнутая строка «дата · сценарий · итог», внутри игроки и журнал */
+.pgcard { gap: 8px; }
+.pg { border-top: 1px solid var(--line); padding-top: 8px; }
+.pg > summary { cursor: pointer; display: grid; gap: 2px 10px; align-items: baseline; list-style: none; }
+.pg > summary::-webkit-details-marker { display: none; }
+.pg > summary::before { content: '▸'; grid-row: 1 / span 2; color: var(--muted); }
+.pg[open] > summary::before { content: '▾'; }
+.pg > summary { grid-template-columns: 14px 1fr auto; }
+.pgd { font-weight: 700; } .pgs { grid-column: 2; font-size: 14px; color: var(--muted); }
+.pgres { grid-column: 3; grid-row: 1 / span 2; font-weight: 700; font-size: 14px; white-space: nowrap; }
+.pgres.good { color: var(--good); } .pgres.evil { color: var(--evil); } .pgres.none { color: var(--muted); font-weight: 500; }
+.pgbody { display: flex; flex-direction: column; gap: 8px; padding: 10px 0 4px 14px; }
+.pgpl { display: flex; flex-direction: column; gap: 4px; }
+.pgp { display: grid; grid-template-columns: 22px 30px minmax(0, 1fr); gap: 8px; align-items: center; }
+.pgp.dead .pgnm { color: var(--muted); }
+.pgn { font-size: 13px; color: var(--muted); text-align: right; font-variant-numeric: tabular-nums; }
+.pgi { width: 30px; height: 30px; object-fit: contain; }
+.pgt { display: flex; flex-direction: column; min-width: 0; }
+.pgnm { font-weight: 700; }
+.pgr { font-size: 14px; } .pgr.side-good { color: var(--good); } .pgr.side-evil { color: var(--evil); }
+.pgst { font-size: 13px; color: var(--muted); }
+.pglog summary { cursor: pointer; color: var(--gold); font-weight: 700; }
+.pglog .log { margin-top: 6px; }
+.btn.pgdel { align-self: flex-start; min-height: 38px; padding: 6px 12px; font-size: 14px; }
 
 /* ================= Оформление (html[data-skin]): basic — как было; engr — «Лунная гравюра»; glass — «Витраж во тьме» =================
    Правила стилей — в конце файла и через :where(), чтобы не перебивать частные случаи (.card.curtain и т. п.). */

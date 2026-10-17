@@ -927,6 +927,30 @@ img.shroud { object-fit: contain; }
 /* безумие нарушено (Цереновус, Уродец, Гарпия) */
 .madrow { display: flex; flex-direction: column; gap: 6px; padding: 8px 0; border-top: 1px solid var(--line); }
 .madrow .btn { align-self: flex-start; }
+/* прошлые игры (вкладка «Журнал»): каждая — свёрнутая строка «дата · сценарий · итог», внутри игроки и журнал */
+.pgcard { gap: 8px; }
+.pg { border-top: 1px solid var(--line); padding-top: 8px; }
+.pg > summary { cursor: pointer; display: grid; gap: 2px 10px; align-items: baseline; list-style: none; }
+.pg > summary::-webkit-details-marker { display: none; }
+.pg > summary::before { content: '▸'; grid-row: 1 / span 2; color: var(--muted); }
+.pg[open] > summary::before { content: '▾'; }
+.pg > summary { grid-template-columns: 14px 1fr auto; }
+.pgd { font-weight: 700; } .pgs { grid-column: 2; font-size: 14px; color: var(--muted); }
+.pgres { grid-column: 3; grid-row: 1 / span 2; font-weight: 700; font-size: 14px; white-space: nowrap; }
+.pgres.good { color: var(--good); } .pgres.evil { color: var(--evil); } .pgres.none { color: var(--muted); font-weight: 500; }
+.pgbody { display: flex; flex-direction: column; gap: 8px; padding: 10px 0 4px 14px; }
+.pgpl { display: flex; flex-direction: column; gap: 4px; }
+.pgp { display: grid; grid-template-columns: 22px 30px minmax(0, 1fr); gap: 8px; align-items: center; }
+.pgp.dead .pgnm { color: var(--muted); }
+.pgn { font-size: 13px; color: var(--muted); text-align: right; font-variant-numeric: tabular-nums; }
+.pgi { width: 30px; height: 30px; object-fit: contain; }
+.pgt { display: flex; flex-direction: column; min-width: 0; }
+.pgnm { font-weight: 700; }
+.pgr { font-size: 14px; } .pgr.side-good { color: var(--good); } .pgr.side-evil { color: var(--evil); }
+.pgst { font-size: 13px; color: var(--muted); }
+.pglog summary { cursor: pointer; color: var(--gold); font-weight: 700; }
+.pglog .log { margin-top: 6px; }
+.btn.pgdel { align-self: flex-start; min-height: 38px; padding: 6px 12px; font-size: 14px; }
 
 /* ================= Оформление (html[data-skin]): basic — как было; engr — «Лунная гравюра»; glass — «Витраж во тьме» =================
    Правила стилей — в конце файла и через :where(), чтобы не перебивать частные случаи (.card.curtain и т. п.). */
@@ -1831,6 +1855,8 @@ function startGame(S) {
   // история для фактов Саванта (2026-10-16): есть только у игр, начатых после обновления (`hist` — признак)
   const tm = countTeams(S);
   S.flags.hist = { teams: { townsfolk: tm.townsfolk, outsider: tm.outsider }, picks: [], exe: [], poison: [], off: [], abn: [] };
+  // роли в начале игры — для истории прошлых игр (кем начинал и кем закончил; просьба пользователя 2026-10-18)
+  S.flags.startRoles = Object.fromEntries(S.players.map(p => [p.id, { role: p.role, believes: p.believes || null, align: p.align }]));
   log(S, `Игра началась: ${S.players.length} игроков, сценарий «${S.script.name}»`, 'phase');
   startNight(S);
 }
@@ -4664,6 +4690,71 @@ const NOTE_ACTS = {
 notesLoad();
 
 'use strict';
+/* Прошлые игры — вкладка «Журнал» (просьба пользователя 2026-10-18). Начатая игра сама попадает в архив, когда кончается, и ещё раз —
+   когда рассказчик начинает новую или загружает другую (запись по id игры обновляется, а не дублируется). Хранится отдельно от игры,
+   как заметки: IndexedDB, без него — localStorage. Новая игра и отмена архив не трогают. В записи — итог, игроки (роль в начале
+   и в конце, сторона, жив ли), блефы, Сказочники и весь журнал партии. */
+let GAMES = [];                       // записи, новые — первыми
+const GAMES_DB = 'botc-grimoire-games', GAMES_LS = 'botc-grimoire-games-v1', GAMES_MAX = 200;
+let gamesIdb = null, gamesTimer = null;
+
+function gamesOpen() {
+  return new Promise(res => {
+    try {
+      const rq = indexedDB.open(GAMES_DB, 1);
+      rq.onupgradeneeded = () => rq.result.createObjectStore('games', { keyPath: 'id' });
+      rq.onsuccess = () => res(rq.result);
+      rq.onerror = () => res(null);
+    } catch (e) { res(null); }
+  });
+}
+const gamesTx = (mode, fn) => new Promise((res, rej) => {
+  const tx = gamesIdb.transaction('games', mode), st = tx.objectStore('games'), out = fn(st);
+  tx.oncomplete = () => res(out && out.result); tx.onerror = () => rej(tx.error);
+});
+// без IndexedDB — localStorage: места мало (около 5 МБ на всё), не влезает — храним меньше игр
+function gamesSaveLs() {
+  for (const k of [GAMES_MAX, 40, 15, 5]) { try { localStorage.setItem(GAMES_LS, JSON.stringify(GAMES.slice(0, k))); return true; } catch (e) { /* меньше */ } }
+  return false;
+}
+async function gamesLoad() {
+  gamesIdb = await gamesOpen();
+  try {
+    if (gamesIdb) GAMES = (await gamesTx('readonly', st => st.getAll())) || [];
+    else GAMES = JSON.parse(localStorage.getItem(GAMES_LS) || '[]');
+  } catch (e) { GAMES = []; }
+  GAMES.sort((a, b) => b.saved - a.saved);
+  if (typeof render === 'function' && typeof S !== 'undefined' && S && typeof UI !== 'undefined' && UI.tab === 'log') render();
+}
+// запись о партии (копия — дальше игра меняется без неё)
+function gameRecord(s) {
+  const st = (s.flags && s.flags.startRoles) || {};
+  return JSON.parse(JSON.stringify({
+    id: s.id, created: s.created, saved: Date.now(), script: s.script ? s.script.name : '', n: s.n || 0, phase: s.phase, result: s.result || null,
+    players: s.players.map((p, i) => ({ seat: i + 1, name: p.name, role: p.role, believes: p.believes || null, align: p.align, alive: p.alive,
+      tr: !!(p.role && DATA.roles[p.role] && DATA.roles[p.role].team === 'traveller'),
+      start: st[p.id] ? st[p.id].role : null, startBelieves: st[p.id] ? st[p.id].believes : null, startAlign: st[p.id] ? st[p.id].align : null })),
+    bluffs: (s.bluffs || []).filter(Boolean), fabled: s.fabled || [], log: s.log || [],
+  }));
+}
+// в архив — только начатые игры (подготовку без ночей не храним)
+const gameStarted = s => !!(s && s.id && s.phase && s.phase !== 'setup' && s.players && s.players.length);
+async function gameArchive(s) {
+  if (!gameStarted(s)) return false;
+  const rec = gameRecord(s);
+  GAMES = [rec].concat(GAMES.filter(g => g.id !== rec.id)).slice(0, GAMES_MAX);
+  if (gamesIdb) { try { await gamesTx('readwrite', st => st.put(rec)); return true; } catch (e) { return gamesSaveLs(); } }
+  return gamesSaveLs();
+}
+// игра окончена — сохраняем сразу (и после правок конца игры, например решения о Политике), не чаще раза в 1,5 с
+function gameArchiveSoon(s) { clearTimeout(gamesTimer); gamesTimer = setTimeout(() => gameArchive(s), 1500); }
+async function gameDelete(id) {
+  GAMES = GAMES.filter(g => g.id !== id);
+  if (gamesIdb) { try { await gamesTx('readwrite', st => st.delete(id)); } catch (e) { /* уже удалена */ } } else gamesSaveLs();
+}
+gamesLoad();
+
+'use strict';
 /* Интерфейс карманного гримуара. Один render() перерисовывает экран из состояния игры S.
    Всё, что важно для партии, живёт в S (включая черновики выбора и незавершённую номинацию),
    поэтому отмена и перезагрузка страницы возвращают ровно то, что было на экране. */
@@ -4730,6 +4821,7 @@ const LS_KEY = 'botc-grimoire-v1', LS_HIST = 'botc-grimoire-history-v1';
 let dbRef = null, saveTimer = null, saving = false, saveAgain = false;
 function persist() {
   try { localStorage.setItem(LS_KEY, JSON.stringify(S)); } catch (e) { /* хранилище недоступно */ }
+  if (S && S.result && typeof gameArchiveSoon === 'function') gameArchiveSoon(S); // игра окончена — в историю прошлых игр (archive.js)
   try { localStorage.setItem(LS_HIST, JSON.stringify(HISTORY)); }
   catch (e) { HISTORY = HISTORY.slice(-10); try { localStorage.setItem(LS_HIST, JSON.stringify(HISTORY)); } catch (e2) { /* место кончилось */ } }
   if (!dbRef) return;
@@ -6127,19 +6219,52 @@ function fateOverlay() {
 }
 // записи шагов последней ночи (с ✎) — кнопки: выбор можно изменить, приложение переиграет ночь и покажет, что изменится
 const logEditable = e => !!(S.rp && e.w === S.rp.id && e.r != null && S.phase !== 'setup');
-function viewLog() {
+// цвета журнала (просьба пользователя 2026-10-14): смерть — красным, воскрешение — зелёным, яд и пьянство — фиолетовым; состояния — жирным
+// класс «save» занят значком сохранения в шапке — у записи «не умирает» свой (saved)
+const logCls = e => e.k === 'death' ? 'death' : e.k === 'revive' || /воскреш|снова жив/i.test(e.t) ? 'revive' : e.k === 'save' ? 'saved' : /отрав|травит|пьян|напои/i.test(e.t) ? 'poison' : e.k;
+const logTxt = e => esc(e.t).replace(/(отрав[а-яё]*|травит|пьян[а-яё]*|напои[а-яё]*|трезв[а-яё]*|защи[щт][а-яё]*|прокл[а-яё]*|помешан[а-яё]*|безуми[а-яё]*|воскреш[а-яё]*|снова жив)/gi, '<b>$1</b>');
+// записи по фазам, новые сверху; editable — записи последней ночи с ✎ (только у текущей игры, не у прошлых)
+function logHtml(entries, editable) {
   const groups = [];
-  for (const e of S.log) { const g = groups[groups.length - 1]; if (!g || g.p !== e.p) groups.push({ p: e.p, items: [e] }); else g.items.push(e); }
+  for (const e of entries) { const g = groups[groups.length - 1]; if (!g || g.p !== e.p) groups.push({ p: e.p, items: [e] }); else g.items.push(e); }
+  const row = e => editable && logEditable(e) ? `<button class="e ${logCls(e)} edit" data-act="logEdit" data-arg="${e.r}"><span>${logTxt(e)}</span><span class="ed" aria-hidden="true">✎</span></button>` : `<div class="e ${logCls(e)}">${logTxt(e)}</div>`;
+  return `<div class="log">${groups.slice().reverse().map(g => `<div class="ph">${esc(phaseName(g.p))}</div>${g.items.map(row).join('')}`).join('') || '<div class="muted">Пока пусто</div>'}</div>`;
+}
+function viewLog() {
   const any = S.log.some(logEditable);
-  // цвета (просьба пользователя 2026-10-14): смерть — красным, воскрешение — зелёным, яд и пьянство — фиолетовым; состояния — жирным
-  // класс «save» занят значком сохранения в шапке — у записи «не умирает» свой (saved)
-  const cls = e => e.k === 'death' ? 'death' : e.k === 'revive' || /воскреш|снова жив/i.test(e.t) ? 'revive' : e.k === 'save' ? 'saved' : /отрав|травит|пьян|напои/i.test(e.t) ? 'poison' : e.k;
-  const txt = e => esc(e.t).replace(/(отрав[а-яё]*|травит|пьян[а-яё]*|напои[а-яё]*|трезв[а-яё]*|защи[щт][а-яё]*|прокл[а-яё]*|помешан[а-яё]*|безуми[а-яё]*|воскреш[а-яё]*|снова жив)/gi, '<b>$1</b>');
-  const row = e => logEditable(e) ? `<button class="e ${cls(e)} edit" data-act="logEdit" data-arg="${e.r}"><span>${txt(e)}</span><span class="ed" aria-hidden="true">✎</span></button>` : `<div class="e ${cls(e)}">${txt(e)}</div>`;
   // Савант в игре — кнопка со всеми сказанными ему фактами и пометками П/Л (заметка пользователя 2026-10-16)
   const sav = (S.flags.savantFacts || []).length || S.players.some(p => p.role === 'savant');
   return `<div class="card"><div class="row ghead"><h3>Журнал</h3>${sav ? `<button class="btn" data-act="savFacts">Факты Саванта${(S.flags.savantFacts || []).length ? ` · ${S.flags.savantFacts.length}` : ''}</button>` : ''}</div>${any ? '<div class="small muted">Записи с ✎ — выбор последней ночи: нажмите, чтобы изменить (игрок не понял, шаг пропущен, ошибка). Сначала приложение покажет, что это изменит.</div>' : ''}
-    <div class="log">${groups.slice().reverse().map(g => `<div class="ph">${esc(phaseName(g.p))}</div>${g.items.map(row).join('')}`).join('') || '<div class="muted">Пока пусто</div>'}</div></div>`;
+    ${logHtml(S.log, true)}</div>${pastGamesHtml()}`;
+}
+/* ---------- прошлые игры (archive.js; просьба пользователя 2026-10-18): под журналом, каждая свёрнута ---------- */
+const pgDate = t => { const d = new Date(t); return d.toLocaleDateString('ru-RU', { day: 'numeric', month: 'long', year: 'numeric' }) + ', ' + d.toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit' }); };
+const pgRole = (r, b) => r ? E.rname(r) + (b ? ` (считает себя: ${E.rname(b)})` : '') : 'без роли';
+function pgPlayer(p) {
+  const moved = p.start && (p.start !== p.role || (p.startAlign && p.startAlign !== p.align));
+  return `<div class="pgp ${p.alive ? '' : 'dead'}"><span class="pgn">${p.seat}</span>${p.role ? ico(p.role, p.align, 'pgi') : '<span class="pgi"></span>'}
+    <span class="pgt"><span class="pgnm">${p.alive ? '' : '† '}${esc(p.name)}</span><span class="pgr side-${p.align}">${esc(pgRole(p.role, p.believes))}${p.tr ? ' · Странник' : ''}</span>
+    ${moved ? `<span class="pgst">в начале: ${esc(pgRole(p.start, p.startBelieves))}${p.startAlign && p.startAlign !== p.align ? (p.startAlign === 'good' ? ', добрый' : ', злой') : ''}</span>` : ''}</span></div>`;
+}
+function pgItem(g) {
+  const res = g.result ? `<span class="pgres ${g.result.winner}">Победа ${g.result.winner === 'good' ? 'добра' : 'зла'}</span>` : '<span class="pgres none">Не окончена</span>';
+  // скрытый id в заголовке: render() помнит раскрытые <details> по тексту заголовка — у каждой игры он свой
+  return `<details class="pg"><summary><span class="pgd">${esc(pgDate(g.saved))}</span><span class="pgs">${esc(g.script)} · ${g.players.length} игроков</span>${res}<span hidden>${g.id}</span></summary>
+    <div class="pgbody">
+      <div class="small">${g.result ? esc(g.result.reason) : 'Начали новую игру до конца этой.'}</div>
+      <div class="small muted">Начата ${esc(pgDate(g.created))}${g.n ? ` · дошли до ${g.phase === 'night' ? 'ночи' : 'дня'} ${g.n}` : ''}</div>
+      <div class="pgpl">${g.players.map(pgPlayer).join('')}</div>
+      ${g.bluffs.length ? `<div class="small"><b>Блефы Демона:</b> ${g.bluffs.map(r => esc(E.rname(r))).join(', ')}</div>` : ''}
+      ${g.fabled.length ? `<div class="small"><b>Сказочники:</b> ${g.fabled.map(r => esc(E.rname(r))).join(', ')}</div>` : ''}
+      <details class="pglog"><summary class="small">Журнал игры · ${g.log.length}<span hidden>${g.id}</span></summary>${logHtml(g.log, false)}</details>
+      ${UI.confirm === 'pg:' + g.id ? `<div class="warn">Удалить эту игру из истории? Это нельзя отменить.</div><div class="row"><button class="btn danger" data-act="pgDel" data-arg="${g.id}">Да, удалить</button><button class="btn" data-act="cancelConfirm">Отмена</button></div>`
+        : `<button class="btn danger pgdel" data-act="pgDelAsk" data-arg="${g.id}">Удалить из истории</button>`}
+    </div></details>`;
+}
+function pastGamesHtml() {
+  const list = (typeof GAMES !== 'undefined' ? GAMES : []).filter(g => g.id !== S.id); // текущая игра — в журнале выше
+  return `<div class="card pgcard"><h3>Прошлые игры${list.length ? ' · ' + list.length : ''}</h3>
+    ${list.length ? list.map(pgItem).join('') : '<div class="small muted">Здесь появятся сыгранные партии: игра сохраняется сама, когда заканчивается и когда вы начинаете новую. Хранится на этом устройстве.</div>'}</div>`;
 }
 // правка выбора шага из журнала: поля шага в том состоянии, в каком он был (до него); «Что изменится» — переигрывание ночи
 function editOverlay() {
@@ -6686,8 +6811,11 @@ const A = {
   skin: k => { if (!SKINS.some(s => s[0] === k)) return; UI.skin = k; try { localStorage.setItem(SKIN_KEY, k); } catch (e) { /* без хранилища — до перезагрузки */ } render(); },
   splashOff: () => { UI.splash = false; render(); },
   askNew: () => { UI.confirm = 'new'; render(); },
+  pgDelAsk: id => { UI.confirm = 'pg:' + id; render(); },
+  pgDel: id => { UI.confirm = null; gameDelete(id).then(render); render(); },
   cancelConfirm: () => { UI.confirm = null; render(); },
   newGame: () => {
+    gameArchive(S); // прошлая игра — в историю (archive.js); подготовку без ночей не храним
     const key = S.script.key === 'custom' ? 'ecbe' : S.script.key, names = S.players.filter(p => !E.isTraveller(p)).map(p => p.name), dir = S.flags.seatDir;
     HISTORY = []; S = E.newGame(key); S.players = names.map(n => E.newPlayer(n)); if (dir) S.flags.seatDir = dir; // направление мест — как в прошлой игре
     UI.confirm = null; UI.tab = 'game'; persist(); render();
@@ -6699,7 +6827,7 @@ const A = {
     catch (e) { UI.importText = text; UI.copied = 'Текст игры в поле ниже — выделите и скопируйте его.'; render(); }
   },
   importText: (a, el) => { UI.importText = el.value; },
-  importJson: () => { try { const s = JSON.parse(UI.importText); if (!s.players || !s.script) throw 0; HISTORY.push({ s: JSON.stringify(S), label: 'загрузка игры' }); S = upgrade(s); S.updated = Date.now(); UI.importText = ''; UI.copied = ''; UI.tab = 'game'; persist(); render(); } catch (e) { alertNote('Это не похоже на сохранённую игру.'); } },
+  importJson: () => { try { const s = JSON.parse(UI.importText); if (!s.players || !s.script) throw 0; if (s.id !== S.id) gameArchive(S); HISTORY.push({ s: JSON.stringify(S), label: 'загрузка игры' }); S = upgrade(s); S.updated = Date.now(); UI.importText = ''; UI.copied = ''; UI.tab = 'game'; persist(); render(); } catch (e) { alertNote('Это не похоже на сохранённую игру.'); } },
 };
 Object.assign(A, NOTE_ACTS); // заметки «что доработать» (notes.js)
 function alertNote(text) { UI.copied = ''; UI.notes = [text]; render(); }

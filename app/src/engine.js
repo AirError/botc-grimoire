@@ -772,6 +772,8 @@ function startGame(S) {
   // история для фактов Саванта (2026-10-16): есть только у игр, начатых после обновления (`hist` — признак)
   const tm = countTeams(S);
   S.flags.hist = { teams: { townsfolk: tm.townsfolk, outsider: tm.outsider }, picks: [], exe: [], poison: [], off: [], abn: [] };
+  // роли в начале игры — для истории прошлых игр (кем начинал и кем закончил; просьба пользователя 2026-10-18)
+  S.flags.startRoles = Object.fromEntries(S.players.map(p => [p.id, { role: p.role, believes: p.believes || null, align: p.align }]));
   log(S, `Игра началась: ${S.players.length} игроков, сценарий «${S.script.name}»`, 'phase');
   startNight(S);
 }
