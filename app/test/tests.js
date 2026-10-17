@@ -220,6 +220,21 @@ try {
   const scc = byRole(S, 'snakecharmer'), vgm = byRole(S, 'vigormortis');
   st = toStep(S, 'snakecharmer'); E.applyStep(S, st, { t: [vgm.id] });
   st = toStep(S, 'pithag'); E.applyStep(S, st, { t: [vgm.id], r: 'fanggu', kill: [] });
+  // Вигормортис: убитый им Приспешник сохраняет способность, пока Вигормортис жив; казнён — мёртвая Яга не просыпается, яд соседа снят
+  // (вики; заметка пользователя 2026-10-17)
+  {
+    const V = game(['clockmaker', 'dreamer', 'oracle', 'savant', 'cerenovus', 'pithag', 'vigormortis', 'sweetheart'], 'snv');
+    V.players.forEach(p => { if (['cerenovus', 'pithag', 'vigormortis'].includes(p.role)) p.align = 'evil'; }); E.autoSetup(V, true); E.startGame(V);
+    runNight(V, {}); E.endDay(V);
+    const hag = byRole(V, 'pithag'), vig = byRole(V, 'vigormortis'), drm = byRole(V, 'dreamer'), sav = byRole(V, 'savant'), clk = byRole(V, 'clockmaker');
+    let s2 = toStep(V, 'pithag'); E.applyStep(V, s2, { t: [drm.id], r: 'nodashii', kill: [] });
+    s2 = toStep(V, 'vigormortis', { nodashii: { t: [clk.id] } }); E.applyStep(V, s2, { t: [hag.id], nb: [sav.id] });
+    ok('Вигормортис: убитая Яга сохраняет способность, сосед-Горожанин отравлен', !hag.alive && E.hasTok(hag, 'hasability') && E.hasTok(sav, 'poisoned', 'vigormortis'));
+    E.endNight(V); E.execute(V, vig.id); E.endDay(V);
+    const hs = V.phase === 'night' && V.night.steps.find(s => s.id === 'pithag');
+    ok('Вигормортис казнён: мёртвая Яга без способности (не просыпается), яд соседа снят',
+      V.phase === 'night' && !E.hasTok(hag, 'hasability') && !E.hasTok(sav, 'poisoned', 'vigormortis') && (!hs || !E.stepSpec(V, hs).active));
+  }
   ok('Заклинатель: прежний Демон отравлен навсегда — стал Фань Гу (Яга) и по-прежнему отравлен', scc.role === 'vigormortis' && vgm.role === 'fanggu' && !!E.abilityOff(S, vgm)
     && /отравлен/.test((E.pithagAdvice(S) || { lines: [] }).lines.join(' ')));
   // Фань Гу: Изгой под защитой Монаха не умирает и не становится Фань Гу; без защиты — прыжок

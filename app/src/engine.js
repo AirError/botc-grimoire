@@ -228,6 +228,16 @@ const permTok = t => t.perm || (t.k === 'poisoned' && t.src === 'snakecharmer');
 function endOrphanEffects(S) {
   const held = new Set(S.players.flatMap(q => [q.role, q.gained]).filter(Boolean));
   for (const q of S.players) q.tokens = q.tokens.filter(t => permTok(t) || !(ENDS_WITH_ROLE.includes(t.k) && t.src && R(t.src) && !held.has(t.src)));
+  vigorEnd(S);
+}
+// Вигормортис (вики): убитые им Приспешники сохраняют способность и травят соседа-Горожанина, «пока Вигормортис жив»; умер или перестал
+// быть Вигормортисом — способность и яд кончаются (заметка пользователя 2026-10-17: после казни Вигормортиса мёртвая Яга ходила).
+// Мёртвый Приспешник стал не-Приспешником (Яга) — у него нет способности, и его сосед больше не отравлен
+function vigorEnd(S) {
+  const alive = S.players.some(q => q.alive && actsAs(q) === 'vigormortis');
+  for (const q of S.players) if (!alive || realTeam(q) !== 'minion') rmTok(q, 'hasability', 'vigormortis');
+  const keep = new Set(S.players.filter(q => hasTok(q, 'hasability', 'vigormortis')).map(q => q.id));
+  for (const q of S.players) q.tokens = q.tokens.filter(t => !(t.k === 'poisoned' && t.src === 'vigormortis' && (!alive || (t.by && !keep.has(t.by)))));
 }
 // кем себя считает новый Пьяница (Горожанин сценария не в игре и не из блефов) или Безумец (Демон сценария)
 function pickBelieved(S, role) {
@@ -296,6 +306,7 @@ function afterDeath(S, p, cause, fake, aliveBefore, opts) {
   if (actsAs(p) === 'barber' && !abilityOff(S, p)) S.flags.haircuts = true;
   if (p.role === 'sweetheart' || (actsAs(p) === 'sweetheart' && !abilityOff(S, p))) S.flags.sweetheartPending = p.id;
   if (p.role === 'widow') S.players.forEach(q => rmTok(q, 'poisoned', 'widow')); // яд Вдовы — пока она жива
+  if (actsAs(p) === 'vigormortis' || p.role === 'vigormortis') vigorEnd(S); // способность убитых им Приспешников — пока он жив
   if (preventsMeeting(p) && !abilityOff(S, p)) evilMeetsTonight(S);
   // Бабушка
   if (cause === 'demon' && S.flags.grandchild === p.id) {
@@ -2140,7 +2151,7 @@ const LOGIC = {
     return {
       inputs: [PL('t', 1, 'Кого убивает Вигормортис')],
       more: inp => { const t = inp.t && P(S, inp.t[0]); return t && realTeam(t) === 'minion' ? [PL('nb', 1, 'Какой сосед-Горожанин отравлен', q => townsfolkNeighbours(S, t).includes(q))] : mayorInput(S, inp); },
-      apply: inp => { const t = P(S, inp.t[0]); const r = demonKill(S, p, off, t, inp); if (r && r.died && realTeam(t) === 'minion') { addTok(S, t, 'hasability', 'vigormortis'); if (inp.nb && inp.nb[0]) addTok(S, P(S, inp.nb[0]), 'poisoned', 'vigormortis'); log(S, `${t.name} сохраняет способность`, 'effect'); } },
+      apply: inp => { const t = P(S, inp.t[0]); const r = demonKill(S, p, off, t, inp); if (r && r.died && realTeam(t) === 'minion') { addTok(S, t, 'hasability', 'vigormortis'); if (inp.nb && inp.nb[0]) addTok(S, P(S, inp.nb[0]), 'poisoned', 'vigormortis', null, { by: t.id }); log(S, `${t.name} сохраняет способность`, 'effect'); } },
     };
   },
   nodashii: (S, p, first, off, base) => {

@@ -454,6 +454,12 @@ function pickRow(key, label, value, body) {
   return `<div class="pick"><button class="pickhead ${open ? 'open' : ''}" data-act="pickOpen" data-arg="${key}" aria-expanded="${open}">
     <span class="pl">${esc(label)}</span><span class="pv ${value ? '' : 'muted'}">${value ? esc(value) : 'выбрать'}</span><span class="pc" aria-hidden="true">${open ? '▴' : '▾'}</span></button>${open ? body : ''}</div>`;
 }
+// самономинация (заметка пользователя 2026-10-17): кнопка, когда выбран номинирующий, а кого — ещё нет (в круге повторное нажатие
+// снимает выбор, поэтому нужна отдельная кнопка)
+function selfNomBtn(nm, onOk, bishop) {
+  const p = !bishop && nm.by && nm.by !== 'st' && !nm.on && E.P(S, nm.by);
+  return p && onOk(p) ? `<button class="btn wide selfnom" data-act="nomSelf">${esc(p.name)} номинирует себя</button>` : '';
+}
 const confirmRow = (okAct, okLabel, okOn, noAct, noLabel) => `<div class="confirm"><button class="btn ok" data-act="${okAct}" ${okOn ? '' : 'disabled'}>${okLabel}</button><button class="btn no" data-act="${noAct}">${noLabel}</button></div>`;
 
 function roleOptions(filter, selected, opts) {
@@ -899,7 +905,8 @@ function viewDay() {
     parts.push(`<div class="card"><div class="row ghead"><h3 class="hi">${art('nominate', 'hg')}${butcherTurn ? 'Номинация Мясника' : 'Номинация'}</h3>${ringBtn()}</div>
       ${boundsHtml(rules)}
       ${bishop ? '' : pickRow('by', 'Кто номинирует', nm.by && E.nm(S, nm.by), tiles('by', 1, byOk, nm.by ? [nm.by] : [], 'nomPick'))}
-      ${pickRow('on', 'Кого номинируют', nm.on && E.nm(S, nm.on), tiles('on', 1, onOk, nm.on ? [nm.on] : [], 'nomPick'))}
+      ${pickRow('on', 'Кого номинируют', nm.on && (nm.on === nm.by ? E.nm(S, nm.on) + ' (себя)' : E.nm(S, nm.on)), tiles('on', 1, onOk, nm.on ? [nm.on] : [], 'nomPick'))}
+      ${selfNomBtn(nm, onOk, bishop)}
       ${pv.notes.map(t => `<div class="warn">${esc(t)}</div>`).join('')}
       ${pv.askSpy ? `<div class="field"><label>Ваше решение: Шпион определяется Горожанином?</label><div class="seg"><button class="${nm.spy ? '' : 'on'}" data-act="nomSpy" data-arg="0">Нет</button><button class="${nm.spy ? 'on' : ''}" data-act="nomSpy" data-arg="1">Да — его казнят</button></div></div>` : ''}
       ${confirmRow('nominate', 'Подтвердить', (bishop || nm.by) && nm.on, 'nomClear', 'Отменить')}</div>`);
@@ -1226,7 +1233,7 @@ function nomRing() {
     : !open ? '<span>Казнь сегодня уже была</span>'
       : !bishop && !by ? '<span>Кто номинирует?</span>'
         : !on ? `<span>${bishop ? 'Номинирует рассказчик (Епископ)' : esc(by.name) + ' номинирует…'}</span><b class="q">кого?</b>`
-          : `<span>${bishop ? 'Рассказчик' : esc(by.name)}</span><span>номинирует</span><b class="nm">${esc(on.name)}</b>`;
+          : `<span>${bishop ? 'Рассказчик' : esc(by.name)}</span><span>номинирует</span><b class="nm">${by && on.id === by.id ? 'себя' : esc(on.name)}</b>`;
   // кто сейчас на плахе — видно между номинациями
   const blk = !vote && E.block(S), bn = blk && d.noms.find(x => x.on === blk);
   const mid2 = blk ? `<span class="small ringblk">на плахе: ${esc(E.nm(S, blk))}${bn ? ` (${bn.count})` : ''}</span>` : '';
@@ -1238,6 +1245,7 @@ function nomRing() {
     <div class="ringbox">${notesHtml()}<div class="small muted ringhint">${hint}</div>
       <details class="ringdirbox"><summary class="small">Номера идут ${dirName()} — изменить</summary>${dirSeg()}</details>
       <div class="ring" style="${ringStyle(g)}">${arrow}${seats}<div class="ringmid" style="top:${(g.H / 2).toFixed(2)}cqw">${mid}${mid2}</div></div>
+      ${!vote && open ? selfNomBtn(nm, onOk, bishop) : ''}
       ${pv.notes.map(t => `<div class="warn">${esc(t)}</div>`).join('')}
       ${pv.askSpy ? `<div class="field"><label>Ваше решение: Шпион определяется Горожанином?</label><div class="seg"><button class="${nm.spy ? '' : 'on'}" data-act="nomSpy" data-arg="0">Нет</button><button class="${nm.spy ? 'on' : ''}" data-act="nomSpy" data-arg="1">Да — его казнят</button></div></div>` : ''}
       ${vote ? confirmRow('voteDone', 'Подтвердить голоса', true, 'voteCancel', 'Отменить номинацию')
@@ -1806,6 +1814,7 @@ const A = {
   nomPick: arg => { const [key, id] = arg.split('|'); draft(S => { const d = S.day.draft; d[key] = d[key] === id ? null : id; d.spy = false;
     if (key === 'by' && d.by) UI.pickOpen = d.on ? null : 'on'; if (key === 'on' && d.on) UI.pickOpen = null; }); },
   pickOpen: key => { UI.pickOpen = UI.pickOpen === key ? null : key; render(); },
+  nomSelf: () => draft(S => { const d = S.day.draft, p = d.by && E.P(S, d.by); if (p && nomRules().onOk(p)) { d.on = d.by; d.spy = false; } UI.pickOpen = null; }),
   // справочник ролей
   refOpen: id => { UI.refOpen = UI.refOpen === id ? null : id; render(); },
   refScript: (a, el) => { UI.refScript = el.value; UI.refOpen = null; render(); },
