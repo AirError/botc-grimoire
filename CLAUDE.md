@@ -576,3 +576,8 @@ python tools\export_files.py # готовое из out/ → Загрузки\Г�
   перетаскиванием, «Create a new deployment» для обновления) + **Cloudflare Access** по почте (одноразовый код; Zero Trust Free —
   Cloudflare просит данные карты, но не списывает; `*.pages.dev` защищается: Settings → Enable access policy → Manage → Configure →
   в Subdomain убрать `*`). Аккаунт и вход — только пользователь сам; инструкция по шагам была в чате 2026-10-17.
+  **Сделано 2026-10-17** (через Claude в Chrome, с разрешения пользователя): Zero Trust Free (карту и согласие ввёл пользователь;
+  2FA не потребовалась — у аккаунта вход через Google, пароля нет), вход One-time PIN, проект Pages **`grimoire-test-k7q2`** →
+  https://grimoire-test-k7q2.pages.dev (загружен zip сборки до 31.12.2026), два приложения Access: `grimoire-test-k7q2.pages.dev` и
+  `*.grimoire-test-k7q2.pages.dev` (кнопка в проекте теперь называется «Restrict previews»), в политике «Allow Members» основного —
+  почта пользователя и тестера. Имя, пароль и почту тестера в публичные файлы не писать.
