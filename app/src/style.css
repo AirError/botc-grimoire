@@ -246,6 +246,9 @@ details > .tale { margin-top: 10px; }
 .savdel { flex: none; width: 30px; height: 30px; border: 1px solid var(--line); border-radius: 7px; background: var(--card); cursor: pointer; }
 .savown { margin-top: 10px; } .savown summary { cursor: pointer; } .savown textarea { margin: 8px 0; min-height: 72px; }
 /* список фактов Саванта (вкладка «Гримуар»): верные — зелёные, неверные — красные; выбранный — залит цветом */
+/* тестовая сборка: карточка на вкладке «Ещё» и окно приветствия */
+.card.testcard { border: 1px dashed var(--gold); background: var(--goldbg); }
+.testwelcome p { margin: 6px 0; line-height: 1.45; }
 #savlist { scroll-margin-top: 72px; } /* «Выбрать из списка» прокручивает сюда — заголовок не под шапкой */
 .savsel { margin-top: 8px; font-weight: 700; }
 .savgrp { margin-top: 8px; display: flex; flex-direction: column; gap: 10px; }

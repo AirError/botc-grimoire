@@ -1530,8 +1530,23 @@ function filterRefs() {
 
 const phaseName = t => t.startsWith('Н') ? 'Ночь ' + t.slice(1) : t.startsWith('Д') ? 'День ' + t.slice(1) : t === 'Подг.' ? 'Подготовка' : t;
 
+// тестовая сборка для другого человека (tools/test_build.py кладёт window.TEST_BUILD = {name, until}): при каждом открытии — окно
+// приветствия, а что это тест — только на вкладке «Ещё» (заметка пользователя 2026-10-17: постоянная плашка мешала). В обычной сборке — ничего
+const TEST = window.TEST_BUILD || null;
+function testCard() {
+  if (!TEST) return '';
+  return `<div class="card testcard"><h3>Тестовая версия</h3><div>Для: <b>${esc(TEST.name)}</b> · доступ до <b>${esc(TEST.until)}</b></div>
+    <div class="small muted">Ошибки и пожелания записывайте в «Заметки» ниже. Потом скопируйте их («Скопировать текст» или «Поделиться») и отправьте разработчику.</div></div>`;
+}
+function testWelcomeHtml() {
+  if (!TEST || !UI.testWelcome) return '';
+  return `<div class="ov editres" role="dialog" aria-label="Тестовая версия"><div class="statbg" data-act="testWelcomeClose"></div><div class="erbox statbox testwelcome">
+    <h3>Добро пожаловать в тестовую версию</h3><p>Вам открыт доступ до <b>${esc(TEST.until)}</b>.</p>
+    <p>Все ошибки и пожелания можно оставить во вкладке «Ещё», раздел «Заметки». Не забудьте потом скопировать и отправить разработчику.</p>
+    <div class="confirm"><button class="btn ok" data-act="testWelcomeClose">Понятно</button><button class="btn" data-act="testWelcomeNotes">Открыть заметки</button></div></div></div>`;
+}
 function viewMenu() {
-  return `${notesHtml()}${notesCard()}<div class="card"><h3>Игра</h3>
+  return `${testCard()}${notesHtml()}${notesCard()}<div class="card"><h3>Игра</h3>
     <div class="seg"><button class="${UI.hideInactive ? 'on' : ''}" data-act="toggleHide">Пропускать шаги, которые не срабатывают</button></div>
     ${HISTORY.length ? `<div class="small muted">Можно отменить ${HISTORY.length} последних действий — кнопка «↶» в шапке.</div>` : ''}
     ${UI.confirm === 'new' ? `<div class="warn">Начать новую игру? Текущая будет удалена.</div><div class="row"><button class="btn danger" data-act="newGame">Да, новая игра</button><button class="btn" data-act="cancelConfirm">Отмена</button></div>`
@@ -1604,13 +1619,13 @@ function render() {
       <button class="hundo" data-act="undo" ${last ? '' : 'disabled'} aria-label="${last ? esc('Отменить: ' + last.label) : 'Нечего отменять'}" title="${last ? esc('Отменить: ' + last.label) : ''}">↶</button><span class="save"></span></header>
     <main>${body}</main>
     <nav class="tabs">${[['game', S.phase === 'night' ? 'Ночь' : S.phase === 'day' ? 'День' : 'Игра'], ['table', 'Гримуар'], ['log', 'Журнал'], ['roles', 'Роли'], ['menu', 'Ещё']].map(([k, l]) => `<button class="${UI.tab === k ? 'on' : ''}" data-act="tab" data-arg="${k}">${l}</button>`).join('')}</nav>
-    ${legendOverlay()}${wallOverlay()}${grimOverlay()}${ringOverlay()}${sheetOverlay()}${editOverlay()}${fateOverlay()}${statOverlay()}${tipHtml()}${savFactsHtml()}${ghostLostHtml()}${pinAskHtml()}${polOverlay()}${gossipAskHtml()}${exeAskHtml()}${exeResHtml()}${showOverlay()}${noteViewOverlay()}`;
+    ${legendOverlay()}${wallOverlay()}${grimOverlay()}${ringOverlay()}${sheetOverlay()}${editOverlay()}${fateOverlay()}${statOverlay()}${tipHtml()}${savFactsHtml()}${ghostLostHtml()}${pinAskHtml()}${polOverlay()}${gossipAskHtml()}${exeAskHtml()}${exeResHtml()}${showOverlay()}${noteViewOverlay()}${testWelcomeHtml()}`;
   // круг рассадки — только на подготовке, круг номинации — только днём, Гримуар кругом — во время игры (после смены фазы закрываются сами)
   if ((UI.ring === 'seat' && S.phase !== 'setup') || ((UI.ring === 'nom' || UI.ring === 'pick') && S.phase !== 'day') || UI.ring === 'grim') UI.ring = null;
   // под полноэкранными слоями страница не прокручивается
   if (UI.fate && !(S.phase === 'day' && S.day.picks && S.day.picks.fate)) UI.fate = false; // день кончился — выбор казни закрыт
   if (UI.stat && S.phase !== 'day') UI.stat = false;
-  document.documentElement.classList.toggle('locked', !!(UI.show || UI.legend || UI.ring || UI.noteView || UI.edit || UI.fate || UI.stat || UI.tip || UI.savFacts || UI.ghostLost || UI.pinAsk || E.politiciansPending(S).length || UI.gossipAsk || UI.exeAsk || UI.exeRes || (UI.open && E.P(S, UI.open)) || (UI.wall && S.draw) || (UI.grimShow && S.phase === 'night')));
+  document.documentElement.classList.toggle('locked', !!(UI.show || UI.legend || UI.ring || UI.noteView || UI.edit || UI.fate || UI.stat || UI.tip || UI.savFacts || UI.ghostLost || UI.pinAsk || UI.testWelcome || E.politiciansPending(S).length || UI.gossipAsk || UI.exeAsk || UI.exeRes || (UI.open && E.P(S, UI.open)) || (UI.wall && S.draw) || (UI.grimShow && S.phase === 'night')));
   app.querySelectorAll('details > summary').forEach(s => { if (opened.has(s.textContent)) s.parentElement.open = true; });
   if (UI.tab === 'roles') filterRefs();
   paintSave();
@@ -1902,6 +1917,8 @@ const A = {
     if (!pinCheck(el && el.value)) { UI.pinAsk = { err: true }; render(); pinFocus(); return; }
     UI.pinAsk = null; draft(S => { if (S.draw) S.draw.hidden = false; }); },
   pinClose: () => { UI.pinAsk = null; render(); },
+  testWelcomeClose: () => { UI.testWelcome = false; render(); },
+  testWelcomeNotes: () => { UI.testWelcome = false; UI.tab = 'menu'; render(); window.scrollTo(0, 0); },
   // «Ещё» → «Защита»: новый пароль — только после ввода текущего
   pinChange: () => { const v = id => ((document.getElementById(id) || {}).value || '').trim(), old = v('pinOld'), nw = v('pinNew'), nw2 = v('pinNew2');
     UI.pinMsg = !pinCheck(old) ? { ok: false, t: 'Текущий пароль неверный — пароль не изменён' }
@@ -2133,6 +2150,7 @@ function boot(hotData) {
   // настройки этого устройства: показ игрокам горизонтально и каким боком
   try { UI.showLand = localStorage.getItem('botc-grimoire-showland') === '1'; UI.showFlip = localStorage.getItem('botc-grimoire-showflip') === '1'; UI.pickRing = localStorage.getItem('botc-grimoire-pickring') === '1';
     UI.grimGrid = localStorage.getItem('botc-grimoire-grimgrid') === '1'; } catch (e) { /* по умолчанию — вертикально, квадратиками; Гримуар — кругом */ }
+  if (TEST) UI.testWelcome = true; // тестовая сборка: окно приветствия при каждом открытии
   if (!document.getElementById('artvars')) artVars();
   render();
   connectCloud();

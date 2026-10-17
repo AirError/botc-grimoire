@@ -4,7 +4,8 @@
 
 out/test/<папка>/ и копия в Загрузки\\Гримуар\\Тестовая версия\\<папка>/ — эту папку загружают в Cloudflare Pages
 («Перетащить файлы»), а доступ по почте даёт Cloudflare Access. Отличия от сайта на GitHub Pages:
-  - имя тестера и срок — плашкой поверх всех экранов (если сборка разойдётся, видно, чья она);
+  - при каждом открытии — окно «Добро пожаловать в тестовую версию» со сроком и просьбой писать ошибки в «Заметки»; имя тестера
+    и срок — карточкой на вкладке «Ещё» (window.TEST_BUILD → ui.js; постоянная плашка была до 2026-10-17 — пользователю мешала);
   - после даты (до конца дня по часам устройства) вместо приложения — «Тестовый период закончился»; часы назад не помогают:
     устройство помнит самое позднее время запуска (localStorage botc-grimoire-test-seen);
   - нет service worker и манифеста: приложение не остаётся на телефоне — закрыли доступ, и оно больше не откроется;
@@ -48,10 +49,11 @@ if args.pin:
     body, n = re.subn(r"PIN_DEFAULT = '[0-9a-z]+'", f"PIN_DEFAULT = '{pin_hash(args.pin)}'", body)
     assert n == 1, "не нашёл PIN_DEFAULT в сборке — проверьте ui.js"
 
-mark = f"ТЕСТ · {name} · до {until:%d.%m.%Y}"
+test_info = json.dumps({"name": name, "until": f"{until:%d.%m.%Y}"}, ensure_ascii=False)
 # срок — конец последнего дня по часам устройства; самое позднее время запуска запоминается, чтобы перевод часов назад не продлевал срок;
 # приложение открыто дольше срока — через 10 минут перезагрузится и покажет, что тест закончился
 guard = f"""<script>
+window.TEST_BUILD = {test_info};
 (function () {{
   var END = new Date({until.year}, {until.month - 1}, {until.day}, 23, 59, 59).getTime(), KEY = 'botc-grimoire-test-seen', seen = 0;
   try {{ seen = +localStorage.getItem(KEY) || 0; }} catch (e) {{}}
@@ -77,18 +79,12 @@ head = ('<!doctype html><html lang="ru"><head><meta charset="utf-8">'
         '<meta name="theme-color" content="#0F121B">'
         '<link rel="apple-touch-icon" href="icon-180.png"><link rel="icon" href="icon-192.png">'
         + guard + '</head><body>')
-# плашка — поверх всех экранов (в том числе показа игрокам), над вкладками; нажатия проходят сквозь неё
-badge = ('<style>#testmark{position:fixed;left:50%;transform:translateX(-50%);bottom:calc(env(safe-area-inset-bottom,0px) + 64px);'
-         'z-index:2147483647;pointer-events:none;padding:2px 10px;border-radius:999px;background:rgba(122,30,34,.88);color:#FFFFFF;'
-         'font:700 11px/1.5 system-ui,sans-serif;letter-spacing:.03em;white-space:nowrap;opacity:.9}</style>'
-         f'<div id="testmark" aria-hidden="true">{mark}</div>')
-
 folder = re.sub(r'[\\/:*?"<>|]+', "", f"Тест — {name} — до {until:%d.%m}").strip()
 out = ROOT / "out" / "test" / folder
 out.mkdir(parents=True, exist_ok=True)
 for f in out.iterdir():
     shutil.rmtree(f) if f.is_dir() else f.unlink()
-(out / "index.html").write_text(head + body + badge + "</body></html>", encoding="utf-8")
+(out / "index.html").write_text(head + body + "</body></html>", encoding="utf-8")
 for size in (180, 192):  # иконки — из сборки сайта (site_build.py)
     src = ROOT / "out" / "site" / f"icon-{size}.png"
     if src.exists():
@@ -101,4 +97,4 @@ dl = Path.home() / "Downloads" / "Гримуар" / "Тестовая верси
 if dl.exists():
     shutil.rmtree(dl)
 shutil.copytree(out, dl)
-print(json.dumps({"папка": str(dl), "плашка": mark, "пароль": "свой" if args.pin else "как в основной сборке"}, ensure_ascii=False, indent=1))
+print(json.dumps({"папка": str(dl), "тестер": name, "до": f"{until:%d.%m.%Y}", "пароль": "свой" if args.pin else "как в основной сборке"}, ensure_ascii=False, indent=1))
