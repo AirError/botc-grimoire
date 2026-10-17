@@ -1,6 +1,8 @@
 # окружение и инструменты живут вне проекта — %LOCALAPPDATA%\botc-grimoire (tools/setup_env.py)
 node_modules/
 __pycache__/
+# служебная папка Wrangler (Cloudflare): номер и название аккаунта — не для публичного репозитория
+.wrangler/
 # промежуточные и большие файлы сборки
 out/
 app/dist/

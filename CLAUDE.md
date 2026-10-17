@@ -584,3 +584,11 @@ python tools\export_files.py # готовое из out/ → Загрузки\Г�
   https://grimoire-test-k7q2.pages.dev (загружен zip сборки до 31.12.2026), два приложения Access: `grimoire-test-k7q2.pages.dev` и
   `*.grimoire-test-k7q2.pages.dev` (кнопка в проекте теперь называется «Restrict previews»), в политике «Allow Members» основного —
   почта пользователя и тестера. Имя, пароль и почту тестера в публичные файлы не писать.
+  **Обновлять тестовую версию одной командой** (с 2026-10-17): после `app_build.py` и `site_build.py` —
+  `PY tools\test_build.py --name … --until … --pin … --deploy grimoire-test-k7q2` (данные тестера — спросить у пользователя или взять
+  из прошлой сборки в `Загрузки\Гримуар\Тестовая версия`). Wrangler 4.151.1 — в `%LOCALAPPDATA%\botc-grimoire\wrangler` (npm), вызывается
+  через node без cmd.exe; вход OAuth (`wrangler login --browser=false --scopes account:read user:read pages:write`) сделан 2026-10-17,
+  токен с offline_access — в `%APPDATA%\xdg.config\.wrangler`. Если вход слетел: запустить login в фоне, сразу открыть ссылку в Chrome
+  пользователя и попросить нажать Authorize (ждёт ~2 мин; старую страницу подтверждения не нажимать — «state не совпадает»). Отозвать
+  доступ: Cloudflare → My Profile → Access Management → Connected Applications. Защиту Access загрузка не трогает (проверено: 302 на вход).
+  Обновлять тестовую версию — только когда пользователь хочет показать тестеру новое; основной сайт (GitHub) — как раньше.
