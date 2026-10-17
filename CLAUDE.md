@@ -566,3 +566,13 @@ python tools\export_files.py # готовое из out/ → Загрузки\Г�
   запустить `gh auth login --hostname github.com --git-protocol https --web` в фоне и передать пользователю одноразовый код.
 - Готовые файлы пользователя: `%USERPROFILE%\Downloads\Гримуар` (сборки, PDF, сайт, JSON, промпты) —
   раскладывает `tools/export_files.py` после сборок (Загрузки не изолированы, в отличие от AppData).
+- **Тестовая версия для другого человека** (просьба пользователя 2026-10-17: дать протестировать и закрыть доступ; варианты 1+2):
+  `PY tools\test_build.py --name "Имя" --until ГГГГ-ММ-ДД [--pin пароль]` (после `app_build.py` и `site_build.py` — берёт
+  `app/dist/grimoire.html` и иконки из `out/site`) → `out/test/<папка>` и `Загрузки\Гримуар\Тестовая версия\<папка>`. Плашка
+  «ТЕСТ · имя · до даты» поверх всех экранов; после даты (конец дня по часам устройства; перевод часов назад не помогает —
+  localStorage `botc-grimoire-test-seen`) вместо приложения «Тестовый период закончился» (`window.stop()` — приложение не грузится);
+  без service worker и манифеста; свой пароль «Показать роли» (`--pin` → хэш в `PIN_DEFAULT`); noindex (`_headers`, robots.txt).
+  Проверка: сервер `test` в `.claude/launch.json` (порт 8767, `out/test`). Хостинг — **Cloudflare Pages** (загрузка папки
+  перетаскиванием, «Create a new deployment» для обновления) + **Cloudflare Access** по почте (одноразовый код; Zero Trust Free —
+  Cloudflare просит данные карты, но не списывает; `*.pages.dev` защищается: Settings → Enable access policy → Manage → Configure →
+  в Subdomain убрать `*`). Аккаунт и вход — только пользователь сам; инструкция по шагам была в чате 2026-10-17.
