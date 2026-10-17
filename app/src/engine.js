@@ -222,9 +222,12 @@ function saved(S, p, by) { log(S, `${p.name} не умирает: ${by}`, 'save'
 /* ---------- смена роли посреди игры: Яга, Цирюльник, Заклинатель змей, Фань Гу, Егерь, Блудница, Чёрт ---------- */
 // эффекты, которые держатся, пока у кого-то есть способность-источник: роль сменилась — эффект кончается (яд Отравителя и т. п.)
 const ENDS_WITH_ROLE = ['poisoned', 'drunk', 'protected', 'safe', 'cursed', 'mad', 'second', 'hasability', 'votes3', 'voteneg', 'sober', 'twice', 'chosen', 'master'];
+// постоянные эффекты не кончаются со сменой ролей: яд Заклинателя змей у прежнего Демона — навсегда (вики: «poisoned permanently»;
+// заметка пользователя 2026-10-17: Яга сварила Демона из отравленного Заклинателя — Демон отравлен). Без perm — жетоны старых игр
+const permTok = t => t.perm || (t.k === 'poisoned' && t.src === 'snakecharmer');
 function endOrphanEffects(S) {
   const held = new Set(S.players.flatMap(q => [q.role, q.gained]).filter(Boolean));
-  for (const q of S.players) q.tokens = q.tokens.filter(t => !(ENDS_WITH_ROLE.includes(t.k) && t.src && R(t.src) && !held.has(t.src)));
+  for (const q of S.players) q.tokens = q.tokens.filter(t => permTok(t) || !(ENDS_WITH_ROLE.includes(t.k) && t.src && R(t.src) && !held.has(t.src)));
 }
 // кем себя считает новый Пьяница (Горожанин сценария не в игре и не из блефов) или Безумец (Демон сценария)
 function pickBelieved(S, role) {
@@ -1093,6 +1096,11 @@ function pithagAdvice(S) {
   if (a.kind === 'changed') lines.push(`Демон стал другим Демоном (${who}). Лучше, чтобы этой ночью никто не умер: так добрые поймут, что Демон сменился. Можно разбудить нового Демона, выслушать его выбор и решить, что никто не умирает (на шаге Демона — «Пропустить»).`);
   else if (a.kind === 'evil') lines.push(`Создан новый злой Демон (${who}). Лучше убить старого Демона и ещё одного игрока — это знак добрым, что Демон сменился.`);
   else lines.push(`Создан добрый Демон (${who}). Если это последняя ночь — лучше убить одного из Демонов, чтобы днём был жив только один. Если нет — можно оставить двух Демонов, но осторожно: чтобы победило добро, должны умереть все Демоны.`);
+  // новый Демон отравлен (например, бывший Демон после Заклинателя змей — яд навсегда): его нападение не сработает
+  const off = t && abilityOff(S, t);
+  if (off) lines.push(`${t.name} ${off}: нападение этого Демона не сработает (на его шаге — «не работает»). Смерти всё равно на ваше усмотрение.`);
+  // два живых Демона — правило пользователя (заметка 2026-10-17), не вики
+  if (S.players.filter(demonAlive).length > 1) lines.push('Ваше правило: больше одного игрока этой ночью лучше не убивать.');
   return { title: 'Яга создала Демона', lines, src: 'Вики, страница Яги (How to Run)' };
 }
 // Политик (вики): в конце игры — если больше всех виноват в поражении своей команды, меняет сторону и побеждает. Перед объявлением
@@ -1957,8 +1965,8 @@ const LOGIC = {
       // меняются роли и стороны; способность Философа/Каннибала едет вместе с его ролью — новый Демон просыпается Демоном
       const dr = t.role, mine = p.role, gained = p.gained;
       changeRole(S, p, dr, { align: 'evil', keep: true }); changeRole(S, t, mine, { align: 'good', gained });
-      addTok(S, t, 'poisoned', 'snakecharmer');
-      log(S, `Обмен: ${p.name} теперь ${rname(dr)}, ${t.name} — ${rname(mine)} (отравлен)`, 'effect');
+      addTok(S, t, 'poisoned', 'snakecharmer', null, { perm: true }); // навсегда — и при смене роли (вики)
+      log(S, `Обмен: ${p.name} теперь ${rname(dr)}, ${t.name} — ${rname(mine)} (отравлен навсегда)`, 'effect');
       rebuildRest(S); // дальше этой ночью Демоном просыпается новый Демон, у прежнего — шаги Заклинателя
     },
   }),

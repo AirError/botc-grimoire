@@ -989,7 +989,8 @@ html:root.oled[data-skin="engr"] {
   -webkit-mask: var(--m) center / contain no-repeat; mask: var(--m) center / contain no-repeat; }
 :where([data-skin="engr"]) .steprole .si.gm { padding: 0; background: currentColor; width: 56px; height: 56px; }
 /* иконка ночного шага — в гравированном венке */
-:where([data-skin="engr"]) .steprole .si { padding: 7px; background: var(--a-c-wreath) center / 100% 100% no-repeat; width: 62px; height: 62px; }
+/* венок шире иконки: листья идут вокруг, а не по ней (заметка пользователя 2026-10-17: «накладываются») */
+:where([data-skin="engr"]) .steprole .si { padding: 13px 19px 17px; background: var(--a-c-wreath) center / 100% 100% no-repeat; width: 82px; height: 74px; }
 /* Гримуар кругом — гравированный циферблат астролябии под рассадкой (c_dial) */
 :where([data-skin="engr"]) .gbg { display: block; position: absolute; pointer-events: none; opacity: .5; background: var(--ink);
   -webkit-mask: var(--a-c-dial) center / 100% 100% no-repeat; mask: var(--a-c-dial) center / 100% 100% no-repeat; }
@@ -1280,9 +1281,12 @@ function saved(S, p, by) { log(S, `${p.name} не умирает: ${by}`, 'save'
 /* ---------- смена роли посреди игры: Яга, Цирюльник, Заклинатель змей, Фань Гу, Егерь, Блудница, Чёрт ---------- */
 // эффекты, которые держатся, пока у кого-то есть способность-источник: роль сменилась — эффект кончается (яд Отравителя и т. п.)
 const ENDS_WITH_ROLE = ['poisoned', 'drunk', 'protected', 'safe', 'cursed', 'mad', 'second', 'hasability', 'votes3', 'voteneg', 'sober', 'twice', 'chosen', 'master'];
+// постоянные эффекты не кончаются со сменой ролей: яд Заклинателя змей у прежнего Демона — навсегда (вики: «poisoned permanently»;
+// заметка пользователя 2026-10-17: Яга сварила Демона из отравленного Заклинателя — Демон отравлен). Без perm — жетоны старых игр
+const permTok = t => t.perm || (t.k === 'poisoned' && t.src === 'snakecharmer');
 function endOrphanEffects(S) {
   const held = new Set(S.players.flatMap(q => [q.role, q.gained]).filter(Boolean));
-  for (const q of S.players) q.tokens = q.tokens.filter(t => !(ENDS_WITH_ROLE.includes(t.k) && t.src && R(t.src) && !held.has(t.src)));
+  for (const q of S.players) q.tokens = q.tokens.filter(t => permTok(t) || !(ENDS_WITH_ROLE.includes(t.k) && t.src && R(t.src) && !held.has(t.src)));
 }
 // кем себя считает новый Пьяница (Горожанин сценария не в игре и не из блефов) или Безумец (Демон сценария)
 function pickBelieved(S, role) {
@@ -2151,6 +2155,11 @@ function pithagAdvice(S) {
   if (a.kind === 'changed') lines.push(`Демон стал другим Демоном (${who}). Лучше, чтобы этой ночью никто не умер: так добрые поймут, что Демон сменился. Можно разбудить нового Демона, выслушать его выбор и решить, что никто не умирает (на шаге Демона — «Пропустить»).`);
   else if (a.kind === 'evil') lines.push(`Создан новый злой Демон (${who}). Лучше убить старого Демона и ещё одного игрока — это знак добрым, что Демон сменился.`);
   else lines.push(`Создан добрый Демон (${who}). Если это последняя ночь — лучше убить одного из Демонов, чтобы днём был жив только один. Если нет — можно оставить двух Демонов, но осторожно: чтобы победило добро, должны умереть все Демоны.`);
+  // новый Демон отравлен (например, бывший Демон после Заклинателя змей — яд навсегда): его нападение не сработает
+  const off = t && abilityOff(S, t);
+  if (off) lines.push(`${t.name} ${off}: нападение этого Демона не сработает (на его шаге — «не работает»). Смерти всё равно на ваше усмотрение.`);
+  // два живых Демона — правило пользователя (заметка 2026-10-17), не вики
+  if (S.players.filter(demonAlive).length > 1) lines.push('Ваше правило: больше одного игрока этой ночью лучше не убивать.');
   return { title: 'Яга создала Демона', lines, src: 'Вики, страница Яги (How to Run)' };
 }
 // Политик (вики): в конце игры — если больше всех виноват в поражении своей команды, меняет сторону и побеждает. Перед объявлением
@@ -3015,8 +3024,8 @@ const LOGIC = {
       // меняются роли и стороны; способность Философа/Каннибала едет вместе с его ролью — новый Демон просыпается Демоном
       const dr = t.role, mine = p.role, gained = p.gained;
       changeRole(S, p, dr, { align: 'evil', keep: true }); changeRole(S, t, mine, { align: 'good', gained });
-      addTok(S, t, 'poisoned', 'snakecharmer');
-      log(S, `Обмен: ${p.name} теперь ${rname(dr)}, ${t.name} — ${rname(mine)} (отравлен)`, 'effect');
+      addTok(S, t, 'poisoned', 'snakecharmer', null, { perm: true }); // навсегда — и при смене роли (вики)
+      log(S, `Обмен: ${p.name} теперь ${rname(dr)}, ${t.name} — ${rname(mine)} (отравлен навсегда)`, 'effect');
       rebuildRest(S); // дальше этой ночью Демоном просыпается новый Демон, у прежнего — шаги Заклинателя
     },
   }),
@@ -5381,6 +5390,7 @@ function viewDay() {
       <div class="seg">${Object.entries(E.AMNESIAC_ANSWERS).map(([k, l]) => `<button data-act="amnAnswer" data-arg="${a.id}|${k}">${esc(l)}</button>`).join('')}</div>`}</div>`);
   }
   // Савант: раз в день приватно — 2 факта, один правда, другой ложь (подбор из текущей игры — ideas.js)
+  // (выбор старых версий мог набрать больше — в запись идут первый верный и первый ложный, savOneEach)
   // на экране дня — без пометок «правда / ложь» (их видно в Журнале → «Факты Саванта»); факты можно показать на весь экран
   // (заметка пользователя 2026-10-16). Факты сказаны — записываются, и сегодня Саванту больше не подбираются
   for (const sv of S.players.filter(p => p.role === 'savant' && p.alive)) {
@@ -5649,6 +5659,8 @@ function viewTable() {
 // выбранные — в карточке Саванта на экране дня. Список составляется при открытии вкладки днём и живёт до конца дня («Обновить список» — заново)
 const savAlive = () => S.phase === 'day' && S.day ? S.players.filter(p => p.role === 'savant' && p.alive) : [];
 const savTold = id => (S.flags.savantFacts || []).some(x => x.n === S.n && x.pid === id);
+// не больше одного верного и одного ложного факта Саванта — первые по порядку (заметка пользователя 2026-10-17)
+const savOneEach = list => { if (!list) return null; const t = list.find(x => x.truth), f = list.find(x => !x.truth), r = list.filter(x => x === t || x === f); return r.length ? r : null; };
 function savListEnsure() {
   for (const sv of savAlive()) if (!S.day.picks['savList_' + sv.id] && !savTold(sv.id)) { S.day.picks['savList_' + sv.id] = IDEAS.savantList(S, sv.id); S.updated = Date.now(); persist(); }
 }
@@ -6583,12 +6595,14 @@ const A = {
   savGoList: () => { UI.tab = 'table'; savListEnsure(); render(); const c = document.getElementById('savlist'); if (c) c.scrollIntoView(); else window.scrollTo(0, 0); },
   savList: id => draft(S => { S.day.picks['savList_' + id] = IDEAS.savantList(S, id); }),
   savGrp: g => { UI.savOpen = Object.assign({}, UI.savOpen, { [g]: !(UI.savOpen || {})[g] }); render(); },
+  // выбран один верный и один ложный (заметка пользователя 2026-10-17): новый факт заменяет выбранный той же правдивости
   savPick: arg => { const [id, i, t] = arg.split('|'), it = (S.day.picks['savList_' + id] || [])[+i]; if (!it) return;
     const truth = t === '1', text = truth ? it.yes : it.no;
     draft(S => { const sel = S.day.picks['sav_' + id] || [], k = sel.findIndex(x => x.text === text), f = { text, truth };
-      const next = k >= 0 ? sel.filter((x, j) => j !== k) : Math.random() < 0.5 ? [f, ...sel] : [...sel, f];
+      const other = sel.filter(x => !!x.truth !== truth);
+      const next = k >= 0 ? sel.filter((x, j) => j !== k) : Math.random() < 0.5 ? [f, ...other] : [...other, f];
       S.day.picks['sav_' + id] = next.length ? next : null; }); },
-  savLog: id => { const pair = S.day.picks['sav_' + id]; if (pair) act(S => {
+  savLog: id => { const pair = savOneEach(S.day.picks['sav_' + id]); if (pair) act(S => {
     S.flags.savantFacts = (S.flags.savantFacts || []).concat({ n: S.n, pid: id, facts: pair.map(x => ({ text: x.text, truth: !!x.truth, own: !!x.own })) });
     S.day.picks['sav_' + id] = null;
     E.log(S, `Савант (${E.nm(S, id)}): ${pair.map(x => `«${x.text}» — ${x.truth ? 'правда' : 'ложь'}`).join('; ')}`, 'day'); }, 'факты Саванта'); },

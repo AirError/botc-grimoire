@@ -213,6 +213,15 @@ try {
   ok('Заклинатель (Философ): Философ стал Но Даши и злым, прежний Демон — добрый отравленный Философ со способностью Заклинателя',
     ph.role === 'nodashii' && ph.align === 'evil' && !ph.gained && E.actsAs(ph) === 'nodashii' && nd.role === 'philosopher' && nd.gained === 'snakecharmer' && nd.align === 'good' && !!E.abilityOff(S, nd));
   ok('Заклинатель: дальше этой ночью Демоном просыпается новый Демон', rest(S).some(s => s.id === 'nodashii' && s.pid === ph.id) && !rest(S).some(s => s.id === 'nodashii' && s.pid === nd.id));
+  // Заклинатель змей: яд прежнего Демона — навсегда; Яга превращает его в Демона — тот по-прежнему отравлен (вики; заметка 2026-10-17)
+  S = game(['clockmaker', 'dreamer', 'snakecharmer', 'mathematician', 'flowergirl', 'sweetheart', 'pithag', 'vigormortis'], 'snv');
+  S.players.forEach(p => { if (['pithag', 'vigormortis'].includes(p.role)) p.align = 'evil'; }); E.autoSetup(S, true); E.startGame(S);
+  runNight(S, {}); E.endDay(S);
+  const scc = byRole(S, 'snakecharmer'), vgm = byRole(S, 'vigormortis');
+  st = toStep(S, 'snakecharmer'); E.applyStep(S, st, { t: [vgm.id] });
+  st = toStep(S, 'pithag'); E.applyStep(S, st, { t: [vgm.id], r: 'fanggu', kill: [] });
+  ok('Заклинатель: прежний Демон отравлен навсегда — стал Фань Гу (Яга) и по-прежнему отравлен', scc.role === 'vigormortis' && vgm.role === 'fanggu' && !!E.abilityOff(S, vgm)
+    && /отравлен/.test((E.pithagAdvice(S) || { lines: [] }).lines.join(' ')));
   // Фань Гу: Изгой под защитой Монаха не умирает и не становится Фань Гу; без защиты — прыжок
   S = game(['monk', 'chef', 'empath', 'washerwoman', 'recluse', 'saint', 'poisoner', 'fanggu'], 'tb'); S.script.roles = S.script.roles.concat('fanggu');
   S.players.forEach(p => { if (['poisoner', 'fanggu'].includes(p.role)) p.align = 'evil'; }); E.autoSetup(S, true); E.startGame(S); runNight(S, { poisoner: { t: ids(S, 'chef') } }); E.endDay(S);

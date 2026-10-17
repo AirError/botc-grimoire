@@ -986,7 +986,8 @@ html:root.oled[data-skin="engr"] {
   -webkit-mask: var(--m) center / contain no-repeat; mask: var(--m) center / contain no-repeat; }
 :where([data-skin="engr"]) .steprole .si.gm { padding: 0; background: currentColor; width: 56px; height: 56px; }
 /* иконка ночного шага — в гравированном венке */
-:where([data-skin="engr"]) .steprole .si { padding: 7px; background: var(--a-c-wreath) center / 100% 100% no-repeat; width: 62px; height: 62px; }
+/* венок шире иконки: листья идут вокруг, а не по ней (заметка пользователя 2026-10-17: «накладываются») */
+:where([data-skin="engr"]) .steprole .si { padding: 13px 19px 17px; background: var(--a-c-wreath) center / 100% 100% no-repeat; width: 82px; height: 74px; }
 /* Гримуар кругом — гравированный циферблат астролябии под рассадкой (c_dial) */
 :where([data-skin="engr"]) .gbg { display: block; position: absolute; pointer-events: none; opacity: .5; background: var(--ink);
   -webkit-mask: var(--a-c-dial) center / 100% 100% no-repeat; mask: var(--a-c-dial) center / 100% 100% no-repeat; }

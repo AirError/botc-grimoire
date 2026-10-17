@@ -736,6 +736,7 @@ function viewDay() {
       <div class="seg">${Object.entries(E.AMNESIAC_ANSWERS).map(([k, l]) => `<button data-act="amnAnswer" data-arg="${a.id}|${k}">${esc(l)}</button>`).join('')}</div>`}</div>`);
   }
   // Савант: раз в день приватно — 2 факта, один правда, другой ложь (подбор из текущей игры — ideas.js)
+  // (выбор старых версий мог набрать больше — в запись идут первый верный и первый ложный, savOneEach)
   // на экране дня — без пометок «правда / ложь» (их видно в Журнале → «Факты Саванта»); факты можно показать на весь экран
   // (заметка пользователя 2026-10-16). Факты сказаны — записываются, и сегодня Саванту больше не подбираются
   for (const sv of S.players.filter(p => p.role === 'savant' && p.alive)) {
@@ -1004,6 +1005,8 @@ function viewTable() {
 // выбранные — в карточке Саванта на экране дня. Список составляется при открытии вкладки днём и живёт до конца дня («Обновить список» — заново)
 const savAlive = () => S.phase === 'day' && S.day ? S.players.filter(p => p.role === 'savant' && p.alive) : [];
 const savTold = id => (S.flags.savantFacts || []).some(x => x.n === S.n && x.pid === id);
+// не больше одного верного и одного ложного факта Саванта — первые по порядку (заметка пользователя 2026-10-17)
+const savOneEach = list => { if (!list) return null; const t = list.find(x => x.truth), f = list.find(x => !x.truth), r = list.filter(x => x === t || x === f); return r.length ? r : null; };
 function savListEnsure() {
   for (const sv of savAlive()) if (!S.day.picks['savList_' + sv.id] && !savTold(sv.id)) { S.day.picks['savList_' + sv.id] = IDEAS.savantList(S, sv.id); S.updated = Date.now(); persist(); }
 }
@@ -1938,12 +1941,14 @@ const A = {
   savGoList: () => { UI.tab = 'table'; savListEnsure(); render(); const c = document.getElementById('savlist'); if (c) c.scrollIntoView(); else window.scrollTo(0, 0); },
   savList: id => draft(S => { S.day.picks['savList_' + id] = IDEAS.savantList(S, id); }),
   savGrp: g => { UI.savOpen = Object.assign({}, UI.savOpen, { [g]: !(UI.savOpen || {})[g] }); render(); },
+  // выбран один верный и один ложный (заметка пользователя 2026-10-17): новый факт заменяет выбранный той же правдивости
   savPick: arg => { const [id, i, t] = arg.split('|'), it = (S.day.picks['savList_' + id] || [])[+i]; if (!it) return;
     const truth = t === '1', text = truth ? it.yes : it.no;
     draft(S => { const sel = S.day.picks['sav_' + id] || [], k = sel.findIndex(x => x.text === text), f = { text, truth };
-      const next = k >= 0 ? sel.filter((x, j) => j !== k) : Math.random() < 0.5 ? [f, ...sel] : [...sel, f];
+      const other = sel.filter(x => !!x.truth !== truth);
+      const next = k >= 0 ? sel.filter((x, j) => j !== k) : Math.random() < 0.5 ? [f, ...other] : [...other, f];
       S.day.picks['sav_' + id] = next.length ? next : null; }); },
-  savLog: id => { const pair = S.day.picks['sav_' + id]; if (pair) act(S => {
+  savLog: id => { const pair = savOneEach(S.day.picks['sav_' + id]); if (pair) act(S => {
     S.flags.savantFacts = (S.flags.savantFacts || []).concat({ n: S.n, pid: id, facts: pair.map(x => ({ text: x.text, truth: !!x.truth, own: !!x.own })) });
     S.day.picks['sav_' + id] = null;
     E.log(S, `Савант (${E.nm(S, id)}): ${pair.map(x => `«${x.text}» — ${x.truth ? 'правда' : 'ложь'}`).join('; ')}`, 'day'); }, 'факты Саванта'); },
