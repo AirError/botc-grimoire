@@ -51,6 +51,13 @@ ART.update({"c_engr": (CUT / "c_engr.png", 800), "c_frontis": (CUT / "c_frontis.
             "c_fl_short": (CUT / "c_fl_short.png", 200), "c_fl_mid": (CUT / "c_fl_mid.png", 300), "c_fl_long": (CUT / "c_fl_long.png", 320),
             "d_rose": (CUT / "d_rose.png", 600)})
 ART.update({f"c_cor_{k}": (CUT / f"c_cor_{k}.png", 110) for k in ("tl", "tr", "bl", "br")})
+ART.update({"c_night": (CUT / "c_night.png", 800), "c_dial": (CUT / "c_dial.png", 720),
+            "c_win_good": (CUT / "c_win_good.png", 800), "c_win_evil": (CUT / "c_win_evil.png", 800)})
+ART.update({f"c_tab_{k}": (CUT / f"c_tab_{k}.png", 96) for k in ("day", "night", "setup", "table", "log", "roles", "menu")})
+ART.update({f"d_tab_{k}": (CUT / f"d_tab_{k}.png", 96) for k in ("day", "night", "setup", "table", "log", "roles", "menu")})
+ART.update({f"c_g_{k}": (CUT / f"c_g_{k}.png", 128) for k in ("dusk", "dawn", "minioninfo", "demoninfo", "nominate", "vote", "execute", "dead")})
+ART.update({f"c_em_{k}": (CUT / f"c_em_{k}.png", 220) for k in ("demon", "minions", "notinplay", "youare", "selected", "thisplayer", "yourrole",
+                                                               "yes", "no", "good", "evil", "general_good", "general_evil", "general_neither", "moon")})
 
 
 def webp_uri(path, width, alpha_quality=100):
@@ -64,8 +71,8 @@ def webp_uri(path, width, alpha_quality=100):
 
 
 # маски гравюры (белое + прозрачность): прозрачность можно сжать с потерями — вдвое легче, на глаз не видно
-LOSSY_ALPHA = {"c_engr", "c_frontis", "c_wreath"}
-art = {k: webp_uri(p, w, 70 if k in LOSSY_ALPHA else 100) for k, (p, w) in ART.items() if p.exists()}
+LOSSY_ALPHA = {"c_engr", "c_frontis", "c_wreath", "c_night", "c_dial", "c_win_good", "c_win_evil"}
+art = {k: webp_uri(p, w, 70 if k in LOSSY_ALPHA or k.startswith("c_em_") else 100) for k, (p, w) in ART.items() if p.exists()}
 meta = json.loads((CUT / "meta.json").read_text(encoding="utf-8")) if (CUT / "meta.json").exists() else {}
 art_js = ("const ART = " + json.dumps(art, separators=(",", ":")) + ";\n"
           + "const ART_META = " + json.dumps(meta) + ";\n")

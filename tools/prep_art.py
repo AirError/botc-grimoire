@@ -228,6 +228,28 @@ def sheet_pieces(im, dil=10, min_px=400):
     return res
 
 
+def grid_pieces(mask, cols, rows, thr=24, pad=8):
+    """Лист предметов ровной сеткой. Каждый связный кусок относится к клетке, где лежит его центр (предмет может заходить
+    за границу клетки, а части предмета — лежать отдельно: три ромба, звезда у месяца); чужое в рамку не попадает → квадрат."""
+    W, H = mask.size; arr = np.asarray(mask); a = arr[..., 3]
+    lab, n = ndimage.label(ndimage.binary_dilation(a > thr, iterations=3))
+    cent = ndimage.center_of_mass(a > thr, lab, range(1, n + 1))
+    cell = {}
+    for i, (cy, cx) in enumerate(cent, 1):
+        if np.isnan(cy): continue
+        cell.setdefault(min(rows - 1, int(cy / H * rows)) * cols + min(cols - 1, int(cx / W * cols)), []).append(i)
+    out = []
+    for k in range(cols * rows):
+        m = np.isin(lab, cell.get(k, [])) & (a > 0)
+        if not m.any(): out.append(Image.new("RGBA", (8, 8), (255, 255, 255, 0))); continue
+        ys, xs = np.where(m)
+        x0, y0, x1, y1 = max(0, xs.min() - pad), max(0, ys.min() - pad), min(W, xs.max() + 1 + pad), min(H, ys.max() + 1 + pad)
+        sub = arr[y0:y1, x0:x1].copy(); sub[..., 3] = np.where(m[y0:y1, x0:x1], sub[..., 3], 0)
+        crop = Image.fromarray(sub, "RGBA"); s = max(crop.size); sq = Image.new("RGBA", (s, s), (255, 255, 255, 0))
+        sq.paste(crop, ((s - crop.width) // 2, (s - crop.height) // 2)); out.append(sq)
+    return out
+
+
 def skins():
     """Стили оформления (раздел 9–10 промптов): «Лунная гравюра» (c_…) и «Витраж во тьме» (d_…) → art/cut, размеры — в meta.skins."""
     out = {}
@@ -254,6 +276,31 @@ def skins():
         save("c_wreath", o.crop(wr))
         for n, b in zip(["c_cor_tl", "c_cor_tr", "c_cor_bl", "c_cor_br"], cor): save(n, o.crop(b))
         print("украшения гравюры:", len(top), "разделителя,", len(cor), "уголка")
+    if (SRC / "c_night.png").exists():  # ночная шапка: белым по чёрному → маска света (серебро задаёт CSS)
+        n = light_mask(SRC / "c_night.png", lift=22); w, h = n.size
+        save("c_night", n.crop((0, round(h * .21), w, round(h * .775))))
+    names = {"c_tabs": (4, 2, ["setup_day", "night", "setup", "table", "log", "roles", "menu", "candle"]),
+             "c_glyphs": (4, 2, ["dusk", "dawn", "minioninfo", "demoninfo", "nominate", "vote", "execute", "dead"])}
+    for src, (cols, rows, keys) in names.items():  # листы тушью: по сетке, каждый предмет — в квадрат
+        if not (SRC / f"{src}.png").exists(): continue
+        pre = "c_tab_" if src == "c_tabs" else "c_g_"
+        for k, im in zip(keys, grid_pieces(dark_mask(Image.open(SRC / f"{src}.png"), lo=40, hi=225), cols, rows)):
+            save(pre + ("day" if k == "setup_day" else k), im)
+    if (SRC / "c_emblems.png").exists():  # эмблемы карточек показа: белым по чёрному, 5×3
+        keys = ["demon", "minions", "notinplay", "youare", "selected", "thisplayer", "yourrole", "yes", "no", "good", "evil",
+                "general_good", "general_evil", "general_neither", "moon"]
+        for k, im in zip(keys, grid_pieces(light_mask(SRC / "c_emblems.png", lift=26), 5, 3, thr=40)):
+            save("c_em_" + k, im)
+    for k in ("c_win_good", "c_win_evil"):  # экраны победы: тушь цветом чернил (экран конца игры всегда светлый)
+        if (SRC / f"{k}.png").exists():
+            m = alpha_bbox(dark_mask(Image.open(SRC / f"{k}.png"), lo=30, hi=232), thr=30, pad=4)
+            a = np.asarray(m).copy(); a[..., 0], a[..., 1], a[..., 2] = 26, 26, 32
+            save(k, Image.fromarray(a, "RGBA"))
+    if (SRC / "c_dial.png").exists():  # кольцо-циферблат под кругом Гримуара
+        save("c_dial", alpha_bbox(dark_mask(Image.open(SRC / "c_dial.png"), lo=40, hi=230), thr=30))
+    if (SRC / "d_tabs.png").exists():  # витражные значки вкладок: на белом, 4×2
+        for k, im in zip(["day", "night", "setup", "table", "log", "roles", "menu", "candle"], grid_pieces(white_alpha(SRC / "d_tabs.png"), 4, 2)):
+            save("d_tab_" + k, im)
     for n in ("d_rose2", "d_rose"):  # роза: приглушённая (d_rose2), пока её нет — пробная
         if (SRC / f"{n}.png").exists():
             save("d_rose", alpha_bbox(white_alpha(SRC / f"{n}.png"))); break

@@ -124,7 +124,14 @@ const ico = (rid, align, cls) => {
   const v = (align || (isGoodRole(rid) ? 'good' : 'evil')) === 'evil' ? 'e' : 'g';
   return `<img class="${cls}" src="${set[v] || set.g}" alt="">`;
 };
-const art = (k, cls) => (typeof ART !== 'undefined' && ART[k]) ? `<img class="${cls}" src="${ART[k]}" alt="">` : '';
+// в «Лунной гравюре» глифы шагов и дня — гравюрой (маска: днём чернила, ночью серебро), экраны победы — тушью
+const ENGR_GLYPHS = ['dusk', 'dawn', 'minioninfo', 'demoninfo', 'nominate', 'vote', 'execute', 'dead'];
+const art = (k, cls) => {
+  if (typeof ART === 'undefined') return '';
+  if (UI.skin === 'engr' && ENGR_GLYPHS.includes(k) && ART['c_g_' + k]) return `<span class="${cls} gm" aria-hidden="true" style="--m:var(--a-c-g-${k})"></span>`;
+  if (UI.skin === 'engr' && (k === 'win_good' || k === 'win_evil') && ART['c_' + k]) k = 'c_' + k;
+  return ART[k] ? `<img class="${cls}" src="${ART[k]}" alt="">` : '';
+};
 const roleLine = p => p.role ? `<span class="cr t-${team(p.role)}">${esc(E.rname(p.role))}${p.believes ? ' → ' + esc(E.rname(p.believes)) : ''}${E.isTraveller(p) ? ' · Странник' : ''}</span>` : '<span class="cr muted">без роли</span>';
 
 // ядовитые капли: пьянство, отравление, Вортокс — информация может (или должна) быть ложной
@@ -278,10 +285,11 @@ const TAB_ICO = {
   roles: '<path class="f" d="M4 5.6c3.2-1.7 12.8-1.7 16 0 .3 7.7-3.3 13.6-8 13.6S3.7 13.3 4 5.6z"/><path class="k" d="M7.8 10.4c.9-.7 2-.7 2.8 0M13.4 10.4c.9-.7 2-.7 2.8 0M9.4 14.7c1.6 1.1 3.6 1.1 5.2 0"/>',
   menu: '<path class="f" d="M5.5 9.6l2.4 2.4-2.4 2.4-2.4-2.4zM12 9.6l2.4 2.4-2.4 2.4-2.4-2.4zM18.5 9.6l2.4 2.4-2.4 2.4-2.4-2.4z"/>',
 };
-const tabIco = k => `<svg class="ti" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${TAB_ICO[k]}</svg>`;
+const tabIco = k => UI.skin === 'engr' && HAS_ART('c_tab_' + k) ? `<span class="ti tim" aria-hidden="true" style="--m:var(--a-c-tab-${k})"></span>`
+  : UI.skin === 'glass' && HAS_ART('d_tab_' + k) ? `<img class="ti tig" src="${ART['d_tab_' + k]}" alt="" aria-hidden="true">` : `<svg class="ti" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${TAB_ICO[k]}</svg>`;
 // картинка фазы над экраном ночи и дня: в гравюре — гравюра тушью (днём чернила, ночью серебро), в витраже ночью — ничего
 function phaseArt(k) {
-  if (UI.skin === 'engr' && HAS_ART('c_engr')) return `<div class="phase-wrap"><div class="skengr" role="img" aria-label="Городок под луной"></div></div>`;
+  if (UI.skin === 'engr' && HAS_ART('c_engr')) return `<div class="phase-wrap"><div class="skengr ${k === 'night' && HAS_ART('c_night') ? 'night' : ''}" role="img" aria-label="Городок под луной"></div></div>`;
   if (UI.skin === 'glass' && k === 'night') return '';
   return `<div class="phase-wrap">${art(k, 'phase-art')}</div>`;
 }
@@ -297,7 +305,8 @@ function splashHtml() {
 function artVars() {
   if (typeof ART === 'undefined') return;
   const keys = ['wall_bg', 'wall_edge', 'tablet', 'tablet_cracked', 'wall_glow', 'fx_open', 'fx_circle', 'poison_drips', 'poison_frame', 'drunk_foam', 'drunk_frame',
-    'c_engr', 'c_wreath', 'c_fl_short', 'c_fl_mid', 'c_fl_long', 'c_cor_tl', 'c_cor_tr', 'c_cor_bl', 'c_cor_br', 'd_rose'].concat([...Array(24).keys()].map(i => 'rune' + i));
+    'c_engr', 'c_night', 'c_dial', 'c_wreath', 'c_fl_short', 'c_fl_mid', 'c_fl_long', 'c_cor_tl', 'c_cor_tr', 'c_cor_bl', 'c_cor_br', 'd_rose']
+    .concat(['day', 'night', 'setup', 'table', 'log', 'roles', 'menu'].map(k => 'c_tab_' + k), ENGR_GLYPHS.map(k => 'c_g_' + k), [...Array(24).keys()].map(i => 'rune' + i));
   const el = document.createElement('style'); el.id = 'artvars';
   el.textContent = `:root{${keys.filter(HAS_ART).map(k => `--a-${k.replace(/_/g, '-')}:url("${ART[k]}");`).join('')}--frame-slice:${(typeof ART_META !== 'undefined' && ART_META.frame_slice) || 0};--drunk-slice:${(typeof ART_META !== 'undefined' && ART_META.drunk_slice) || 0};}`;
   document.head.appendChild(el);
@@ -371,11 +380,12 @@ const CARD_ART = { 'ЭТО ДЕМОН': 'card_demon', 'ЭТО ВАШИ ПРИС�
   'ДОБРО': 'card_general_good', 'ЗЛО': 'card_general_evil', 'НИЧЬЯ': 'card_general_neither' };
 function cardHtml(text, thumb) {
   const key = CARD_ART[String(text).toUpperCase()];
-  // «Лунная гравюра»: серебряная рамка с гравированными уголками, надпись — крупно (эмблемы — когда будет лист c_emblems)
+  // «Лунная гравюра»: серебряная рамка с гравированными уголками, гравированная эмблема карточки и крупная надпись
   if (UI.skin === 'engr' && HAS_ART('c_cor_tl')) {
     const n = String(text).length, side = thumb ? (thumb === 'down' ? 'evil' : thumb === 'side' ? 'none' : 'good') : '';
+    const em = 'c_em_' + (key ? key.replace('card_', '') : 'moon');
     return `<div class="shframe ${side ? 'side-' + side : ''}" role="img" aria-label="${esc(text)}">${['tl', 'tr', 'bl', 'br'].map(k => `<i class="shcor ${k}"></i>`).join('')}
-      <span class="shft sz-${n <= 3 ? 'xl' : n <= 12 ? 'l' : 'm'}">${esc(text)}</span><i class="shfl"></i></div>`;
+      ${HAS_ART(em) ? `<img class="shem" src="${ART[em]}" alt="">` : ''}<span class="shft sz-${n <= 3 ? 'xl' : n <= 12 ? 'l' : 'm'}">${esc(text)}</span><i class="shfl"></i></div>`;
   }
   if (!HAS_ART(key)) return thumb ? `<div class="shthumb side-${thumb === 'down' ? 'evil' : thumb === 'side' ? 'none' : 'good'}"><span aria-hidden="true" class="${thumb === 'side' ? 'tside' : ''}">${thumb === 'down' ? '👎' : '👍'}</span>${esc(text)}</div>` : `<div class="shcap">${esc(text)}</div>`;
   const b = (typeof ART_META !== 'undefined' && ART_META.cards && ART_META.cards.box) || [0.03, 0.42, 0.97, 0.95];

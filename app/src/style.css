@@ -977,19 +977,25 @@ html:root.oled[data-skin="engr"] {
 :where([data-skin="engr"]) .phase-wrap { border: 3px double var(--ink); padding: 3px; }
 :where([data-skin="engr"].oled) .phase-wrap { border: 0; padding: 0; }
 :where([data-skin="engr"].oled) .skengr { background: #B8BDCB; opacity: .42; }
+/* ночная гравюра — белым по чёрному (c_night): луна светлая */
+.skengr.night { aspect-ratio: 1536 / 579; -webkit-mask-image: var(--a-c-night); mask-image: var(--a-c-night); }
+:where([data-skin="engr"].oled) .skengr.night { background: #C9CDD8; opacity: .72; }
+/* гравированные значки вкладок и глифы (маски: цвет — текущий цвет текста) */
+.tabs .tim { background: currentColor; -webkit-mask: var(--m) center / contain no-repeat; mask: var(--m) center / contain no-repeat; }
+.gm { display: inline-block; flex: none; vertical-align: middle; color: var(--ink); background: currentColor;
+  -webkit-mask: var(--m) center / contain no-repeat; mask: var(--m) center / contain no-repeat; }
+:where([data-skin="engr"]) .steprole .si.gm { padding: 0; background: currentColor; width: 56px; height: 56px; }
 /* иконка ночного шага — в гравированном венке */
 :where([data-skin="engr"]) .steprole .si { padding: 7px; background: var(--a-c-wreath) center / 100% 100% no-repeat; width: 62px; height: 62px; }
-/* глифы-витражи пока не перерисованы гравюрой — без цвета (лист c_glyphs) */
-:where([data-skin="engr"]) :is(.hg, .btn .bg, .badge .bd) { filter: grayscale(1) contrast(1.15); }
-/* Гримуар кругом — гравированный циферблат под рассадкой */
-:where([data-skin="engr"]) .gbg { display: block; position: absolute; border-radius: 50%; pointer-events: none; opacity: .5; border: 1px solid var(--ink); }
-:where([data-skin="engr"]) .gbg::before { content: ''; position: absolute; inset: 4px; border-radius: 50%; border: 1px solid var(--ink); opacity: .7; }
-:where([data-skin="engr"]) .gbg::after { content: ''; position: absolute; inset: 9%; border-radius: 50%; border: 1px dashed var(--ink); opacity: .55; }
-:where([data-skin="engr"]) .grimov .gbg, :where([data-skin="engr"]) .grimov .gbg::before, :where([data-skin="engr"]) .grimov .gbg::after,
-:where([data-skin="engr"].oled) .gbg, :where([data-skin="engr"].oled) .gbg::before, :where([data-skin="engr"].oled) .gbg::after { border-color: #C9CDD8; }
+/* Гримуар кругом — гравированный циферблат астролябии под рассадкой (c_dial) */
+:where([data-skin="engr"]) .gbg { display: block; position: absolute; pointer-events: none; opacity: .5; background: var(--ink);
+  -webkit-mask: var(--a-c-dial) center / 100% 100% no-repeat; mask: var(--a-c-dial) center / 100% 100% no-repeat; }
+:where([data-skin="engr"]) .grimov .gbg, :where([data-skin="engr"].oled) .gbg { background: #C9CDD8; opacity: .4; }
 /* показ игроку — серебряная рамка с гравированными уголками */
-.shframe { position: relative; flex: none; width: min(90vw, 480px); aspect-ratio: 1.58; container-type: inline-size; display: grid; place-items: center;
+.shframe { position: relative; flex: none; width: min(88vw, 440px); aspect-ratio: 1.2; container-type: inline-size;
+  display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 2.5cqw; padding: 6cqw 0 13cqw;
   border: 1px solid #C9CDD8; outline: 1px solid #5E626E; outline-offset: -8px; color: #E8E8EE; }
+.shem { width: 34cqw; height: 34cqw; object-fit: contain; flex: none; }
 .shcor { position: absolute; width: 15%; aspect-ratio: 1; background: #C9CDD8; -webkit-mask: center / contain no-repeat; mask: center / contain no-repeat; }
 .shcor.tl { left: 3.5%; top: 5.5%; -webkit-mask-image: var(--a-c-cor-tl); mask-image: var(--a-c-cor-tl); }
 .shcor.tr { right: 3.5%; top: 5.5%; -webkit-mask-image: var(--a-c-cor-tr); mask-image: var(--a-c-cor-tr); }
@@ -1000,7 +1006,7 @@ html:root.oled[data-skin="engr"] {
 .shfl { position: absolute; left: 50%; bottom: 13%; width: 42%; height: 7%; transform: translateX(-50%); background: #8F93A0;
   -webkit-mask: var(--a-c-fl-long) center / contain no-repeat; mask: var(--a-c-fl-long) center / contain no-repeat; }
 .shframe.side-good .shft { color: #A7BDEE; } .shframe.side-evil .shft { color: #EE9C9C; }
-.showov.land .shframe { width: min(calc(var(--long) * .82), calc(var(--short) * .76 * 1.58)); }
+.showov.land .shframe { width: min(calc(var(--long) * .6), calc(var(--short) * .8 * 1.2)); }
 
 /* ---------- «Витраж во тьме»: светлый камень и свинцовые переплёты днём, чёрный ночью ---------- */
 html:root[data-skin="glass"] { --paper: #E6E3DD; --card: #F5F3EF; --ink: #1C1B20; --muted: #67646C; --line: #BDB7AD; --lead: #2A2A31;
@@ -1027,6 +1033,11 @@ html:root.oled[data-skin="glass"] { --paper: #000000; --card: #000000; --ink: #E
 :where([data-skin="glass"].oled) .tabs button.on { color: var(--gold); }
 :where([data-skin="glass"].oled) .tabs button.on .ti .f { fill: #D9A030; }
 :where([data-skin="glass"].oled) .tabs button.on .ti { filter: drop-shadow(0 0 5px rgba(217, 160, 48, .55)); }
+/* витражные значки вкладок (d_tabs): невыбранные — приглушены, выбранный — в полном цвете и светится */
+.tabs .tig { object-fit: contain; filter: grayscale(.7) opacity(.65); }
+:where([data-skin="glass"]) .tabs button.on .tig { filter: drop-shadow(0 0 4px rgba(91, 139, 216, .65)); }
+:where([data-skin="glass"].oled) .tabs .tig { filter: grayscale(.45) brightness(.8) opacity(.85); }
+:where([data-skin="glass"].oled) .tabs button.on .tig { filter: brightness(.9) drop-shadow(0 0 5px rgba(217, 160, 48, .5)); }
 /* Гримуар кругом — вся рассадка на приглушённой витражной розе */
 :where([data-skin="glass"]) .gbg { display: block; position: absolute; border-radius: 50%; pointer-events: none;
   background: var(--a-d-rose) center / 100% 100% no-repeat; filter: saturate(.5) brightness(.95); opacity: .55; }
