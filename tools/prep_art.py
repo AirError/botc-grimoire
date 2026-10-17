@@ -198,7 +198,66 @@ def beauty():
     meta["cards"] = cards()
     meta["marks"] = marks()
     meta["digits"] = digits()
+    meta["skins"] = skins()
     (OUT / "meta.json").write_text(json.dumps(meta), encoding="utf-8")
+
+
+def dark_mask(im, lo=40, hi=225):
+    """Тушь (чёрное на белом) → белый RGBA, непрозрачность = темнота; цвет задаёт приложение (CSS mask): днём чернила, ночью серебро."""
+    L = np.asarray(im.convert("L")).astype(float)
+    a = np.clip((hi - L) / (hi - lo), 0, 1)
+    out = np.zeros(L.shape + (4,), np.uint8); out[..., :3] = 255; out[..., 3] = (a * 255).round()
+    return Image.fromarray(out, "RGBA")
+
+
+def alpha_bbox(im, thr=10, pad=0):
+    ys, xs = np.where(np.asarray(im)[..., 3] > thr)
+    return im.crop((max(0, xs.min() - pad), max(0, ys.min() - pad), min(im.width, xs.max() + pad + 1), min(im.height, ys.max() + pad + 1)))
+
+
+def sheet_pieces(im, dil=10, min_px=400):
+    """Отдельные предметы на листе (по непрозрачному с расширением, чтобы части одного предмета склеились) → рамки (x0, y0, x1, y1)."""
+    a = np.asarray(im)[..., 3] > 20
+    lab, _ = ndimage.label(ndimage.binary_dilation(a, iterations=dil))
+    res = []
+    for i, sl in enumerate(ndimage.find_objects(lab)):
+        m = (lab[sl] == i + 1) & a[sl]
+        if m.sum() < min_px: continue
+        ys, xs = np.where(m)
+        res.append((sl[1].start + xs.min(), sl[0].start + ys.min(), sl[1].start + xs.max() + 1, sl[0].start + ys.max() + 1))
+    return res
+
+
+def skins():
+    """Стили оформления (раздел 9–10 промптов): «Лунная гравюра» (c_…) и «Витраж во тьме» (d_…) → art/cut, размеры — в meta.skins."""
+    out = {}
+    def save(name, im):
+        im.save(OUT / f"{name}.png"); out[name] = list(im.size)
+    if (SRC / "c_engraving.png").exists():  # шапка дня: средняя полоса гравюры, маска туши
+        e = Image.open(SRC / "c_engraving.png"); w, h = e.size
+        save("c_engr", dark_mask(e.crop((0, round(h * .24), w, round(h * .767))), lo=30, hi=235))
+    if (SRC / "c_frontis.png").exists():  # заставка: белое от края кадра — прозрачно, внутри арки — позитив холодным серебром
+        L = np.asarray(Image.open(SRC / "c_frontis.png").convert("L")).astype(float)
+        lab, _ = ndimage.label(L > 238)
+        edge = set(lab[0, :]) | set(lab[-1, :]) | set(lab[:, 0]) | set(lab[:, -1]); edge.discard(0)
+        al = np.asarray(Image.fromarray(np.where(np.isin(lab, list(edge)), 0, 255).astype(np.uint8)).filter(ImageFilter.GaussianBlur(0.8)))
+        rgb = (L[..., None] / 255 * np.array([0.80, 0.84, 0.93]) * 235).clip(0, 255).astype(np.uint8)
+        save("c_frontis", alpha_bbox(Image.fromarray(np.dstack([rgb, al]), "RGBA")))
+    if (SRC / "c_ornaments.png").exists():  # лист: 3 разделителя сверху, венок и 4 уголка снизу
+        o = dark_mask(Image.open(SRC / "c_ornaments.png"), lo=40, hi=230)
+        bs = sheet_pieces(o)
+        top = sorted([b for b in bs if b[3] < o.height * .35], key=lambda b: b[0])
+        low = [b for b in bs if b[1] >= o.height * .3]
+        wr = max(low, key=lambda b: (b[2] - b[0]) * (b[3] - b[1]))
+        cor = sorted([b for b in low if b != wr], key=lambda b: (round(b[1] / 120), b[0]))
+        for n, b in zip(["c_fl_short", "c_fl_mid", "c_fl_long"], top): save(n, o.crop(b))
+        save("c_wreath", o.crop(wr))
+        for n, b in zip(["c_cor_tl", "c_cor_tr", "c_cor_bl", "c_cor_br"], cor): save(n, o.crop(b))
+        print("украшения гравюры:", len(top), "разделителя,", len(cor), "уголка")
+    for n in ("d_rose2", "d_rose"):  # роза: приглушённая (d_rose2), пока её нет — пробная
+        if (SRC / f"{n}.png").exists():
+            save("d_rose", alpha_bbox(white_alpha(SRC / f"{n}.png"))); break
+    return out
 
 
 def digits():

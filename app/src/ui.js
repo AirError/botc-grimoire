@@ -264,10 +264,40 @@ function legendOverlay() {
       ${row('<span class="lgbox evil"></span>', 'Красная рамка', 'Злой игрок')}
     </div></div></div>`;
 }
+/* ---------- оформление: Basic (как было), «Лунная гравюра», «Витраж во тьме» — у каждого устройства своё (localStorage) ---------- */
+const SKINS = [['basic', 'Basic'], ['engr', 'Лунная гравюра'], ['glass', 'Витраж во тьме']];
+const SKIN_KEY = 'botc-grimoire-skin';
+function skinLoad() { try { const v = localStorage.getItem(SKIN_KEY); return SKINS.some(s => s[0] === v) ? v : 'basic'; } catch (e) { return 'basic'; } }
+// значки вкладок (в Basic скрыты): контур, у .f — заливка выбранной вкладки в «Витраже», .k — детали поверх заливки
+const TAB_ICO = {
+  setup: '<path d="M7 3.5h10M7 20.5h10M8 3.5c0 4.6 4 5.4 4 8.5s-4 3.9-4 8.5M16 3.5c0 4.6-4 5.4-4 8.5s4 3.9 4 8.5"/>',
+  day: '<circle class="f" cx="12" cy="12" r="4.3"/><path d="M12 2.6v2.5M12 18.9v2.5M2.6 12h2.5M18.9 12h2.5M5.4 5.4l1.8 1.8M16.8 16.8l1.8 1.8M5.4 18.6l1.8-1.8M16.8 7.2l1.8-1.8"/>',
+  night: '<path class="f" d="M15.4 3.3a8.8 8.8 0 1 0 5.4 14.6A7.3 7.3 0 0 1 15.4 3.3z"/><path class="k" d="M7.6 8.6l.5 1.2 1.2.5-1.2.5-.5 1.2-.5-1.2-1.2-.5 1.2-.5z" stroke-width="1"/>',
+  table: '<path class="f" d="M12 6.6C9.8 5.1 7 4.7 3.4 5.1v13.1c3.6-.4 6.4 0 8.6 1.5 2.2-1.5 5-1.9 8.6-1.5V5.1C17 4.7 14.2 5.1 12 6.6z"/><path class="k" d="M12 6.6v13.1"/>',
+  log: '<path class="f" d="M6 3.4h9.3L19 7.1v13.5H6z"/><path class="k" d="M9 10h7M9 13.4h7M9 16.8h4.4"/>',
+  roles: '<path class="f" d="M4 5.6c3.2-1.7 12.8-1.7 16 0 .3 7.7-3.3 13.6-8 13.6S3.7 13.3 4 5.6z"/><path class="k" d="M7.8 10.4c.9-.7 2-.7 2.8 0M13.4 10.4c.9-.7 2-.7 2.8 0M9.4 14.7c1.6 1.1 3.6 1.1 5.2 0"/>',
+  menu: '<path class="f" d="M5.5 9.6l2.4 2.4-2.4 2.4-2.4-2.4zM12 9.6l2.4 2.4-2.4 2.4-2.4-2.4zM18.5 9.6l2.4 2.4-2.4 2.4-2.4-2.4z"/>',
+};
+const tabIco = k => `<svg class="ti" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${TAB_ICO[k]}</svg>`;
+// картинка фазы над экраном ночи и дня: в гравюре — гравюра тушью (днём чернила, ночью серебро), в витраже ночью — ничего
+function phaseArt(k) {
+  if (UI.skin === 'engr' && HAS_ART('c_engr')) return `<div class="phase-wrap"><div class="skengr" role="img" aria-label="Городок под луной"></div></div>`;
+  if (UI.skin === 'glass' && k === 'night') return '';
+  return `<div class="phase-wrap">${art(k, 'phase-art')}</div>`;
+}
+// заставка при запуске (кроме Basic): исчезает сама через 2 секунды или по нажатию
+function splashHtml() {
+  if (!UI.splash || UI.skin === 'basic') return '';
+  const pic = UI.skin === 'engr' ? art('c_frontis', 'spart') : art('d_rose', 'spart');
+  const ph = S.phase === 'setup' ? 'подготовка' : S.phase === 'night' ? `ночь ${S.n}` : S.phase === 'day' ? `день ${S.n}` : 'игра окончена';
+  return `<div class="splash" data-act="splashOff" role="dialog" aria-label="Гримуар рассказчика">${pic}
+    <div class="spt"><div class="sptitle">Гримуар<br>рассказчика</div><div class="spsub">${esc(S.script.name)} · ${ph}</div><div class="sphint">Нажмите, чтобы продолжить</div></div></div>`;
+}
 // картинки для CSS — переменными (--a-…), чтобы не повторять data:-адреса в разметке; html.art-* включает рисованный вид
 function artVars() {
   if (typeof ART === 'undefined') return;
-  const keys = ['wall_bg', 'wall_edge', 'tablet', 'tablet_cracked', 'wall_glow', 'fx_open', 'fx_circle', 'poison_drips', 'poison_frame', 'drunk_foam', 'drunk_frame'].concat([...Array(24).keys()].map(i => 'rune' + i));
+  const keys = ['wall_bg', 'wall_edge', 'tablet', 'tablet_cracked', 'wall_glow', 'fx_open', 'fx_circle', 'poison_drips', 'poison_frame', 'drunk_foam', 'drunk_frame',
+    'c_engr', 'c_wreath', 'c_fl_short', 'c_fl_mid', 'c_fl_long', 'c_cor_tl', 'c_cor_tr', 'c_cor_bl', 'c_cor_br', 'd_rose'].concat([...Array(24).keys()].map(i => 'rune' + i));
   const el = document.createElement('style'); el.id = 'artvars';
   el.textContent = `:root{${keys.filter(HAS_ART).map(k => `--a-${k.replace(/_/g, '-')}:url("${ART[k]}");`).join('')}--frame-slice:${(typeof ART_META !== 'undefined' && ART_META.frame_slice) || 0};--drunk-slice:${(typeof ART_META !== 'undefined' && ART_META.drunk_slice) || 0};}`;
   document.head.appendChild(el);
@@ -341,6 +371,12 @@ const CARD_ART = { 'ЭТО ДЕМОН': 'card_demon', 'ЭТО ВАШИ ПРИС�
   'ДОБРО': 'card_general_good', 'ЗЛО': 'card_general_evil', 'НИЧЬЯ': 'card_general_neither' };
 function cardHtml(text, thumb) {
   const key = CARD_ART[String(text).toUpperCase()];
+  // «Лунная гравюра»: серебряная рамка с гравированными уголками, надпись — крупно (эмблемы — когда будет лист c_emblems)
+  if (UI.skin === 'engr' && HAS_ART('c_cor_tl')) {
+    const n = String(text).length, side = thumb ? (thumb === 'down' ? 'evil' : thumb === 'side' ? 'none' : 'good') : '';
+    return `<div class="shframe ${side ? 'side-' + side : ''}" role="img" aria-label="${esc(text)}">${['tl', 'tr', 'bl', 'br'].map(k => `<i class="shcor ${k}"></i>`).join('')}
+      <span class="shft sz-${n <= 3 ? 'xl' : n <= 12 ? 'l' : 'm'}">${esc(text)}</span><i class="shfl"></i></div>`;
+  }
   if (!HAS_ART(key)) return thumb ? `<div class="shthumb side-${thumb === 'down' ? 'evil' : thumb === 'side' ? 'none' : 'good'}"><span aria-hidden="true" class="${thumb === 'side' ? 'tside' : ''}">${thumb === 'down' ? '👎' : '👍'}</span>${esc(text)}</div>` : `<div class="shcap">${esc(text)}</div>`;
   const b = (typeof ART_META !== 'undefined' && ART_META.cards && ART_META.cards.box) || [0.03, 0.42, 0.97, 0.95];
   const n = String(text).length, sz = n <= 3 ? 'xl' : n <= 12 ? 'l' : 'm';
@@ -649,7 +685,7 @@ function viewNight() {
   const deaths = (E.nightDeaths(S).length ? `<div class="small"><b>Умерли этой ночью:</b> ${E.nightDeaths(S).map(d => esc(E.nm(S, d.pid))).join(', ')}</div>` : '')
     + (back.length ? `<div class="small"><b>Снова жив:</b> ${back.map(id => esc(E.nm(S, id))).join(', ')}</div>` : '');
   const icon = stepIcon(st, 'si');
-  return `<div class="phase-wrap">${art('night', 'phase-art')}</div><div class="progress"><i style="width:${Math.round(100 * i / total)}%"></i></div>
+  return `${phaseArt('night')}<div class="progress"><i style="width:${Math.round(100 * i / total)}%"></i></div>
     ${situationHtml()}${deaths}
     <div class="card ${spec.active ? '' : 'inactive'}">
       <div class="steprole">${icon}<span class="rn t-${alignTeam(spec.team, stepAlign(st)) || ''}">${esc(spec.title)}</span>${spec.who ? `<span class="who">${esc(spec.who)}</span>` : ''}${spec.active && spec.dist ? `<span class="ppill k-${spec.dist.kind || 'poison'}">${distIcon(spec.dist.kind)}${esc(spec.dist.label)}</span>` : ''}</div>
@@ -673,7 +709,7 @@ function viewDay() {
   const d = S.day, th = E.voteThreshold(S), blk = E.block(S), alive = E.aliveCount(S), picks = d.picks || (d.picks = {});
   const nm = d.draft || (d.draft = { by: null, on: null, voters: [], stage: 'pick', spy: false });
   const parts = [];
-  parts.push(`<div class="phase-wrap">${art('day', 'phase-art')}</div>`);
+  parts.push(phaseArt('day'));
   parts.push(`<div class="card"><div class="row"><h2>День ${S.n}</h2><span class="muted">живых ${E.aliveAll(S)} · для казни нужно ${th}</span></div>
     ${S.night && E.nightDeaths(S).length ? `<div class="small">Ночью умерли: ${E.nightDeaths(S).map(x => esc(E.nm(S, x.pid))).join(', ')}</div>` : '<div class="small muted">Ночью никто не умер</div>'}
     ${S.night && (S.night.revived || []).some(id => E.P(S, id) && E.P(S, id).alive) ? `<div class="small">Снова жив: ${S.night.revived.filter(id => E.P(S, id) && E.P(S, id).alive).map(id => esc(E.nm(S, id))).join(', ')}</div>` : ''}
@@ -1090,7 +1126,9 @@ function grimCircle(opts) {
     return `${rems}<button class="gct" data-act="${opts.act || 'grimZoom'}" data-arg="${p.id}" style="left:${(x - t / 2).toFixed(2)}cqw;top:${(y - t / 2).toFixed(2)}cqw;width:${t}cqw;height:${t}cqw" aria-label="${opts.names ? esc(p.name) + ': ' : ''}${esc(E.rname(tokenRole(p)))}${p.alive ? '' : ', мёртв'}">${roleTokenHtml(p, 'gca-' + p.id)}</button>
       ${opts.names ? `<span class="gcl ${p.alive ? '' : 'dead'}" style="left:${x.toFixed(2)}cqw;top:${(y + t / 2 + 0.4).toFixed(2)}cqw;font-size:${nf.toFixed(2)}cqw;max-width:${s.lw.toFixed(2)}cqw">${esc(p.name)}</span>` : ''}`;
   }).join('');
-  return `<div class="gcirc" style="aspect-ratio:100 / ${H.toFixed(1)}">${cells}</div>`;
+  // подложка под всем кругом рассадки (в стилях: циферблат гравюры, роза витража; в Basic скрыта)
+  const pad = t * 0.62, bg = `<span class="gbg" aria-hidden="true" style="left:${(cx - rx - pad).toFixed(2)}cqw;top:${(cy - ry - pad).toFixed(2)}cqw;width:${(2 * (rx + pad)).toFixed(2)}cqw;height:${(2 * (ry + pad)).toFixed(2)}cqw"></span>`;
+  return `<div class="gcirc" style="aspect-ratio:100 / ${H.toFixed(1)}">${bg}${cells}</div>`;
 }
 // жетон крупно: нажатие на жетон в круге Шпиона и Вдовы (роль, способность и все напоминания словами; имени нет — как в Гримуаре)
 function grimZoomHtml() {
@@ -1552,6 +1590,9 @@ function viewMenu() {
     ${UI.confirm === 'new' ? `<div class="warn">Начать новую игру? Текущая будет удалена.</div><div class="row"><button class="btn danger" data-act="newGame">Да, новая игра</button><button class="btn" data-act="cancelConfirm">Отмена</button></div>`
       : `<button class="btn" data-act="askNew">Новая игра</button>`}
     <div class="small muted">${UI.save === 'cloud' ? 'Игра сохраняется после каждого действия: на этом устройстве и в вашем аккаунте claude.ai.' : 'Игра сохраняется после каждого действия на этом устройстве.'}</div></div>
+    <div class="card"><h3>Оформление</h3>
+      <div class="seg skinseg" role="group" aria-label="Оформление">${SKINS.map(([k, l]) => `<button class="${UI.skin === k ? 'on' : ''}" data-act="skin" data-arg="${k}" aria-pressed="${UI.skin === k}">${l}</button>`).join('')}</div>
+      <div class="small muted">Basic — как было. «Лунная гравюра» — книжные гравюры: днём тушью, ночью серебром. «Витраж во тьме» — витражи в тёмной оправе, Гримуар на витражной розе. Выбор запоминается на этом устройстве.</div></div>
     <div class="card"><h3>Перенос игры</h3>
       <button class="btn" data-act="copyJson">Скопировать игру</button>${UI.copied ? `<div class="note-ok">${esc(UI.copied)}</div>` : ''}
       <textarea id="importJson" data-act="importText" placeholder="Вставьте сюда скопированную игру">${esc(UI.importText)}</textarea>
@@ -1601,6 +1642,7 @@ function render() {
   document.documentElement.classList.toggle('oled', S.phase === 'night');
   // днём и на остальных экранах — всегда светлая тема, даже если телефон переключился на тёмную
   document.documentElement.dataset.theme = 'light';
+  document.documentElement.dataset.skin = UI.skin || 'basic';
   const ph = S.phase === 'setup' ? 'Подготовка' : S.phase === 'night' ? `Ночь ${S.n} · ${S.night.i + 1}/${S.night.steps.length}` : S.phase === 'day' ? `День ${S.n}` : 'Игра окончена';
   UI.showGroups = [];
   // правка из журнала открыта, а запись ночи с тех пор изменилась (отмена, новая ночь) — форма устарела, закрываем
@@ -1618,14 +1660,14 @@ function render() {
   app.innerHTML = `<header class="top"><span class="brand">${art('icon', 'logo')}Гримуар</span><span class="phase">${esc(ph)}</span>
       <button class="hundo" data-act="undo" ${last ? '' : 'disabled'} aria-label="${last ? esc('Отменить: ' + last.label) : 'Нечего отменять'}" title="${last ? esc('Отменить: ' + last.label) : ''}">↶</button><span class="save"></span></header>
     <main>${body}</main>
-    <nav class="tabs">${[['game', S.phase === 'night' ? 'Ночь' : S.phase === 'day' ? 'День' : 'Игра'], ['table', 'Гримуар'], ['log', 'Журнал'], ['roles', 'Роли'], ['menu', 'Ещё']].map(([k, l]) => `<button class="${UI.tab === k ? 'on' : ''}" data-act="tab" data-arg="${k}">${l}</button>`).join('')}</nav>
-    ${legendOverlay()}${wallOverlay()}${grimOverlay()}${ringOverlay()}${sheetOverlay()}${editOverlay()}${fateOverlay()}${statOverlay()}${tipHtml()}${savFactsHtml()}${ghostLostHtml()}${pinAskHtml()}${polOverlay()}${gossipAskHtml()}${exeAskHtml()}${exeResHtml()}${showOverlay()}${noteViewOverlay()}${testWelcomeHtml()}`;
+    <nav class="tabs">${[['game', S.phase === 'night' ? 'Ночь' : S.phase === 'day' ? 'День' : 'Игра', S.phase === 'night' ? 'night' : S.phase === 'day' ? 'day' : 'setup'], ['table', 'Гримуар'], ['log', 'Журнал'], ['roles', 'Роли'], ['menu', 'Ещё']].map(([k, l, ic]) => `<button class="${UI.tab === k ? 'on' : ''}" data-act="tab" data-arg="${k}">${tabIco(ic || k)}<span class="tl">${l}</span></button>`).join('')}</nav>
+    ${legendOverlay()}${wallOverlay()}${grimOverlay()}${ringOverlay()}${sheetOverlay()}${editOverlay()}${fateOverlay()}${statOverlay()}${tipHtml()}${savFactsHtml()}${ghostLostHtml()}${pinAskHtml()}${polOverlay()}${gossipAskHtml()}${exeAskHtml()}${exeResHtml()}${showOverlay()}${noteViewOverlay()}${testWelcomeHtml()}${splashHtml()}`;
   // круг рассадки — только на подготовке, круг номинации — только днём, Гримуар кругом — во время игры (после смены фазы закрываются сами)
   if ((UI.ring === 'seat' && S.phase !== 'setup') || ((UI.ring === 'nom' || UI.ring === 'pick') && S.phase !== 'day') || UI.ring === 'grim') UI.ring = null;
   // под полноэкранными слоями страница не прокручивается
   if (UI.fate && !(S.phase === 'day' && S.day.picks && S.day.picks.fate)) UI.fate = false; // день кончился — выбор казни закрыт
   if (UI.stat && S.phase !== 'day') UI.stat = false;
-  document.documentElement.classList.toggle('locked', !!(UI.show || UI.legend || UI.ring || UI.noteView || UI.edit || UI.fate || UI.stat || UI.tip || UI.savFacts || UI.ghostLost || UI.pinAsk || UI.testWelcome || E.politiciansPending(S).length || UI.gossipAsk || UI.exeAsk || UI.exeRes || (UI.open && E.P(S, UI.open)) || (UI.wall && S.draw) || (UI.grimShow && S.phase === 'night')));
+  document.documentElement.classList.toggle('locked', !!((UI.splash && UI.skin !== 'basic') || UI.show || UI.legend || UI.ring || UI.noteView || UI.edit || UI.fate || UI.stat || UI.tip || UI.savFacts || UI.ghostLost || UI.pinAsk || UI.testWelcome || E.politiciansPending(S).length || UI.gossipAsk || UI.exeAsk || UI.exeRes || (UI.open && E.P(S, UI.open)) || (UI.wall && S.draw) || (UI.grimShow && S.phase === 'night')));
   app.querySelectorAll('details > summary').forEach(s => { if (opened.has(s.textContent)) s.parentElement.open = true; });
   if (UI.tab === 'roles') filterRefs();
   paintSave();
@@ -1952,6 +1994,8 @@ const A = {
   edTokDel: arg => { const [id, i] = arg.split('|'); act(S => E.P(S, id).tokens.splice(+i, 1), 'снят жетон'); },
   // меню
   toggleHide: () => { UI.hideInactive = !UI.hideInactive; autoSkip(); render(); },
+  skin: k => { if (!SKINS.some(s => s[0] === k)) return; UI.skin = k; try { localStorage.setItem(SKIN_KEY, k); } catch (e) { /* без хранилища — до перезагрузки */ } render(); },
+  splashOff: () => { UI.splash = false; render(); },
   askNew: () => { UI.confirm = 'new'; render(); },
   cancelConfirm: () => { UI.confirm = null; render(); },
   newGame: () => {
@@ -2151,6 +2195,8 @@ function boot(hotData) {
   try { UI.showLand = localStorage.getItem('botc-grimoire-showland') === '1'; UI.showFlip = localStorage.getItem('botc-grimoire-showflip') === '1'; UI.pickRing = localStorage.getItem('botc-grimoire-pickring') === '1';
     UI.grimGrid = localStorage.getItem('botc-grimoire-grimgrid') === '1'; } catch (e) { /* по умолчанию — вертикально, квадратиками; Гримуар — кругом */ }
   if (TEST) UI.testWelcome = true; // тестовая сборка: окно приветствия при каждом открытии
+  UI.skin = skinLoad();
+  if (!hotData && UI.skin !== 'basic') { UI.splash = true; setTimeout(() => { if (UI.splash) { UI.splash = false; render(); } }, 2000); }
   if (!document.getElementById('artvars')) artVars();
   render();
   connectCloud();

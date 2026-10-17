@@ -924,3 +924,110 @@ img.shroud { object-fit: contain; }
 /* безумие нарушено (Цереновус, Уродец, Гарпия) */
 .madrow { display: flex; flex-direction: column; gap: 6px; padding: 8px 0; border-top: 1px solid var(--line); }
 .madrow .btn { align-self: flex-start; }
+
+/* ================= Оформление (html[data-skin]): basic — как было; engr — «Лунная гравюра»; glass — «Витраж во тьме» =================
+   Правила стилей — в конце файла и через :where(), чтобы не перебивать частные случаи (.card.curtain и т. п.). */
+.tabs .ti, .gbg { display: none; }
+:is([data-skin="engr"], [data-skin="glass"]) .tabs button { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 2px; font-size: 11px; padding-top: 4px; }
+:is([data-skin="engr"], [data-skin="glass"]) .tabs .ti { display: block; width: 23px; height: 23px; flex: none; }
+.tabs .ti .f { fill: none; }
+/* заставка при запуске */
+.splash { position: fixed; inset: 0; z-index: 40; display: flex; flex-direction: column; align-items: center; justify-content: flex-end; background: #000000; color: #EDE6D6; cursor: pointer;
+  padding: calc(30px + env(safe-area-inset-top, 0px)) 24px calc(44px + env(safe-area-inset-bottom, 0px)); }
+.splash > * { animation: ovIn .35s ease-out; } /* фон сразу непрозрачный — анимируется только содержимое */
+.splash .spart { position: absolute; left: 50%; top: calc(7vh + env(safe-area-inset-top, 0px)); transform: translateX(-50%); width: min(84vw, 400px); max-height: 54vh; height: auto; object-fit: contain; }
+.spt { position: relative; width: 100%; max-width: 420px; display: flex; flex-direction: column; gap: 8px; }
+.sptitle { font-family: var(--f-sc); font-weight: 700; font-size: clamp(34px, 10vw, 48px); line-height: 1.02; }
+.spsub { color: #9C9586; font-size: 15px; }
+.sphint { margin-top: 16px; color: #6E6A62; font-size: 13px; letter-spacing: .08em; text-transform: uppercase; }
+[data-skin="glass"] .splash .spart { filter: brightness(.85) drop-shadow(0 0 18px rgba(91, 139, 216, .45)) drop-shadow(0 0 40px rgba(168, 37, 43, .3)); }
+
+/* ---------- «Лунная гравюра»: бумага и тушь днём, серебро на чёрном ночью ---------- */
+html:root[data-skin="engr"] {
+  --paper: #F0EDE6; --card: #F7F5F0; --ink: #1A1A20; --muted: #66646C; --line: #CFCAC0;
+  --good: #243F75; --goodbg: #E3E8F1; --evil: #8B2029; --evilbg: #F3E2DF; --gold: #1A1A20; --goldbg: #E6E2D8;
+  --f-sc: 'Old Standard TT', Georgia, serif; --r: 2px; }
+html:root.oled[data-skin="engr"] {
+  --paper: #000000; --card: #000000; --ink: #E4E4EA; --muted: #8F909A; --line: #2A2B31;
+  --good: #A7BDEE; --goodbg: #000000; --evil: #EE9C9C; --evilbg: #000000; --gold: #C9CDD8; --goldbg: #000000; }
+:where([data-skin="engr"]) .card { background: transparent; border: none; border-top: 3px double var(--ink); border-bottom: 1px solid var(--ink); border-radius: 0; padding-inline: 2px; }
+:where([data-skin="engr"].oled) .card { border-top-color: #6E7280; border-bottom-color: #3A3C44; }
+/* между карточками — гравированный завиток */
+:where([data-skin="engr"]) main > .card + .card { position: relative; margin-top: 14px; }
+:where([data-skin="engr"]) main > .card + .card::before { content: ''; position: absolute; left: 50%; top: -24px; width: 130px; height: 16px; transform: translateX(-50%); pointer-events: none;
+  background: var(--ink); -webkit-mask: var(--a-c-fl-mid) center / contain no-repeat; mask: var(--a-c-fl-mid) center / contain no-repeat; opacity: .75; }
+:where([data-skin="engr"]) :is(.btn, .chip, .tile, .ptile, .seg button, .hundo) { border-radius: 2px; }
+/* кнопки — двойная линия: верхняя тень цвета фона кнопки, под ней тонкая линия */
+:where([data-skin="engr"]) .btn { border-color: var(--ink); box-shadow: inset 0 0 0 2px var(--card), inset 0 0 0 3px var(--line); }
+:where([data-skin="engr"]) .btn.primary { box-shadow: inset 0 0 0 2px var(--ink), inset 0 0 0 3px rgba(255, 255, 255, .5); }
+:where([data-skin="engr"]) .btn.ok { box-shadow: inset 0 0 0 2px var(--ok), inset 0 0 0 3px rgba(255, 255, 255, .55); }
+:where([data-skin="engr"]) .btn:is(.no, .pevil) { box-shadow: inset 0 0 0 2px var(--evil), inset 0 0 0 3px rgba(255, 255, 255, .55); }
+:where([data-skin="engr"]) .btn.pgood { box-shadow: inset 0 0 0 2px var(--good), inset 0 0 0 3px rgba(255, 255, 255, .55); }
+:where([data-skin="engr"].oled) .btn { box-shadow: inset 0 0 0 2px #000000, inset 0 0 0 3px #2A2B31; }
+:where([data-skin="engr"].oled) .btn.primary { box-shadow: inset 0 0 0 2px #000000, inset 0 0 0 3px #4A4C55; }
+:where([data-skin="engr"]) .tabs { background: var(--paper); border-top: 3px double var(--ink); }
+:where([data-skin="engr"].oled) .tabs { background: #000000; border-top-color: #4A4C55; }
+:where([data-skin="engr"]) .tabs .ti { stroke-width: 1.35; }
+:where([data-skin="engr"]) .tabs button.on { color: var(--ink); box-shadow: none; }
+:where([data-skin="engr"]) .tabs button.on::after { content: ''; display: block; width: 30px; height: 6px; background: currentColor;
+  -webkit-mask: var(--a-c-fl-short) center / contain no-repeat; mask: var(--a-c-fl-short) center / contain no-repeat; }
+/* шапка ночи и дня — гравюра: днём тушью в двойной рамке, ночью приглушённым серебром */
+.skengr { width: 100%; max-width: 460px; margin: 0 auto; aspect-ratio: 1536 / 539; background: var(--ink);
+  -webkit-mask: var(--a-c-engr) center / 100% 100% no-repeat; mask: var(--a-c-engr) center / 100% 100% no-repeat; }
+:where([data-skin="engr"]) .phase-wrap { border: 3px double var(--ink); padding: 3px; }
+:where([data-skin="engr"].oled) .phase-wrap { border: 0; padding: 0; }
+:where([data-skin="engr"].oled) .skengr { background: #B8BDCB; opacity: .42; }
+/* иконка ночного шага — в гравированном венке */
+:where([data-skin="engr"]) .steprole .si { padding: 7px; background: var(--a-c-wreath) center / 100% 100% no-repeat; width: 62px; height: 62px; }
+/* глифы-витражи пока не перерисованы гравюрой — без цвета (лист c_glyphs) */
+:where([data-skin="engr"]) :is(.hg, .btn .bg, .badge .bd) { filter: grayscale(1) contrast(1.15); }
+/* Гримуар кругом — гравированный циферблат под рассадкой */
+:where([data-skin="engr"]) .gbg { display: block; position: absolute; border-radius: 50%; pointer-events: none; opacity: .5; border: 1px solid var(--ink); }
+:where([data-skin="engr"]) .gbg::before { content: ''; position: absolute; inset: 4px; border-radius: 50%; border: 1px solid var(--ink); opacity: .7; }
+:where([data-skin="engr"]) .gbg::after { content: ''; position: absolute; inset: 9%; border-radius: 50%; border: 1px dashed var(--ink); opacity: .55; }
+:where([data-skin="engr"]) .grimov .gbg, :where([data-skin="engr"]) .grimov .gbg::before, :where([data-skin="engr"]) .grimov .gbg::after,
+:where([data-skin="engr"].oled) .gbg, :where([data-skin="engr"].oled) .gbg::before, :where([data-skin="engr"].oled) .gbg::after { border-color: #C9CDD8; }
+/* показ игроку — серебряная рамка с гравированными уголками */
+.shframe { position: relative; flex: none; width: min(90vw, 480px); aspect-ratio: 1.58; container-type: inline-size; display: grid; place-items: center;
+  border: 1px solid #C9CDD8; outline: 1px solid #5E626E; outline-offset: -8px; color: #E8E8EE; }
+.shcor { position: absolute; width: 15%; aspect-ratio: 1; background: #C9CDD8; -webkit-mask: center / contain no-repeat; mask: center / contain no-repeat; }
+.shcor.tl { left: 3.5%; top: 5.5%; -webkit-mask-image: var(--a-c-cor-tl); mask-image: var(--a-c-cor-tl); }
+.shcor.tr { right: 3.5%; top: 5.5%; -webkit-mask-image: var(--a-c-cor-tr); mask-image: var(--a-c-cor-tr); }
+.shcor.bl { left: 3.5%; bottom: 5.5%; -webkit-mask-image: var(--a-c-cor-bl); mask-image: var(--a-c-cor-bl); }
+.shcor.br { right: 3.5%; bottom: 5.5%; -webkit-mask-image: var(--a-c-cor-br); mask-image: var(--a-c-cor-br); }
+.shft { font-family: 'Old Standard TT', Georgia, serif; font-weight: 700; letter-spacing: .06em; line-height: 1.12; text-align: center; padding: 0 17%; text-transform: uppercase; }
+.shft.sz-xl { font-size: 20cqw; } .shft.sz-l { font-size: 9.5cqw; } .shft.sz-m { font-size: 6.4cqw; }
+.shfl { position: absolute; left: 50%; bottom: 13%; width: 42%; height: 7%; transform: translateX(-50%); background: #8F93A0;
+  -webkit-mask: var(--a-c-fl-long) center / contain no-repeat; mask: var(--a-c-fl-long) center / contain no-repeat; }
+.shframe.side-good .shft { color: #A7BDEE; } .shframe.side-evil .shft { color: #EE9C9C; }
+.showov.land .shframe { width: min(calc(var(--long) * .82), calc(var(--short) * .76 * 1.58)); }
+
+/* ---------- «Витраж во тьме»: светлый камень и свинцовые переплёты днём, чёрный ночью ---------- */
+html:root[data-skin="glass"] { --paper: #E6E3DD; --card: #F5F3EF; --ink: #1C1B20; --muted: #67646C; --line: #BDB7AD; --lead: #2A2A31;
+  --f-sc: 'Alegreya', Georgia, serif; --r: 8px; }
+html:root.oled[data-skin="glass"] { --paper: #000000; --card: #000000; --ink: #EDE6D6; --muted: #9C9586; --line: #262626; --lead: #34343C; }
+:where([data-skin="glass"]) .card { border: 2px solid var(--lead); box-shadow: inset 0 0 0 1px rgba(255, 255, 255, .75); }
+:where([data-skin="glass"].oled) .card { border-color: #2C2C33; box-shadow: none; }
+:where([data-skin="glass"]) .card > h3:not(.hi)::before, :where([data-skin="glass"]) .card > .row > h2::before { content: ''; display: inline-block; width: 8px; height: 8px; margin: 0 9px 0 2px; vertical-align: 2px;
+  transform: rotate(45deg); background: linear-gradient(135deg, #7AA4E6, #1F3A63); border: 1.5px solid var(--lead); }
+:where([data-skin="glass"]) :is(.btn, .hundo) { border: 1.5px solid var(--lead); border-radius: 6px; }
+:where([data-skin="glass"]) .btn.primary { background: linear-gradient(160deg, #3A3A44, #1C1B20); border: 2px solid var(--lead); }
+:where([data-skin="glass"]) .btn.ok { background: linear-gradient(160deg, #3F8A56, #23562F); border: 2px solid var(--lead); }
+:where([data-skin="glass"]) .btn:is(.no, .pevil) { background: linear-gradient(160deg, #C4393F, #6E1A1E); border: 2px solid var(--lead); }
+:where([data-skin="glass"]) .btn.pgood { background: linear-gradient(160deg, #4B79C7, #1F3A63); border: 2px solid var(--lead); }
+:where([data-skin="glass"]) .btn.danger { border-color: var(--evil); }
+:where([data-skin="glass"].oled) .btn { border-color: #3A3A42; }
+:where([data-skin="glass"].oled) .btn.primary { background: #000000; color: var(--gold); border: 2px solid #6A5426; }
+:where([data-skin="glass"]) .tabs { border-top: 2px solid var(--lead); }
+:where([data-skin="glass"].oled) .tabs { border-top-color: #26262C; }
+:where([data-skin="glass"]) .tabs .ti .k { stroke: currentColor; }
+:where([data-skin="glass"]) .tabs button.on { color: var(--ink); box-shadow: none; }
+:where([data-skin="glass"]) .tabs button.on .ti .f { fill: #5B8BD8; }
+:where([data-skin="glass"]) .tabs button.on .ti { filter: drop-shadow(0 0 4px rgba(91, 139, 216, .7)); }
+:where([data-skin="glass"].oled) .tabs button.on { color: var(--gold); }
+:where([data-skin="glass"].oled) .tabs button.on .ti .f { fill: #D9A030; }
+:where([data-skin="glass"].oled) .tabs button.on .ti { filter: drop-shadow(0 0 5px rgba(217, 160, 48, .55)); }
+/* Гримуар кругом — вся рассадка на приглушённой витражной розе */
+:where([data-skin="glass"]) .gbg { display: block; position: absolute; border-radius: 50%; pointer-events: none;
+  background: var(--a-d-rose) center / 100% 100% no-repeat; filter: saturate(.5) brightness(.95); opacity: .55; }
+:where([data-skin="glass"].oled) .gbg, :where([data-skin="glass"]) .grimov .gbg { filter: saturate(.6) brightness(.48); opacity: 1; }

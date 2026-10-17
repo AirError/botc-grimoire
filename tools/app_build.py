@@ -9,7 +9,8 @@ DIST.mkdir(exist_ok=True)
 FONTS = ('<link rel="preconnect" href="https://fonts.googleapis.com">'
          '<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>'
          '<link rel="stylesheet" href="https://fonts.googleapis.com/css2?'
-         'family=Alegreya+Sans:ital,wght@0,400;0,500;0,700;0,800;1,400&family=Alegreya:wght@700;800&family=Kurale&display=swap">')
+         'family=Alegreya+Sans:ital,wght@0,400;0,500;0,700;0,800;1,400&family=Alegreya:wght@700;800&family=Kurale'
+         '&family=Old+Standard+TT:ital,wght@0,400;0,700;1,400&display=swap">')  # Old Standard TT — стиль «Лунная гравюра»
 
 import base64
 import io
@@ -45,19 +46,26 @@ ART.update({f"mark{i}": (CUT / f"mark{i}.png", 72) for i in range(20)})
 ART.update({n: (CUT / f"{n}.png", 800) for n in ["card_demon", "card_minions", "card_notinplay", "card_youare", "card_selected",
                                                   "card_thisplayer", "card_yourrole", "card_yes", "card_no", "card_good", "card_evil",
          "card_general_good", "card_general_evil", "card_general_neither"]})
+# стили оформления (prep_art.skins): «Лунная гравюра» — маски туши (цвет задаёт CSS), «Витраж во тьме» — роза
+ART.update({"c_engr": (CUT / "c_engr.png", 800), "c_frontis": (CUT / "c_frontis.png", 560), "c_wreath": (CUT / "c_wreath.png", 160),
+            "c_fl_short": (CUT / "c_fl_short.png", 200), "c_fl_mid": (CUT / "c_fl_mid.png", 300), "c_fl_long": (CUT / "c_fl_long.png", 320),
+            "d_rose": (CUT / "d_rose.png", 600)})
+ART.update({f"c_cor_{k}": (CUT / f"c_cor_{k}.png", 110) for k in ("tl", "tr", "bl", "br")})
 
 
-def webp_uri(path, width):
+def webp_uri(path, width, alpha_quality=100):
     im = Image.open(path)
     im = im.convert("RGBA") if im.mode in ("RGBA", "LA", "P") else im.convert("RGB")
     if im.width > width:
         im = im.resize((width, round(im.height * width / im.width)), Image.LANCZOS)
     buf = io.BytesIO()
-    im.save(buf, "WEBP", quality=82, method=6)
+    im.save(buf, "WEBP", quality=82, method=6, alpha_quality=alpha_quality)
     return "data:image/webp;base64," + base64.b64encode(buf.getvalue()).decode()
 
 
-art = {k: webp_uri(p, w) for k, (p, w) in ART.items() if p.exists()}
+# маски гравюры (белое + прозрачность): прозрачность можно сжать с потерями — вдвое легче, на глаз не видно
+LOSSY_ALPHA = {"c_engr", "c_frontis", "c_wreath"}
+art = {k: webp_uri(p, w, 70 if k in LOSSY_ALPHA else 100) for k, (p, w) in ART.items() if p.exists()}
 meta = json.loads((CUT / "meta.json").read_text(encoding="utf-8")) if (CUT / "meta.json").exists() else {}
 art_js = ("const ART = " + json.dumps(art, separators=(",", ":")) + ";\n"
           + "const ART_META = " + json.dumps(meta) + ";\n")
