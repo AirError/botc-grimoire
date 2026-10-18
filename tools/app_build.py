@@ -66,8 +66,9 @@ _H.update({f"h_g_{k}.png": 128 for k in ("dusk", "dawn", "minioninfo", "demoninf
 _H.update({f"h_em_{k}.png": 220 for k in ("demon", "minions", "notinplay", "youare", "selected", "thisplayer", "yourrole",
                                           "yes", "no", "good", "evil", "general_good", "general_evil", "general_neither", "moon")})
 _H.update({f"h_web_{k}.png": 120 for k in ("tl", "tr", "bl", "br")})
-_H.update({f"h_ghost{i}.png": 240 for i in (1, 2, 3)})
+_H.update({f"h_ghost{i}.png": 400 for i in (1, 2, 3, 4)})  # призрак в конце броска вырастает в 2,5 раза — нужен запас
 _H.update({f"h_wisp{i}.png": 96 for i in range(1, 7)})
+_H.update({f"h_soul{i}.png": 160 for i in range(1, 7)})
 _H.update({f"h_smoke{i}.png": 200 for i in range(1, 5)})
 _H.update({f"h_cflame{i}.png": 60 for i in range(1, 5)})
 _H.update({f"h_candle{i}.png": 160 for i in range(1, 5)})
@@ -90,7 +91,7 @@ def webp_uri(path, width, alpha_quality=100):
 # маски гравюры (белое + прозрачность): прозрачность можно сжать с потерями — вдвое легче, на глаз не видно
 LOSSY_ALPHA = {"c_engr", "c_frontis", "c_wreath", "c_night", "c_dial", "c_win_good", "c_win_evil"}
 LOSSY_ALPHA |= {"h_flame", "h_burst", "h_fog", "h_batline"}
-lossy = lambda k: k in LOSSY_ALPHA or k.startswith(("c_em_", "h_em_", "h_ghost", "h_smoke", "h_wisp", "h_cflame", "h_web_"))
+lossy = lambda k: k in LOSSY_ALPHA or k.startswith(("c_em_", "h_em_", "h_ghost", "h_smoke", "h_wisp", "h_soul", "h_cflame", "h_web_"))
 art = {k: webp_uri(p, w, 70 if lossy(k) else 100) for k, (p, w) in ART.items() if p.exists()}
 meta = json.loads((CUT / "meta.json").read_text(encoding="utf-8")) if (CUT / "meta.json").exists() else {}
 art_js = ("const ART = " + json.dumps(art, separators=(",", ":")) + ";\n"

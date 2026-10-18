@@ -243,6 +243,49 @@ def strip(frames, h):
     return out
 
 
+def sprite_frames(im, cols, rows, pad=24):
+    """Кадры взмаха: каждый — только из своей клетки (без кончиков крыльев соседа), выровнены по телу — самой «толстой» части
+    силуэта (по карте расстояний до края; крылья тоньше). GPT ставит фигурки в клетках на разной высоте — без выравнивания тело
+    прыгает между кадрами."""
+    W, H = im.size; A = np.asarray(im); cells = []
+    for r in range(rows):
+        for c in range(cols):
+            x0, y0, x1, y1 = round(c * W / cols), round(r * H / rows), round((c + 1) * W / cols), round((r + 1) * H / rows)
+            cell = A[y0:y1, x0:x1].copy(); a = cell[..., 3] > 24
+            lab, n = ndimage.label(a)
+            if n > 1: a = lab == 1 + int(np.argmax(ndimage.sum(a, lab, range(1, n + 1)))); cell[..., 3] *= ndimage.binary_dilation(a, iterations=3)
+            d = ndimage.distance_transform_edt(a); cy, cx = ndimage.center_of_mass(d > d.max() * .6)
+            ys, xs = np.where(cell[..., 3] > 24)
+            cells.append((cell, cx, cy, xs.min() - cx, ys.min() - cy, xs.max() - cx, ys.max() - cy))
+    l, t = min(c[3] for c in cells) - pad, min(c[4] for c in cells) - pad
+    w, h = int(np.ceil(max(c[5] for c in cells) + pad - l)), int(np.ceil(max(c[6] for c in cells) + pad - t))
+    frames = []
+    for cell, cx, cy, *_ in cells:
+        fr = Image.new("RGBA", (w, h), (255, 255, 255, 0)); fr.alpha_composite(Image.fromarray(cell, "RGBA"), (round(-l - cx), round(-t - cy))); frames.append(fr)
+    return frames
+
+
+def halo(im, rgb=(255, 150, 60), sigma=3.0, k=.6):
+    """Тёплый отсвет свечей вокруг тёмного силуэта — нарисован в картинке: CSS drop-shadow на летящем спрайте телефон
+    перерисовывает каждый кадр (заметка пользователя 2026-10-18: «анимации рваные»)."""
+    src = np.asarray(im).astype(float) / 255
+    g = np.clip(ndimage.gaussian_filter(ndimage.maximum_filter(src[..., 3], size=3), sigma) * 2.2, 0, 1)[..., None] * k
+    sa = src[..., 3:4]; oa = sa + g * (1 - sa)
+    oc = (src[..., :3] * sa + np.array(rgb) / 255 * g * (1 - sa)) / np.maximum(oa, 1e-6)
+    return Image.fromarray((np.dstack([oc, oa]) * 255).round().clip(0, 255).astype(np.uint8), "RGBA")
+
+
+def sprite_grid(im, grid_old, grid_new):
+    """Сетка листа: старая или новая (больше кадров) — та, чьи границы клеток пустее (предметы не пересекают границ своих клеток)."""
+    a = np.asarray(im)[..., 3] > 24; H, W = a.shape
+    def score(g):
+        c, r = g; bw, bh = max(2, W // 100), max(2, H // 100)
+        lines = [a[:, round(W * k / c) - bw:round(W * k / c) + bw].mean() for k in range(1, c)]
+        lines += [a[round(H * k / r) - bh:round(H * k / r) + bh, :].mean() for k in range(1, r)]
+        return max(lines) if lines else 0
+    return grid_new if score(grid_new) < score(grid_old) else grid_old
+
+
 def halloween():
     """Стиль «Хэллоуин» (prompts_halloween.md, файлы h_*) → art/cut; геометрия сундука — в meta.hallow."""
     out = {}
@@ -289,12 +332,19 @@ def halloween():
                         "box": [round((cw - box.width) / 2 / cw, 4), round((ch - box.height) / ch, 4), round(box.width / cw, 4), round(box.height / ch, 4)],
                         "lid": [round((cw - lid.width) / 2 / cw, 4), 0, round(lid.width / cw, 4), round(lid.height / ch, 4)]}
         print("сундук:", out["chest"])
-    if have("h_ghost"):  # призрак — цветной свет на чёрном, 3 позы
-        for i, im in enumerate(grid_pieces(light_rgba(SRC / "h_ghost.png"), 3, 1, thr=30), 1): save(f"h_ghost{i}", im)
-    if have("h_bat"):
-        save("h_bat_strip", strip(grid_frames(white_alpha(SRC / "h_bat.png"), 3, 2), 120))
-    if have("h_raven"):
-        save("h_raven_strip", strip(grid_frames(white_alpha(SRC / "h_raven.png"), 4, 1), 140))
+    if have("h_ghost"):  # призрак — цветной свет на чёрном: 3 позы в ряд (первый лист) или 4 позы сеткой 2×2 (страшный, с броском)
+        g = light_rgba(SRC / "h_ghost.png"); cols, rows = sprite_grid(g, (3, 1), (2, 2))
+        for f in OUT.glob("h_ghost[0-9].png"): f.unlink()
+        for i, im in enumerate(grid_pieces(g, cols, rows, thr=30), 1): save(f"h_ghost{i}", im)
+        out["ghost_n"] = cols * rows
+    # взмахи крыльев: 6 / 4 кадра (первые листы) или 12 / 8 (плавнее); отсвет свечей — в картинке
+    for n, old, new, h, key in (("h_bat", (3, 2), (4, 3), 120, "bat"), ("h_raven", (4, 1), (4, 2), 140, "raven")):
+        if have(n):
+            im = white_alpha(SRC / f"{n}.png"); cols, rows = sprite_grid(im, old, new)
+            fr = sprite_frames(im, cols, rows, pad=26); st = halo(strip(fr, h))
+            save(f"{n}_strip", st); out[key] = {"n": cols * rows, "w": round(st.width / (cols * rows)), "h": h}
+    if have("h_souls"):  # души вместо болотных огоньков: лица-черепа в пламени, белым по чёрному (цвет — руны)
+        for i, im in enumerate(grid_pieces(light_mask(SRC / "h_souls.png", lift=12), 3, 2, thr=20), 1): save(f"h_soul{i}", im)
     if have("h_flame"): save("h_flame", alpha_bbox(light_mask(SRC / "h_flame.png", lift=14), thr=8))
     if have("h_burst"): save("h_burst", alpha_bbox(light_mask(SRC / "h_burst.png", lift=12), thr=8))
     for n, cols, rows, k in (("h_wisps", 3, 2, "h_wisp"), ("h_smoke", 4, 1, "h_smoke"), ("h_candle_flame", 4, 1, "h_cflame")):

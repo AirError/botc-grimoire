@@ -303,7 +303,7 @@ function phaseArt(k) {
 function splashHtml() {
   if (!UI.splash || UI.skin === 'basic') return '';
   // «Хэллоуин»: склеп под луной на весь экран, из-за него вылетают летучие мыши
-  const bats = HAS_ART('h_bat_strip') ? [1, 2, 3, 4].map(i => `<i class="hsbat b${i}" aria-hidden="true"></i>`).join('') : '';
+  const bats = HAS_ART('h_bat_strip') ? [1, 2, 3, 4].map(() => `<i class="hsbat" aria-hidden="true">${hSprite('bat', 'hs-bat').html}</i>`).join('') : '';
   const pic = UI.skin === 'engr' ? art('c_frontis', 'spart') : UI.skin === 'hallow' ? art('h_splash', 'spart cover') + bats : art('d_rose', 'spart');
   const ph = S.phase === 'setup' ? 'подготовка' : S.phase === 'night' ? `ночь ${S.n}` : S.phase === 'day' ? `день ${S.n}` : 'игра окончена';
   return `<div class="splash" data-act="splashOff" role="dialog" aria-label="Гримуар рассказчика">${pic}
@@ -318,7 +318,7 @@ function artVars() {
     // «Хэллоуин»: склеп, сундук, нечисть, свет и дым, украшения
     .concat(['h_crypt', 'h_ring', 'h_frame', 'h_chest_box', 'h_chest_lid', 'h_chest_open', 'h_bat_strip', 'h_raven_strip', 'h_wreath', 'h_spider', 'h_batline',
       'h_flame', 'h_burst', 'h_fog', 'h_web_tl', 'h_web_tr', 'h_candle3', 'h_pumpkin1', 'h_pumpkin3'],
-      [1, 2, 3, 4, 5, 6].map(i => 'h_wisp' + i), [1, 2, 3, 4].map(i => 'h_smoke' + i), [1, 2, 3, 4].map(i => 'h_cflame' + i));
+      [1, 2, 3, 4, 5, 6].map(i => 'h_wisp' + i), [1, 2, 3, 4, 5, 6].map(i => 'h_soul' + i), [1, 2, 3, 4].map(i => 'h_smoke' + i), [1, 2, 3, 4].map(i => 'h_cflame' + i));
   const el = document.createElement('style'); el.id = 'artvars';
   el.textContent = `:root{${keys.filter(HAS_ART).map(k => `--a-${k.replace(/_/g, '-')}:url("${ART[k]}");`).join('')}--frame-slice:${(typeof ART_META !== 'undefined' && ART_META.frame_slice) || 0};--drunk-slice:${(typeof ART_META !== 'undefined' && ART_META.drunk_slice) || 0};}`;
   document.head.appendChild(el);
@@ -1420,15 +1420,141 @@ function hChestVars() {
 const cryptDecor = () => `<div class="hcrypt" aria-hidden="true"><i class="hfog"></i>
   <span class="hcorner l"><i class="hpump" style="background-image:var(--a-h-pumpkin1)"></i><span class="hcand"><i class="hstick"></i><i class="hcf"></i></span></span>
   <span class="hcorner r"><span class="hcand"><i class="hstick"></i><i class="hcf"></i></span><i class="hpump" style="background-image:var(--a-h-pumpkin3)"></i></span></div>`;
-// нечисть, вылетающая из сундука: место — центр сундука (UI.openPos), куда лететь — в сторону от края (--dir)
+// нечисть, вылетающая из сундука: место — центр сундука (UI.openPos), куда лететь — в сторону от края (--dir). Летит её код (cryptFly)
+const hSprite = (k, cls) => { const m = (typeof ART_META !== 'undefined' && ART_META.hallow && ART_META.hallow[k]) || { n: k === 'bat' ? 6 : 4, w: 1, h: 1 };
+  return { n: m.n, ar: m.w / m.h, html: `<i class="hspr ${cls}" style="width:${m.n * 100}%"></i>` }; };
 function cryptFx() {
   const pos = UI.openPos || { x: 180, y: 300, dir: 1 }, fx = UI.openFx || 'ghost';
-  const body = fx === 'ghost' ? `<i class="hcre"><img class="hg g1" src="${ART.h_ghost1}" alt=""><img class="hg g2" src="${ART.h_ghost2}" alt=""><img class="hg g3" src="${ART.h_ghost3}" alt=""></i>`
-    : fx === 'bats' ? [1, 2, 3, 4, 5, 6].map(i => `<i class="hbatf f${i}"></i>`).join('')
-      : fx === 'skull' ? `<i class="hcre"><i class="hfl"></i><img class="hsk" src="${ART.h_skull}" alt=""></i>`
-        : fx === 'raven' ? '<i class="hrav r1"></i><i class="hrav r2"></i>'
-          : [1, 2, 3, 4, 5].map(i => `<i class="hwi w${i}" style="--m:var(--a-h-wisp${i})"></i>`).join('');
-  return `<div class="hfx fx-${fx}" aria-hidden="true" style="--x:${pos.x}px;--y:${pos.y}px;--dir:${pos.dir}"><i class="hburst"></i><i class="hsm s1"></i><i class="hsm s2"></i>${body}</div>`;
+  const ghosts = [1, 2, 3, 4].filter(i => ART['h_ghost' + i]), souls = [1, 2, 3, 4, 5, 6].filter(i => ART['h_soul' + i]);
+  const bat = hSprite('bat', 'hs-bat'), rav = hSprite('raven', 'hs-rav');
+  const body = fx === 'ghost' ? `<i class="hcre"><i class="hflip">${ghosts.map(i => `<img class="hg" src="${ART['h_ghost' + i]}" alt="">`).join('')}</i></i>`
+    : fx === 'bats' ? [1, 2, 3, 4, 5, 6].map(() => `<i class="hbatf" style="width:${Math.round(84 * bat.ar)}px;height:84px;margin:-42px 0 0 ${-Math.round(42 * bat.ar)}px">${bat.html}</i>`).join('')
+      : fx === 'skull' ? `<i class="hcre hsku"><i class="hflip"><i class="hfl"></i><img class="hsk" src="${ART.h_skull}" alt=""></i></i>`
+        : fx === 'raven' ? [1, 2].map(() => `<i class="hrav" style="width:${Math.round(150 * rav.ar)}px;height:150px;margin:-75px 0 0 ${-Math.round(75 * rav.ar)}px"><i class="hflip">${rav.html}</i></i>`).join('')
+          // души (если нарисованы) или болотные огоньки
+          : [1, 2, 3, 4, 5].map(i => souls.length ? `<i class="hwi soul" style="--m:var(--a-h-soul${souls[(i - 1) % souls.length]})"></i>` : `<i class="hwi" style="--m:var(--a-h-wisp${i})"></i>`).join('');
+  return `<div class="hfx fx-${fx}" aria-hidden="true" data-fx="${fx}" data-x="${pos.x}" data-y="${pos.y}" data-dir="${pos.dir}" style="--x:${pos.x}px;--y:${pos.y}px;--dir:${pos.dir}"><i class="hburst"></i><i class="hsm s1"></i><i class="hsm s2"></i>${body}</div>`;
+}
+/* Полёт нечисти — кодом (Web Animations). Путь — плавная кривая через опорные точки, ключевые кадры через ~30 мс и линейно между
+   ними: скорость меняется без рывков (заметка пользователя 2026-10-18 «анимации рваные»: у CSS-кадров замедление было в каждом
+   отрезке — нечисть почти останавливалась на стыках). Двигаются только transform и opacity — их ведёт видеокарта, без перерисовки */
+const hClamp = (v, a, b) => Math.min(b, Math.max(a, v));
+const hRamp = (u, a, b) => hClamp((u - a) / (b - a), 0, 1);
+const hSmooth = t => t * t * (3 - 2 * t);
+// случайность от времени открытия сундука: перерисовка экрана посреди полёта даёт тот же путь
+function hRand(seed) { let s = (seed >>> 0) || 1; return () => { s = (s + 0x6D2B79F5) >>> 0; let t = Math.imul(s ^ (s >>> 15), 1 | s); t ^= t + Math.imul(t ^ (t >>> 7), 61 | t); return ((t ^ (t >>> 14)) >>> 0) / 4294967296; }; }
+// кривая Катмулла — Рома: проходит через все точки, на стыках скорость непрерывна
+function hSpline(P, t) {
+  const n = P.length - 1, f = hClamp(t, 0, 1) * n, i = Math.min(n - 1, Math.floor(f)), u = f - i;
+  const p0 = P[Math.max(0, i - 1)], p1 = P[i], p2 = P[i + 1], p3 = P[Math.min(n, i + 2)];
+  const c = k => .5 * (2 * p1[k] + (p2[k] - p0[k]) * u + (2 * p0[k] - 5 * p1[k] + 4 * p2[k] - p3[k]) * u * u + (3 * p1[k] - p0[k] - 3 * p2[k] + p3[k]) * u * u * u);
+  return [c(0), c(1)];
+}
+// точка пути и направление полёта (vx, vy — к следующей точке)
+function hAt(P, t) { const a = hSpline(P, t), b = hSpline(P, Math.min(1, t + .012)), c = hSpline(P, Math.max(0, t - .012)); return { x: a[0], y: a[1], vx: b[0] - c[0], vy: b[1] - c[1] }; }
+const hHead = (v, dir, lim) => hClamp(Math.atan2(v.vy, v.vx * dir || 1e-6) * 180 / Math.PI, -lim, lim) * dir; // наклон носом по полёту
+// f(u) → { x, y, r, s | sx, sy, o } при u от 0 до 1
+function hAnim(el, f, dur, delay) {
+  if (!el || !el.animate) return null;
+  const n = Math.max(12, Math.round(dur / 30)), kf = [];
+  for (let i = 0; i <= n; i++) {
+    const u = i / n, v = f(u), sx = v.sx != null ? v.sx : v.s != null ? v.s : 1, sy = v.sy != null ? v.sy : sx;
+    kf.push({ offset: u, opacity: v.o != null ? +hClamp(v.o, 0, 1).toFixed(3) : 1,
+      transform: `translate(${(v.x || 0).toFixed(1)}px,${(v.y || 0).toFixed(1)}px) rotate(${(v.r || 0).toFixed(2)}deg) scale(${sx.toFixed(3)},${sy.toFixed(3)})` });
+  }
+  return el.animate(kf, { duration: dur, delay: delay || 0, fill: 'both', easing: 'linear' });
+}
+const hFade = (el, f, dur, delay) => el && el.animate && el.animate([...Array(Math.max(12, Math.round(dur / 30)) + 1)].map((_, i, a) => ({ offset: i / (a.length - 1), opacity: +hClamp(f(i / (a.length - 1)), 0, 1).toFixed(3) })), { duration: dur, delay: delay || 0, fill: 'both', easing: 'linear' });
+// взмахи крыльев: полоса из n кадров сдвигается целыми кадрами (steps), тоже transform
+function hFlap(el, n, dur, off) {
+  if (!el || !el.animate || n < 2) return;
+  const a = el.animate([{ transform: 'translateX(0)' }, { transform: 'translateX(-100%)' }], { duration: dur, iterations: Infinity, easing: `steps(${n}, end)` });
+  a.currentTime = off || 0;
+}
+const hFadeIO = (u, i, o) => Math.min(hRamp(u, 0, i), 1 - hRamp(u, o, 1));
+function cryptFly(fx) {
+  if (fx.dataset.on || !fx.animate) return; fx.dataset.on = '1';
+  if (window.matchMedia && matchMedia('(prefers-reduced-motion: reduce)').matches) return;
+  const W = fx.clientWidth, H = fx.clientHeight, dir = +fx.dataset.dir || 1, x0 = +fx.dataset.x, y0 = +fx.dataset.y, kind = fx.dataset.fx;
+  const R = hRand(UI.openAt || 7), rnd = (a, b) => a + R() * (b - a), D = 300; // вылетает, когда крышка уже откинута
+  const N = { bat: hSprite('bat').n, raven: hSprite('raven').n };
+  if (kind === 'ghost') {
+    // выныривает из сундука (вытянут), уходит в сторону, покачиваясь, — и бросается на зрителя, вырастая и растворяясь
+    const g = fx.querySelector('.hcre'), poses = [...fx.querySelectorAll('.hg')], dur = 1750;
+    const lx = (W / 2 - x0) * .9, ly = H * .42 - y0; // бросок — в середину экрана, на зрителя
+    const P = [[0, 24], [dir * 6, -50], [dir * 38, -118], [dir * 92, -150], [dir * 70 + lx * .3, -150 + (ly + 150) * .4], [lx, ly]];
+    hAnim(g, u => { const v = hAt(P, u), L = hRamp(u, .64, 1), big = 1 + 2.3 * Math.pow(L, 1.6), sway = Math.sin(u * Math.PI * 3.2) * (1 - L);
+      return { x: v.x + sway * 7, y: v.y, r: sway * 6 + hClamp(v.vx * dir * .35, -10, 10) * dir * (1 - L) + Math.sin(L * 40) * 4 * L,
+        sx: (.55 + .45 * hSmooth(hRamp(u, 0, .22))) * big, sy: (1.5 - .5 * hSmooth(hRamp(u, 0, .22))) * big, o: hFadeIO(u, .07, .9) }; }, dur, D);
+    // позы сменяются плавно (наплывом), а не скачком: 3 позы — выныривает / летит / тает; 4 — выныривает / летит / кричит / тает
+    const win = poses.length >= 4 ? [[0, .26], [.26, .6], [.6, .86], [.86, 1]] : [[0, .26], [.26, .64], [.64, 1]];
+    poses.forEach((im, i) => { const [a, b] = win[i] || [2, 2], w = .09;
+      hFade(im, u => (i === 0 ? 1 : hRamp(u, a - w / 2, a + w / 2)) * (i === win.length - 1 ? 1 : 1 - hRamp(u, b - w / 2, b + w / 2)), dur, D); });
+    // крик: склеп вздрагивает, когда призрак бросается
+    const sc = document.querySelector('.crypt .wscroll');
+    if (sc) sc.animate([0, 1, 2, 3, 4, 5, 6].map(i => ({ transform: i % 6 ? `translate(${(i % 2 ? 4 : -4) * (1 - i / 7)}px, ${(i % 3 - 1) * 2}px)` : 'none' })), { duration: 320, delay: D + dur * .7, easing: 'linear' });
+  } else if (kind === 'bats') {
+    // стая вырывается веером в сторону полёта; каждая по своей дуге, с креном на поворотах
+    fx.querySelectorAll('.hbatf').forEach((b, i) => {
+      const ang = (-90 + dir * 32 + (i - 2.5) * 23 + rnd(-7, 7)) * Math.PI / 180, dist = Math.hypot(W, H) * rnd(.7, .95);
+      const ex = Math.cos(ang) * dist, ey = Math.sin(ang) * dist, side = rnd(-1, 1) * 70;
+      const P = [[0, 12], [rnd(-14, 14), -46], [ex * .3 - ey * side / dist, ey * .3 + ex * side / dist - 20], [ex * .65, ey * .65], [ex, ey]];
+      const dur = rnd(1100, 1350);
+      // вырываются из сундука быстро (t обгоняет время в начале), дальше летят ровно
+      hAnim(b, u => { const t = 1 - Math.pow(1 - u, 1.35), v = hAt(P, t), sp = Math.abs(v.vx) + Math.abs(v.vy) + 1e-6;
+        return { x: v.x, y: v.y + Math.sin(u * 26 + i) * 3, r: hClamp(v.vx / sp * 28, -28, 28), s: .35 + .65 * hSmooth(hRamp(u, 0, .35)), o: hFadeIO(u, .06, .9) }; }, dur, D + i * 40 + rnd(0, 30));
+      hFlap(b.querySelector('.hspr'), N.bat, rnd(300, 380), rnd(0, 400));
+    });
+  } else if (kind === 'skull') {
+    // череп взмывает, ныряет и уносится; нос — по полёту, пламя хвостом позади и дрожит
+    const s = fx.querySelector('.hcre'), dur = 1550;
+    const P = [[0, 16], [dir * 12, -95], [dir * 85, -165], [dir * 155, -140], [dir * (W * .45), -H * .3], [dir * (W * .85), -H * .55]];
+    hAnim(s, u => { const v = hAt(P, .25 * hSmooth(u) + .75 * u);
+      return { x: v.x, y: v.y, r: hHead(v, dir, 50) + Math.sin(u * Math.PI * 4) * 5, s: .3 + .7 * hSmooth(hRamp(u, 0, .3)), o: hFadeIO(u, .06, .88) }; }, dur, D);
+    const fl = fx.querySelector('.hfl');
+    if (fl) fl.animate([1, 1.14, .93, 1.08, .97, 1].map((k, i) => ({ transform: `scale(${-k}, ${(2 - k).toFixed(2)})`, offset: i / 5 })), { duration: 460, iterations: Infinity, easing: 'ease-in-out' });
+  } else if (kind === 'raven') {
+    // два ворона уходят вверх широкими дугами, второй — чуть позже и дальше (меньше)
+    fx.querySelectorAll('.hrav').forEach((b, i) => {
+      const far = i ? .78 : 1, ex = dir * W * (i ? .45 : .8), ey = -H * (i ? .7 : .55);
+      const P = [[0, 10], [dir * (i ? -10 : 18), -70], [ex * .35, ey * .35 - 30], [ex * .7, ey * .68], [ex, ey]];
+      hAnim(b, u => { const v = hAt(P, .6 * u + .4 * u * u);
+        return { x: v.x, y: v.y, r: hHead(v, dir, 35), s: far * (.35 + .65 * hSmooth(hRamp(u, 0, .4))), o: hFadeIO(u, .08, .9) }; }, rnd(1400, 1600), D + i * 200);
+      hFlap(b.querySelector('.hspr'), N.raven, N.raven > 4 ? 520 : 440, i * 170);
+    });
+  } else {
+    // огоньки / души: спираль вокруг сундука (ближняя сторона крупнее и ярче), потом разлетаются вверх; свет мерцает
+    fx.querySelectorAll('.hwi').forEach((w, i) => {
+      const ph = i * Math.PI * 2 / 5 + rnd(0, .6), turns = rnd(1.3, 1.8), rise = Math.min(y0 + 80, H * .7), out = rnd(-1, 1) * W * .35;
+      const pos = u => { const th = ph + dir * u * turns * Math.PI * 2, rad = 16 + 66 * hSmooth(hRamp(u, 0, .45)), up = .15 * u + .85 * u * u;
+        return [Math.sin(th) * rad + out * u * u * u, 12 - rise * up, Math.cos(th)]; };
+      hAnim(w, u => { const [x, y, z] = pos(u), [x2] = pos(Math.min(1, u + .02)), near = (z + 1) / 2;
+        return { x, y, r: hClamp((x2 - x) * -2.2, -30, 30), s: (.55 + .35 * near) * (.4 + .6 * hSmooth(hRamp(u, 0, .2))),
+          o: hFadeIO(u, .1, .82) * (.55 + .45 * near) * (.86 + .14 * Math.sin(u * 47 + i * 2.1)) }; }, rnd(1550, 1850), D + i * 70);
+    });
+  }
+}
+// летучие мыши заставки: вылетают из двери склепа в разные стороны
+function splashFly() {
+  const sp = document.querySelector('.splash'); if (!sp || sp.dataset.on) return; sp.dataset.on = '1';
+  if (window.matchMedia && matchMedia('(prefers-reduced-motion: reduce)').matches) return;
+  const W = sp.clientWidth, H = sp.clientHeight, n = hSprite('bat').n;
+  sp.querySelectorAll('.hsbat').forEach((b, i) => {
+    const d = i % 2 ? 1 : -1, ex = d * W * (.55 + i * .06), ey = -H * (.25 + (i % 3) * .1);
+    const P = [[0, 0], [d * 20, -30], [ex * .4, ey * .3 + 20], [ex, ey]];
+    hAnim(b, u => { const v = hAt(P, .5 * u + .5 * u * u), sp2 = Math.abs(v.vx) + Math.abs(v.vy) + 1e-6;
+      return { x: v.x, y: v.y + Math.sin(u * 20 + i) * 3, r: hClamp(v.vx / sp2 * 25, -25, 25), s: .25 + .75 * hSmooth(hRamp(u, 0, .6)), o: hFadeIO(u, .1, .88) }; }, 1500 + i * 120, 150 + i * 220);
+    hFlap(b.querySelector('.hspr'), n, 340 + i * 30, i * 90);
+  });
+}
+// после перерисовки: запустить полёты; экран перерисовался посреди полёта — всё в раскрытии продолжается с того же места
+function hallowAfter() {
+  if (UI.skin !== 'hallow') return;
+  if (UI.splash) splashFly();
+  const fx = document.querySelector('.hfx'); if (!fx || fx.dataset.on) return;
+  cryptFly(fx);
+  const el = UI.openAt ? Date.now() - UI.openAt : 0;
+  if (el > 60) document.querySelectorAll('.wreveal, .wcell.opened').forEach(n => n.getAnimations && n.getAnimations({ subtree: true }).forEach(a => { try { a.currentTime = el; } catch (e) { /* анимация без времени */ } }));
 }
 function wallOverlay() {
   const d = S.draw; if (!UI.wall || !d) return '';
@@ -1445,7 +1571,7 @@ function wallOverlay() {
   const who = crypt ? 'Сундук открывает' : 'Ячейку открывает';
   // свернуть стену — невидимой кнопкой в левом нижнем углу (.grimx, как у Гримуара Шпиона): игроки не закроют её случайно
   // и не увидят чужих ролей на экране рассказчика (заметка пользователя 2026-10-16)
-  return `<div class="ov wallov ${crypt ? 'crypt' : ''}" role="dialog" aria-label="${crypt ? 'Склеп' : 'Каменная стена'}: выдача ролей">
+  return `<div class="ov wallov ${crypt ? 'crypt' : ''} ${crypt && open ? 'busy' : ''}" role="dialog" aria-label="${crypt ? 'Склеп' : 'Каменная стена'}: выдача ролей">
     <div class="wall ${UI.wallAnim ? 'roll' : ''}" ${crypt ? `style="${hChestVars()}"` : ''}>${crypt ? cryptDecor() : ''}<div class="wscroll">
       <div class="wtop"><span aria-hidden="true"></span>
         <div class="wturn">${!turn ? '<b>Все роли выданы</b>' : others.length > 1
@@ -1773,6 +1899,7 @@ function render() {
   if (UI.tab === 'roles') filterRefs();
   paintSave();
   window.scrollTo(0, scrollY);
+  hallowAfter();
 }
 
 /* ------------------------------------------------------------ обработчики */
