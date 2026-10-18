@@ -355,10 +355,11 @@ def halloween():
         for i, im in enumerate(poses, 1): save(f"h_ghost{i}", im)
         out["ghost_n"] = len(poses)
     # взмахи крыльев: 6 / 4 кадра (первые листы) или 12 / 8 (плавнее); отсвет свечей — в картинке
-    for n, old, new, h, key in (("h_bat", (3, 2), (4, 3), 120, "bat"), ("h_raven", (4, 1), (4, 2), 140, "raven")):
+    # мышь пролетает у самого лица (крупнее в 3 раза) — кадры высотой 200; ворон в склепе больше не летает (2026-10-18), лист режется про запас
+    for n, old, new, h, key in (("h_bat", (3, 2), (4, 3), 200, "bat"), ("h_raven", (4, 1), (4, 2), 140, "raven")):
         if have(n):
             im = white_alpha(SRC / f"{n}.png"); cols, rows = sprite_grid(im, old, new)
-            fr = sprite_frames(im, cols, rows, pad=26); st = halo(strip(fr, h))
+            fr = sprite_frames(im, cols, rows, pad=26); st = halo(strip(fr, h), sigma=h / 40)
             save(f"{n}_strip", st); out[key] = {"n": cols * rows, "w": round(st.width / (cols * rows)), "h": h}
     if have("h_souls"):  # души вместо болотных огоньков: лица-черепа в пламени, белым по чёрному (цвет — руны)
         for i, im in enumerate(grid_pieces(light_mask(SRC / "h_souls.png", lift=12), 3, 2, thr=20), 1): save(f"h_soul{i}", im)

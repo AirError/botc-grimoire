@@ -58,9 +58,11 @@ ART.update({f"d_tab_{k}": (CUT / f"d_tab_{k}.png", 96) for k in ("day", "night",
 ART.update({f"c_g_{k}": (CUT / f"c_g_{k}.png", 128) for k in ("dusk", "dawn", "minioninfo", "demoninfo", "nominate", "vote", "execute", "dead")})
 # стиль «Хэллоуин» (prep_art.halloween, prompts_halloween.md): склеп выдачи ролей, нечисть, значки, шапки, показ игроку
 _H = {"h_crypt.jpg": 720, "h_splash.jpg": 720, "h_header_day.jpg": 800, "h_header_night.jpg": 800, "h_win_good.jpg": 800, "h_win_evil.jpg": 800,
-      "h_ring.png": 640, "h_frame.png": 600, "h_skull.png": 200, "h_chest_open.png": 300, "h_chest_box.png": 300, "h_chest_lid.png": 300,
-      "h_spider.png": 80, "h_batline.png": 360, "h_wreath.png": 160, "h_bat_strip.png": 656, "h_raven_strip.png": 400, "h_flame.png": 360,
-      "h_burst.png": 360, "h_fog.png": 800}
+      "h_ring.png": 640, "h_frame.png": 600, "h_skull.png": 420, "h_chest_open.png": 300, "h_chest_box.png": 300, "h_chest_lid.png": 300,
+      "h_spider.png": 80, "h_batline.png": 360, "h_wreath.png": 160, "h_flame.png": 480, "h_burst.png": 360, "h_fog.png": 800,
+      # полоса кадров мыши — без сжатия (раньше 656 px на 12 кадров — по 55 px на кадр, мыши выходили мыльными)
+      "h_bat_strip.png": 8000}
+# череп, души и мыши летят «в экран» и вырастают в 3–6 раз — им нужен запас по размеру
 _H.update({f"h_tab_{k}.png": 96 for k in ("day", "night", "setup", "table", "log", "roles", "menu")})
 _H.update({f"h_g_{k}.png": 128 for k in ("dusk", "dawn", "minioninfo", "demoninfo", "nominate", "vote", "execute", "dead")})
 _H.update({f"h_em_{k}.png": 220 for k in ("demon", "minions", "notinplay", "youare", "selected", "thisplayer", "yourrole",
@@ -68,7 +70,7 @@ _H.update({f"h_em_{k}.png": 220 for k in ("demon", "minions", "notinplay", "youa
 _H.update({f"h_web_{k}.png": 120 for k in ("tl", "tr", "bl", "br")})
 _H.update({f"h_ghost{i}.png": 480 for i in (1, 2, 3, 4)})  # призрак в конце броска вырастает в 3,3 раза — нужен запас
 _H.update({f"h_wisp{i}.png": 96 for i in range(1, 7)})
-_H.update({f"h_soul{i}.png": 160 for i in range(1, 7)})
+_H.update({f"h_soul{i}.png": 420 for i in range(1, 7)})
 _H.update({f"h_smoke{i}.png": 200 for i in range(1, 5)})
 _H.update({f"h_cflame{i}.png": 60 for i in range(1, 5)})
 _H.update({f"h_candle{i}.png": 160 for i in range(1, 5)})
