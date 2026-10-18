@@ -1102,9 +1102,13 @@ html:root.oled[data-skin="hallow"] {
 :where([data-skin="hallow"]) .gbg { display: block; position: absolute; border-radius: 50%; pointer-events: none; background: var(--a-h-ring) center / 100% 100% no-repeat; }
 :where([data-skin="hallow"].oled) .gbg, :where([data-skin="hallow"]) .grimov .gbg { filter: brightness(.7); }
 /* показ игроку — рамка из костей и веток, эмблема, надпись */
-.shframe.hframe { border: 0; outline: 0; aspect-ratio: 1199 / 940; padding: 8cqw 12cqw 9cqw; gap: 2cqw; background: var(--a-h-frame) center / 100% 100% no-repeat; }
-.hframe .shem { width: 30cqw; height: 30cqw; }
-.hframe .shft { font-family: var(--f-tale); font-weight: 700; color: #F3E6CC; text-shadow: 0 2px 8px #000; letter-spacing: .04em; padding: 0 4%; }
+/* размеры — в cqw самой рамки (у рамки нет отступов: cqw в её собственных отступах считались бы от экрана). Надпись — жирным
+   Alegreya (у Kurale нет жирного — на телефоне было мелко и бледно), по самому длинному слову (--lw): оно занимает ширину проёма */
+.shframe.hframe { border: 0; outline: 0; aspect-ratio: 1199 / 940; padding: 0; gap: 2.4cqw; background: var(--a-h-frame) center / 100% 100% no-repeat; }
+.hframe .shem { width: 22cqw; height: 22cqw; }
+.hframe .shft { font-family: var(--f-show); font-weight: 800; color: #F3E6CC; text-shadow: 0 2px 6px #000, 0 0 2px #000; letter-spacing: .02em; line-height: 1.08;
+  padding: 0; max-width: 72cqw; font-size: min(var(--cap), calc(72cqw / (var(--lw) * .84))); }
+.hframe .shft.sz-xl { --cap: 17cqw; } .hframe .shft.sz-l { --cap: 11cqw; } .hframe .shft.sz-m { --cap: 9cqw; } .hframe .shft.sz-s { --cap: 7cqw; }
 .hframe.side-good .shft { color: #A9C4F5; } .hframe.side-evil .shft { color: #F59A9A; }
 .showov.land .shframe.hframe { width: min(calc(var(--long) * .62), calc(var(--short) * .82 * 1.275)); }
 /* экраны победы — тушь на белом: умножением на бумагу */

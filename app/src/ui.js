@@ -393,11 +393,12 @@ const CARD_ART = { 'ЭТО ДЕМОН': 'card_demon', 'ЭТО ВАШИ ПРИС�
 function cardHtml(text, thumb) {
   const key = CARD_ART[String(text).toUpperCase()];
   // «Хэллоуин»: рамка из костей и веток с паучком, эмблема карточки и надпись
+  // (--lw — самое длинное слово: надпись крупная, насколько позволяет ширина рамки)
   if (UI.skin === 'hallow' && HAS_ART('h_frame')) {
     const n = String(text).length, side = thumb ? (thumb === 'down' ? 'evil' : thumb === 'side' ? 'none' : 'good') : '';
-    const em = 'h_em_' + (key ? key.replace('card_', '') : 'moon');
+    const em = 'h_em_' + (key ? key.replace('card_', '') : 'moon'), lw = Math.max(3, ...String(text).split(/\s+/).map(w => w.length));
     return `<div class="shframe hframe ${side ? 'side-' + side : ''}" role="img" aria-label="${esc(text)}">${HAS_ART(em) ? `<img class="shem" src="${ART[em]}" alt="">` : ''}
-      <span class="shft sz-${n <= 3 ? 'xl' : n <= 12 ? 'l' : 'm'}">${esc(text)}</span></div>`;
+      <span class="shft sz-${n <= 3 ? 'xl' : n <= 12 ? 'l' : n <= 34 ? 'm' : 's'}" style="--lw:${lw}">${esc(text)}</span></div>`;
   }
   // «Лунная гравюра»: серебряная рамка с гравированными уголками, гравированная эмблема карточки и крупная надпись
   if (UI.skin === 'engr' && HAS_ART('c_cor_tl')) {
