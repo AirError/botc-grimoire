@@ -316,7 +316,7 @@ function artVars() {
     'c_engr', 'c_night', 'c_dial', 'c_wreath', 'c_fl_short', 'c_fl_mid', 'c_fl_long', 'c_cor_tl', 'c_cor_tr', 'c_cor_bl', 'c_cor_br', 'd_rose']
     .concat(['day', 'night', 'setup', 'table', 'log', 'roles', 'menu'].map(k => 'c_tab_' + k), ENGR_GLYPHS.map(k => 'c_g_' + k), [...Array(24).keys()].map(i => 'rune' + i))
     // «Хэллоуин»: склеп, сундук, нечисть, свет и дым, украшения
-    .concat(['h_crypt', 'h_ring', 'h_frame', 'h_chest_box', 'h_chest_lid', 'h_chest_open', 'h_bat_strip', 'h_wreath', 'h_spider', 'h_batline',
+    .concat(['h_crypt', 'h_ring', 'h_frame', 'h_chest_box', 'h_chest_lid', 'h_chest_open', 'h_bat_strip', 'h_skull_fire', 'h_wreath', 'h_spider', 'h_batline',
       'h_flame', 'h_burst', 'h_fog', 'h_web_tl', 'h_web_tr', 'h_candle3', 'h_pumpkin1', 'h_pumpkin3'],
       [1, 2, 3, 4, 5, 6].map(i => 'h_wisp' + i), [1, 2, 3, 4, 5, 6].map(i => 'h_soul' + i), [1, 2, 3, 4].map(i => 'h_smoke' + i), [1, 2, 3, 4].map(i => 'h_cflame' + i));
   const el = document.createElement('style'); el.id = 'artvars';
@@ -1386,7 +1386,7 @@ function poolCard() {
     <div class="small muted">Отметьте роли, которые будут в игре: случайная раздача и жребий возьмут только их. Блефы Демона наберутся из остальных добрых ролей.</div>
     <div class="pstats">${stat}</div>${choices}${d.notes.length ? `<div class="small muted">${d.notes.map(esc).join('<br>')}</div>` : ''}
     ${pool.length && pool.length !== n ? `<div class="warn">Нужно ровно ${n} ролей — по числу игроков (без Странников).</div>` : ''}
-    ${pool.includes('huntsman') && !pool.includes('damsel') ? '<div class="warn">Егерь в игре — добавьте Девицу.</div>' : ''}
+    ${pool.includes('huntsman') && !pool.includes('damsel') ? '<div class="warn">Ловчий в игре — добавьте Девицу.</div>' : ''}
     ${groups}<div class="row"><button class="btn" data-act="poolRandom">Случайный набор</button>${pool.length ? '<button class="btn" data-act="poolClear">Очистить</button>' : ''}</div></details></div>`;
 }
 
@@ -1421,6 +1421,13 @@ const cryptDecor = () => `<div class="hcrypt" aria-hidden="true"><i class="hfog"
   <span class="hcorner l"><i class="hpump" style="background-image:var(--a-h-pumpkin1)"></i><span class="hcand"><i class="hstick"></i><i class="hcf"></i></span></span>
   <span class="hcorner r"><span class="hcand"><i class="hstick"></i><i class="hcf"></i></span><i class="hpump" style="background-image:var(--a-h-pumpkin3)"></i></span></div>`;
 // нечисть, вылетающая из сундука: место — центр сундука (UI.openPos), куда лететь — в сторону от края (--dir). Летит её код (cryptFly)
+// огненный венец вокруг черепа: пустой круг картинки (meta.hallow.skfire — центр и радиус в долях ширины) — на центр черепа (рамка 84×100),
+// диаметр круга — 92 px, чуть шире черепа: огонь рвётся из-за его краёв
+function skFire() {
+  const m = (typeof ART_META !== 'undefined' && ART_META.hallow && ART_META.hallow.skfire); if (!m || !ART.h_skull_fire) return '';
+  const F = 92 / (2 * m.r);
+  return `<i class="hfire" style="width:${F.toFixed(1)}px;height:${F.toFixed(1)}px;left:${(42 - m.cx * F).toFixed(1)}px;top:${(50 - m.cy * F).toFixed(1)}px;transform-origin:${(m.cx * 100).toFixed(1)}% ${(m.cy * 100).toFixed(1)}%"></i>`;
+}
 const hSprite = (k, cls) => { const m = (typeof ART_META !== 'undefined' && ART_META.hallow && ART_META.hallow[k]) || { n: 6, w: 1, h: 1 };
   return { n: m.n, ar: m.w / m.h, html: `<i class="hspr ${cls}" style="width:${m.n * 100}%"></i>` }; };
 function cryptFx() {
@@ -1429,8 +1436,9 @@ function cryptFx() {
   const bat = hSprite('bat', 'hs-bat');
   const body = fx === 'ghost' ? `<i class="hcre"><i class="hflip">${ghosts.map(i => `<img class="hgp" src="${ART['h_ghost' + i]}" alt="">`).join('')}</i></i>`
     : fx === 'bats' ? [1, 2, 3, 4, 5, 6].map(() => `<i class="hbatf" style="width:${Math.round(84 * bat.ar)}px;height:84px;margin:-42px 0 0 ${-Math.round(42 * bat.ar)}px">${bat.html}</i>`).join('')
-      // пламя — в обёртке: обёртка укорачивает хвост, когда череп летит на зрителя, само пламя дрожит
-      : fx === 'skull' ? `<i class="hcre hsku"><i class="hflip"><i class="hflw"><i class="hfl"></i></i><img class="hsk" src="${ART.h_skull}" alt=""></i></i>`
+      // пламя — в обёртке: обёртка укорачивает хвост, когда череп летит на зрителя, само пламя дрожит; виды черепа h_skull2–4 и
+      // огненный венец (пламя спереди) — для разворота к зрителю (этап 5), без них череп так и летит в три четверти
+      : fx === 'skull' ? `<i class="hcre hsku"><i class="hflip">${skFire()}<i class="hflw"><i class="hfl"></i></i>${['h_skull', 'h_skull2', 'h_skull3', 'h_skull4'].filter(k => ART[k]).map(k => `<img class="hsk" src="${ART[k]}" alt="">`).join('')}</i></i>`
         // души (если нарисованы; четыре разных лица из шести) или болотные огоньки
         : souls.length ? souls.map(n => [hRand((UI.openAt || 7) + n)(), n]).sort((a, b) => a[0] - b[0]).slice(0, 4).map(([, n]) => `<i class="hwi soul" style="--m:var(--a-h-soul${n})"></i>`).join('')
           : [1, 2, 3, 4, 5].map(i => `<i class="hwi" style="--m:var(--a-h-wisp${i})"></i>`).join('');
@@ -1527,16 +1535,24 @@ function cryptFly(fx) {
       hFlap(b.querySelector('.hspr'), N.bat, near ? rnd(260, 320) : rnd(320, 380), rnd(0, 400));
     });
   } else if (kind === 'skull') {
-    // череп взмывает дугой (нос — по полёту, пламя хвостом), разворачивается и летит прямо в экран: растёт, хвост укорачивается,
-    // в конце — зелёная вспышка и дрожь
-    const s = fx.querySelector('.hcre'), dur = 1650;
+    // череп взмывает дугой (нос — по полёту, пламя хвостом), разворачивается к зрителю и летит прямо в экран: виды сменяются
+    // до анфаса с раскрытой челюстью, хвост гаснет, вокруг разгорается огненный венец; в конце — зелёная вспышка и дрожь
+    const s = fx.querySelector('.hcre'), dur = 1700, views = [...fx.querySelectorAll('.hsk')], fire = fx.querySelector('.hfire');
     const P = [[0, 16, 1.5], [dir * 14, -95, 1.35], [dir * 95, -175, 1.15], [dir * 150, -130, .95], [C[0] + dir * 40, C[1] - 50, .5], [C[0] + dir * 10, C[1], .16]].map(p => hWorld(C, p));
+    const zAt = u => hAt3(P, C, u).z, turn = u => views.length > 1 || fire ? 1 - hRamp(zAt(u), .42, .95) : 0; // 0 — в три четверти, 1 — анфас
     hAnim(s, u => { const v = hAt3(P, C, u), face = hRamp(v.z, .4, .9);
       return { x: v.x, y: v.y, r: hHead(v, dir, 50) * face + Math.sin(u * Math.PI * 4) * 5 * face, s: v.s * (.35 + .65 * hSmooth(hRamp(u, 0, .22))), o: hFadeIO(u, .06, .93) }; }, dur, D);
     const fw = fx.querySelector('.hflw');
-    hAnim(fw, u => { const z = hAt3(P, C, u).z, k = .25 + .75 * hRamp(z, .3, .95); return { sx: k, sy: .85 + .15 * k }; }, dur, D);
+    hAnim(fw, u => { const k = 1 - turn(u), z = zAt(u), len = (.25 + .75 * hRamp(z, .3, .95)) * (.3 + .7 * k); return { sx: len, sy: .85 + .15 * len, o: hClamp(k * 1.4, 0, 1) }; }, dur, D);
     const fl = fx.querySelector('.hfl');
     if (fl) fl.animate([1, 1.14, .93, 1.08, .97, 1].map((k, i) => ({ transform: `scale(${-k}, ${(2 - k).toFixed(2)})`, offset: i / 5 })), { duration: 460, iterations: Infinity, easing: 'ease-in-out' });
+    // виды: каждый следующий проявляется поверх прежнего, прежний гаснет, когда новый уже почти виден (без «просвета» между ними)
+    const nv = views.length - 1;
+    if (nv) views.forEach((im, k) => hFade(im, u => { const t = turn(u) * nv; return (k ? hClamp(t - (k - 1), 0, 1) : 1) * (k < nv ? 1 - hClamp((t - k) * 2 - 1, 0, 1) : 1); }, dur, D));
+    if (fire) {
+      hFade(fire, u => hSmooth(hRamp(turn(u), .3, .85)), dur, D);
+      fire.animate([[1, 0], [1.07, 4], [.96, -3], [1.05, 2], [1, 0]].map(([k, r], i) => ({ transform: `rotate(${r}deg) scale(${k})`, offset: i / 4 })), { duration: 560, iterations: Infinity, easing: 'ease-in-out' });
+    }
     hFlash(fx, D + dur * .95, '#7CFF6A', .55); hShake(D + dur * .95, 6);
   } else {
     // души / огоньки: кружат спиралью вокруг сундука (ближняя сторона крупнее), потом одна за другой бросаются в экран —

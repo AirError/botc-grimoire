@@ -361,6 +361,14 @@ def halloween():
             im = white_alpha(SRC / f"{n}.png"); cols, rows = sprite_grid(im, old, new)
             fr = sprite_frames(im, cols, rows, pad=26); st = halo(strip(fr, h), sigma=h / 40)
             save(f"{n}_strip", st); out[key] = {"n": cols * rows, "w": round(st.width / (cols * rows)), "h": h}
+    if have("h_skull_turn"):  # череп поворачивается к зрителю (этап 5): 3 вида в общей рамке — размер не скачет при смене
+        for i, im in enumerate(grid_frames(white_alpha(SRC / "h_skull_turn.png"), 3, 1, pad=0), 2): save(f"h_skull{i}", alpha_pad(im))
+    if have("h_skull_fire"):  # пламя спереди, белым по чёрному; пустой круг (туда встаёт череп) — центр и радиус в долях ширины
+        f = light_mask(SRC / "h_skull_fire.png", lift=12); a = np.asarray(f)[..., 3]; h, w = a.shape
+        # огонь расширен, чтобы щели между языками не соединили круг с чёрным фоном вокруг
+        lab, _ = ndimage.label(~ndimage.binary_dilation(a >= 40, iterations=8)); ys, xs = np.nonzero(lab == lab[h // 2, w // 2])
+        out["skfire"] = {"cx": round(xs.mean() / w, 4), "cy": round(ys.mean() / h, 4), "r": round((float(np.sqrt(len(xs) / np.pi)) + 8) / w, 4)}
+        save("h_skull_fire", f)
     if have("h_souls"):  # души вместо болотных огоньков: лица-черепа в пламени, белым по чёрному (цвет — руны)
         for i, im in enumerate(grid_pieces(light_mask(SRC / "h_souls.png", lift=12), 3, 2, thr=20), 1): save(f"h_soul{i}", im)
     if have("h_flame"): save("h_flame", alpha_bbox(light_mask(SRC / "h_flame.png", lift=14), thr=8))

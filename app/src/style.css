@@ -1207,7 +1207,10 @@ html[data-skin="hallow"] .crypt .wrfor { font-family: var(--f-wet); font-weight:
 .hbatf { overflow: hidden; }
 /* череп в зелёном пламени: пламя тянется хвостом позади и дрожит */
 .hsku { width: 84px; height: 100px; margin: -50px 0 0 -42px; }
-.hsk { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: contain; }
+.hsk { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: contain; will-change: opacity; }
+/* огненный венец (пламя спереди): размер и место — из skFire(); проявляется, когда череп разворачивается к зрителю */
+.hfire { position: absolute; opacity: 0; background: #7CFF6A; will-change: transform, opacity;
+  -webkit-mask: var(--a-h-skull-fire) center / 100% 100% no-repeat; mask: var(--a-h-skull-fire) center / 100% 100% no-repeat; }
 .hflw { position: absolute; left: 50%; top: 50%; width: 0; height: 0; will-change: transform; }
 .hfl { position: absolute; left: 0; top: 0; width: 180px; height: 78px; margin-top: -39px; transform-origin: 0 50%; transform: scaleX(-1); will-change: transform;
   background: #7CFF6A; -webkit-mask: var(--a-h-flame) left center / contain no-repeat; mask: var(--a-h-flame) left center / contain no-repeat; }

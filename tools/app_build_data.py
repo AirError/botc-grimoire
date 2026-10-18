@@ -46,6 +46,23 @@ for f in sorted((D / "guide").glob("*.json")):
 USER_ABILITY = {
     "mutant": "Если вы внушаете, что вы Изгой, вас могут казнить.",  # 2026-10-11: «внушаете» вместо «помешаны»
 }
+# название роли по решению пользователя — как на его листах ролей (2026-10-18: Huntsman — «Ловчий», официально «Егерь»);
+# то же имя по падежам заменяется во всех текстах официального перевода (ночные подсказки, джинксы, напоминания)
+USER_NAME = {"huntsman": "Ловчий"}
+USER_WORDS = [("Егерем", "Ловчим"), ("Егерю", "Ловчему"), ("Егеря", "Ловчего"), ("Егере", "Ловчем"), ("Егерь", "Ловчий")]
+
+
+def user_words(s):
+    if not isinstance(s, str): return s
+    for a, b in USER_WORDS: s = s.replace(a, b)
+    return s
+
+
+for k, v in ru["roles"].items():
+    for part in ("name", "ability", "first", "other"):
+        if part in v: v[part] = user_words(v[part])
+for sec in ("jinxes", "reminders"):
+    ru[sec] = {k: user_words(v) for k, v in ru.get(sec, {}).items()}
 
 # В данные идут все роли: базовая коробка, экспериментальные (Carousel), Странники, Сказочники и Лорики —
 # справочник и свои сценарии. Встроенные сценарии — только из коробки (+ Catfishing). box — роль из базовой коробки.
@@ -55,7 +72,7 @@ for r in roles_en:
     rid, g = r["id"], guide.get(r["id"], {})
     roles[rid] = {
         "id": rid,
-        "name": t.get("name") or g.get("name") or r["name"],
+        "name": USER_NAME.get(rid) or t.get("name") or g.get("name") or r["name"],
         "en": r["name"],
         "team": r["team"],
         "edition": r["edition"],
@@ -105,7 +122,7 @@ scripts = {
         "eviltwin", "devilsadvocate", "witch", "godfather",
         "imp", "pukka", "nodashii", "fanggu"]},
     # Blind Hunt (by Alex, 2026-10-15) — состав из blind_hunt/src/script.json; Верховная Жрица, Политик, Головоломщик,
-    # Егерь (на листе пользователя — «Ловчий»), Девица, Дурманщик — экспериментальные, жетонов нет
+    # Ловчий (официально «Егерь»; в приложении — как на листе пользователя), Девица, Дурманщик — экспериментальные, жетонов нет
     "blindhunt": {"name": "Blind Hunt", "roles": [
         "washerwoman", "librarian", "empath", "highpriestess", "undertaker", "monk", "huntsman", "slayer", "soldier",
         "ravenkeeper", "mayor", "virgin", "poppygrower",

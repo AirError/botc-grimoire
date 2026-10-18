@@ -154,7 +154,7 @@ try {
   runNight(S, { exorcist: { t: ids(S, 'empath') } });
   ok('Экзорцист: «Выбран» только на последнем выбранном', E.hasTok(byRole(S, 'empath'), 'chosen', 'exorcist') && !E.hasTok(byRole(S, 'chef'), 'chosen', 'exorcist'));
 
-  // 18г. Смена ролей (проверка по вики, 2026-10-11): Яга, Цирюльник, Заклинатель змей + Философ, Фань Гу, Философ, Егерь и Девица
+  // 18г. Смена ролей (проверка по вики, 2026-10-11): Яга, Цирюльник, Заклинатель змей + Философ, Фань Гу, Философ, Ловчий и Девица
   { // отдельный блок: свои имена переменных
   // до шага роли id в текущей ночи (шаги до него — по умолчанию); возвращает спецификацию шага
   const toStep = (S, id, inputs) => { let g = 0; while (S.phase === 'night' && g++ < 100) { const st = E.currentStep(S); if (st.id === id) return st;
@@ -252,7 +252,7 @@ try {
   const empP = byRole(S, 'empath'), phi = byRole(S, 'philosopher'); const drunkWhile = !!E.abilityOff(S, empP);
   E.execute(S, phi.id);
   ok('Философ: обладатель выбранной роли пьян, пока Философ жив; после смерти Философа — трезв', drunkWhile && !E.abilityOff(S, empP));
-  // Егерь и Девица: Приспешники узнают Девицу; Егерь превращает Девицу в Горожанина; догадка Приспешника — одна на всех
+  // Ловчий и Девица: Приспешники узнают Девицу; Ловчий превращает Девицу в Горожанина; догадка Приспешника — одна на всех
   const hd = ['huntsman', 'damsel', 'chef', 'empath', 'washerwoman', 'monk', 'poisoner', 'imp'];
   S = game(hd, 'tb'); S.script.roles = S.script.roles.concat('huntsman', 'damsel');
   S.players.forEach(p => { if (['poisoner', 'imp'].includes(p.role)) p.align = 'evil'; }); E.autoSetup(S, true); E.startGame(S);
@@ -260,12 +260,12 @@ try {
   const dst = S.night.steps.find(s => s.id === 'damsel'), dsp = E.stepSpec(S, dst), dinfo = dsp.info({});
   ok('Девица: в 1-ю ночь Приспешникам показывают жетон Девицы', dsp.active && dinfo.tokens.some(t => t.role === 'damsel'));
   runNight(S, { huntsman: { t: ids(S, 'chef') }, poisoner: { t: ids(S, 'chef') } });
-  ok('Егерь: выбрал не Девицу — ничего, способность потрачена', dm.role === 'damsel' && !E.stepSpec(S, { id: 'huntsman', pid: hu.id }).active);
+  ok('Ловчий: выбрал не Девицу — ничего, способность потрачена', dm.role === 'damsel' && !E.stepSpec(S, { id: 'huntsman', pid: hu.id }).active);
   S = game(hd, 'tb'); S.script.roles = S.script.roles.concat('huntsman', 'damsel');
   S.players.forEach(p => { if (['poisoner', 'imp'].includes(p.role)) p.align = 'evil'; }); E.autoSetup(S, true); E.startGame(S);
   const dm2 = byRole(S, 'damsel');
   runNight(S, { huntsman: { t: [dm2.id], r: 'slayer' }, poisoner: { t: ids(S, 'chef') } });
-  ok('Егерь нашёл Девицу: она стала Горожанином не из игры (Истребитель), сторона добрая', dm2.role === 'slayer' && dm2.align === 'good');
+  ok('Ловчий нашёл Девицу: она стала Горожанином не из игры (Истребитель), сторона добрая', dm2.role === 'slayer' && dm2.align === 'good');
   S = game(hd, 'tb'); S.script.roles = S.script.roles.concat('huntsman', 'damsel');
   S.players.forEach(p => { if (['poisoner', 'imp'].includes(p.role)) p.align = 'evil'; }); E.autoSetup(S, true); E.startGame(S); runNight(S, { huntsman: {}, poisoner: { t: ids(S, 'chef') } });
   const r1 = E.damselGuess(S, byRole(S, 'poisoner').id, byRole(S, 'chef').id), r2 = E.damselGuess(S, byRole(S, 'poisoner').id, byRole(S, 'damsel').id);
@@ -787,7 +787,7 @@ try {
   S = E.newGame('tb'); for (let i = 0; i < 7; i++) S.players.push(E.newPlayer('P' + i));
   S.pool = ['chef', 'empath', 'monk', 'slayer', 'soldier', 'poisoner', 'imp']; E.randomDeal(S);
   ok('раздача из выбранного набора ролей', S.players.map(p => p.role).sort().join() === S.pool.slice().sort().join());
-  // The Midnight Oasis: случайная раздача по таблице; Егерь — с Девицей; Атеист случайно не попадает
+  // The Midnight Oasis: случайная раздача по таблице; Ловчий — с Девицей; Атеист случайно не попадает
   const oasisErr = [];
   for (let k = 0; k < 150; k++) {
     const g = E.newGame('oasis'), n = 7 + (k % 9); for (let i = 0; i < n; i++) g.players.push(E.newPlayer('o' + i));

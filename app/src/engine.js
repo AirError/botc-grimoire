@@ -219,7 +219,7 @@ function saved(S, p, by) { log(S, `${p.name} не умирает: ${by}`, 'save'
 // смерть по решению рассказчика («что-то плохое» Ангела, ручная отметка в «Гримуаре»): без защит, но со всеми
 // последствиями — ночью попадёт в объявление на рассвете, сработают Смотритель, Дитя Луны, проверка победы и т. д.
 // reason — примечание рассказчика (видно в журнале и в «Гримуаре», в объявлении на рассвете не звучит)
-/* ---------- смена роли посреди игры: Яга, Цирюльник, Заклинатель змей, Фань Гу, Егерь, Блудница, Чёрт ---------- */
+/* ---------- смена роли посреди игры: Яга, Цирюльник, Заклинатель змей, Фань Гу, Ловчий, Блудница, Чёрт ---------- */
 // эффекты, которые держатся, пока у кого-то есть способность-источник: роль сменилась — эффект кончается (яд Отравителя и т. п.)
 const ENDS_WITH_ROLE = ['poisoned', 'drunk', 'protected', 'safe', 'cursed', 'mad', 'second', 'hasability', 'votes3', 'voteneg', 'sober', 'twice', 'chosen', 'master'];
 // постоянные эффекты не кончаются со сменой ролей: яд Заклинателя змей у прежнего Демона — навсегда (вики: «poisoned permanently»;
@@ -382,7 +382,7 @@ const OUT_CHOICES = {
   godfather: { opts: [-1, 1], def: null },     // [−1 или +1 Изгой]
   balloonist: { opts: [0, 1], def: 0 },        // [+0 или +1 Изгой]
   sentinel: { opts: [-1, 0, 1], def: 0 },      // Сказочник: Изгоев может быть на 1 больше или меньше
-  // Егерь [+Девица] (вики): если Девицы нет — убрать 1 Горожанина и добавить Девицу (+1); если Девица уже среди Изгоев — без изменений
+  // Ловчий [+Девица] (вики): если Девицы нет — убрать 1 Горожанина и добавить Девицу (+1); если Девица уже среди Изгоев — без изменений
   huntsman: { opts: [0, 1], def: 1 },
 };
 
@@ -462,13 +462,13 @@ function randomPool(S, held) {
   if (chosen.includes('godfather') && mods.godfather == null) mods.godfather = pick([-1, 1]);
   const dist = extra => distribution(n, chosen.concat(extra, S.fabled || []), mods, scriptOutsiders(S));
   const tfAll = byTeam('townsfolk');
-  // Горожане, меняющие раскладку (Аэронавт, Егерь), — пересчитываем раскладку с ними и оставляем их в игре
+  // Горожане, меняющие раскладку (Аэронавт, Ловчий), — пересчитываем раскладку с ними и оставляем их в игре
   let d = dist([]), tf = tfAll.slice(0, Math.max(0, d.townsfolk));
   for (let k = 0; k < 2; k++) {
     const sp = tf.filter(r => SETUP_TF.includes(r)); d = dist(sp);
     tf = sp.concat(tfAll.filter(r => !sp.includes(r) && !SETUP_TF.includes(r))).slice(0, Math.max(0, d.townsfolk));
   }
-  // Егерь: Девица обязательно среди Изгоев
+  // Ловчий: Девица обязательно среди Изгоев
   const outs = byTeam('outsider').sort((a, b) => (b === 'damsel' && tf.includes('huntsman')) - (a === 'damsel' && tf.includes('huntsman')));
   let o = d.outsider;
   if (o > outs.length) { tf.push(...tfAll.filter(r => !tf.includes(r)).slice(0, o - outs.length)); o = outs.length; }
@@ -735,7 +735,7 @@ function setupProblems(S) {
     const c = countTeams(S);
     if (c.demon !== d.demon && !odd) out.push(d.demon ? 'В игре должен быть ровно 1 Демон' : 'Атеист в игре: злых ролей быть не должно');
     if (d.free && c.minion) out.push('Атеист в игре: Приспешников быть не должно');
-    if (inPlay(S, 'huntsman') && !inPlay(S, 'damsel')) out.push('Егерь в игре — Девица тоже должна быть в игре');
+    if (inPlay(S, 'huntsman') && !inPlay(S, 'damsel')) out.push('Ловчий в игре — Девица тоже должна быть в игре');
     const roles = S.players.map(p => p.role);
     if (new Set(roles).size !== roles.length) out.push('Одна роль выдана дважды');
     for (const b of S.bluffs) if (b && S.players.some(p => p.role === b || p.believes === b)) out.push(`Блеф «${rname(b)}» есть в игре — выберите другой`);
@@ -2206,27 +2206,27 @@ const LOGIC = {
       },
     };
   },
-  // Егерь (вики): раз за игру ночью выбирает живого игрока; Девица становится Горожанином не из игры (выбирает рассказчик)
+  // Ловчий (вики): раз за игру ночью выбирает живого игрока; Девица становится Горожанином не из игры (выбирает рассказчик)
   // и узнаёт его. Выбрал не Девицу — ничего, способность потрачена; отказался — способность остаётся
   huntsman: (S, p, first, off) => {
     if (once(S, p, 'huntsman')) return { active: false, reason: 'Способность уже использована' };
     const tf = r => R(r) && R(r).team === 'townsfolk' && !inPlay(S, r) && !S.players.some(q => q.believes === r) && !(S.bluffs || []).includes(r);
     const dam = inp => { const t = inp.t && P(S, inp.t[0]); return t && t.role === 'damsel' ? t : null; };
     return {
-      inputs: [PL('t', 1, 'Егерь выбирает живого игрока (можно отказаться — способность останется)', aliveOnly, { min: 0 })],
+      inputs: [PL('t', 1, 'Ловчий выбирает живого игрока (можно отказаться — способность останется)', aliveOnly, { min: 0 })],
       more: inp => dam(inp) && !off ? [ROLE('r', 'Девица становится Горожанином, которого нет в игре (выбираете вы)', tf)] : [],
       defaults: stable(S, 'hunt:' + p.id, () => ({ r: pick(S.script.roles.filter(tf)) || null })),
       info: inp => {
-        const t = dam(inp); if (!t) return inp.t && inp.t.length ? { secret: true, show: 'Это не Девица — ничего не происходит, способность Егеря потрачена', lines: [] } : null;
-        if (off) return { secret: true, show: 'Это Девица, но Егерь пьян или отравлен — ничего не происходит', lines: [] };
-        return inp.r ? { show: `Девица (${t.name}) становится: ${rname(inp.r)}`, lines: ['Усыпите Егеря, разбудите Девицу и покажите «ТЕПЕРЬ ВЫ» и новую роль'],
+        const t = dam(inp); if (!t) return inp.t && inp.t.length ? { secret: true, show: 'Это не Девица — ничего не происходит, способность Ловчего потрачена', lines: [] } : null;
+        if (off) return { secret: true, show: 'Это Девица, но Ловчий пьян или отравлен — ничего не происходит', lines: [] };
+        return inp.r ? { show: `Девица (${t.name}) становится: ${rname(inp.r)}`, lines: ['Усыпите Ловчего, разбудите Девицу и покажите «ТЕПЕРЬ ВЫ» и новую роль'],
           tokens: [{ label: t.name, caption: CARD.youAre, role: inp.r, align: t.align }] } : null;
       },
       apply: inp => {
-        if (!inp.t || !inp.t.length) { log(S, `Егерь (${p.name}) никого не выбирает`, 'action'); return; }
+        if (!inp.t || !inp.t.length) { log(S, `Ловчий (${p.name}) никого не выбирает`, 'action'); return; }
         markOnce(S, p, 'huntsman'); const t = P(S, inp.t[0]);
-        if (t.role === 'damsel' && !off && inp.r) { changeRole(S, t, inp.r); log(S, `Егерь (${p.name}) нашёл Девицу: ${t.name} теперь ${rname(inp.r)}`, 'effect'); rebuildRest(S); }
-        else { log(S, `Егерь (${p.name}) выбирает ${t.name} — ничего`, 'action'); if (t.role === 'damsel' && off) recordAbn(S, p, 'не превратил Девицу', abnSource(S, p)); }
+        if (t.role === 'damsel' && !off && inp.r) { changeRole(S, t, inp.r); log(S, `Ловчий (${p.name}) нашёл Девицу: ${t.name} теперь ${rname(inp.r)}`, 'effect'); rebuildRest(S); }
+        else { log(S, `Ловчий (${p.name}) выбирает ${t.name} — ничего`, 'action'); if (t.role === 'damsel' && off) recordAbn(S, p, 'не превратил Девицу', abnSource(S, p)); }
       },
     };
   },
