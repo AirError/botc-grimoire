@@ -870,7 +870,10 @@ img.shroud { object-fit: contain; }
 .ringdirbox[open] { display: flex; flex-direction: column; gap: 8px; }
 /* вкладка «Гримуар»: переключатель «Кругом / Плиткой», круг — прямо в карточке */
 .seg.gview { margin: 2px 0 10px; } .seg.gview button { flex: 1; }
-.card > .gcirc { margin: 4px 0 8px; } .card > .ringdirbox { margin-bottom: 6px; }
+.gcwrap > .gcirc { margin: 4px 0 8px; } .grest > .ringdirbox { margin-bottom: 6px; }
+/* карточка Гримуара: шапка (.gtop), круг (.gcwrap), остальное (.grest) — по умолчанию сверху вниз, как раньше */
+.gtop, .grest { display: flex; flex-direction: column; gap: 12px; min-width: 0; }
+.grest:empty { display: none; }
 /* кнопки в шапке вкладки «Гримуар»: «Кругом» и «Значки» */
 .gbtns { flex-wrap: nowrap; gap: 6px; flex: none; }
 .gbtns .btn { min-height: 34px; padding: 4px 10px; }
@@ -1224,4 +1227,54 @@ html[data-skin="hallow"] .crypt .wrfor { font-family: var(--f-wet); font-weight:
   .hfx, .hsbat { display: none; }
   html[data-skin="hallow"] .crypt .wreveal::before { animation: none; opacity: 1; }
   html[data-skin="hallow"] .crypt .wreveal > :not(.hfx):not(.wrlater) { animation: none; opacity: 1; }
+}
+
+/* ---------- широкий экран альбомом (iPad mini альбомом — 1133×744, компьютер; просьба пользователя 2026-10-18) ---------- */
+@media (orientation: landscape) and (min-width: 900px) and (min-height: 600px) {
+  /* Гримуар кругом: круг слева во всю высоту экрана (за вычетом шапки, вкладок и полей карточки), справа — шапка, блефы, Странники */
+  html.wgrim #app { max-width: 1240px; }
+  .grimcard.isring { --gcw: min(calc(100dvh - 168px), 60vw); display: grid; grid-template-columns: var(--gcw) minmax(280px, 1fr);
+    grid-template-rows: auto 1fr; column-gap: 22px; row-gap: 12px; align-items: start; }
+  .grimcard.isring > .gtop { grid-column: 2; grid-row: 1; }
+  .grimcard.isring > .gcwrap { grid-column: 1; grid-row: 1 / 3; }
+  .grimcard.isring > .grest { grid-column: 2; grid-row: 2; }
+  .grimcard.isring .gcwrap > .gcirc { margin: 0; }
+  /* круги в слоях (рассадка, номинация, ночной выбор, Гримуар Шпиона) — тоже не выше экрана */
+  .ringbox .ring, .grimbox .gcirc { width: min(100%, calc(100dvh - 210px)); margin-inline: auto; }
+  .nightring { width: min(100%, calc(100dvh - 250px)); margin-inline: auto; }
+  /* склеп — на всю ширину экрана: сундуки в 4–5 столбцов, размер — чтобы все ряды влезли по высоте (--wmax из wallOverlay) */
+  html[data-skin="hallow"] .crypt .wall { max-width: none; background-position: center 34%; }
+  html[data-skin="hallow"] .crypt .wgrid { grid-template-columns: repeat(var(--wc, 5), minmax(0, 1fr)); width: min(92%, var(--wmax, 100%)); margin-inline: auto; flex: 0 0 auto; margin-block: auto; }
+  html[data-skin="hallow"] .crypt .wscroll { padding-bottom: calc(84px + env(safe-area-inset-bottom, 0px)); }
+  html[data-skin="hallow"] .crypt .hpump { width: 72px; height: 72px; } html[data-skin="hallow"] .crypt .hcand { width: 74px; height: 86px; }
+}
+
+/* ---------- планшет (iPad mini: 744×1133 и больше): показ игрокам крупнее ---------- */
+@media (min-width: 700px) and (min-height: 700px) {
+  .shcard { width: min(86vw, 680px); }
+  .shframe { width: min(80vw, 620px); }
+  .shrole { max-width: 600px; }
+  .shic { width: min(42vmin, 340px); height: min(42vmin, 340px); }
+  .shroles.n2 .shic, .shroles.n3 .shic { width: min(22vmin, 200px); height: min(22vmin, 200px); }
+  .shroles.stack .shic { width: min(34vmin, 280px); height: min(34vmin, 280px); }
+  .shname { font-size: 46px; } .shroles.n2 .shname, .shroles.n3 .shname { font-size: 27px; }
+  .shrole.small .shic, .shroles.stack .shrole.small .shic { width: 92px; height: 92px; } .shrole.small .shname { font-size: 30px; }
+  .shpl span { font-size: 60px; } .shpl i { font-size: 20px; }
+  .shtext { font-size: 128px; } .shtext.long { font-size: 50px; }
+  .shtext.long.l1 { font-size: min(80px, calc(80vw / (var(--lw) * .66))); } .shtext.long.l2 { font-size: min(64px, calc(80vw / (var(--lw) * .66))); }
+  .shdig img { height: min(30vmin, 240px); }
+  .shab { font-size: 27px; max-width: 34ch; }
+  .shsub { font-size: 38px; } .shpre { font-size: 42px; }
+  .shcap { font-size: 34px; } .shthumb { font-size: 34px; } .shthumb span { font-size: 60px; }
+  .shhint { font-size: 16px; }
+}
+/* планшет альбомом: карточка и роль рядом, на одном экране (на телефоне альбомом — как было) */
+@media (orientation: landscape) and (min-width: 900px) and (min-height: 600px) {
+  .showov:not(.land) { flex-direction: row; flex-wrap: wrap; align-content: center; justify-content: center; column-gap: 5vw; row-gap: 10px; }
+  .showov:not(.land) > :first-child, .showov:not(.land) > :last-child { margin: 0; }
+  .showov:not(.land) .shcard { width: min(48vw, calc(76dvh * 1.58)); }
+  .showov:not(.land) .shframe { width: min(46vw, calc(72dvh * 1.2)); }
+  .showov:not(.land) .shroles { width: auto; flex: 0 1 auto; max-width: 44vw; }
+  .showov:not(.land) .shic { width: min(38dvh, 320px); height: min(38dvh, 320px); }
+  .showov:not(.land) .shhint { flex-basis: 100%; }
 }

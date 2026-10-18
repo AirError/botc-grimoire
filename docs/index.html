@@ -873,7 +873,10 @@ img.shroud { object-fit: contain; }
 .ringdirbox[open] { display: flex; flex-direction: column; gap: 8px; }
 /* вкладка «Гримуар»: переключатель «Кругом / Плиткой», круг — прямо в карточке */
 .seg.gview { margin: 2px 0 10px; } .seg.gview button { flex: 1; }
-.card > .gcirc { margin: 4px 0 8px; } .card > .ringdirbox { margin-bottom: 6px; }
+.gcwrap > .gcirc { margin: 4px 0 8px; } .grest > .ringdirbox { margin-bottom: 6px; }
+/* карточка Гримуара: шапка (.gtop), круг (.gcwrap), остальное (.grest) — по умолчанию сверху вниз, как раньше */
+.gtop, .grest { display: flex; flex-direction: column; gap: 12px; min-width: 0; }
+.grest:empty { display: none; }
 /* кнопки в шапке вкладки «Гримуар»: «Кругом» и «Значки» */
 .gbtns { flex-wrap: nowrap; gap: 6px; flex: none; }
 .gbtns .btn { min-height: 34px; padding: 4px 10px; }
@@ -1227,6 +1230,56 @@ html[data-skin="hallow"] .crypt .wrfor { font-family: var(--f-wet); font-weight:
   .hfx, .hsbat { display: none; }
   html[data-skin="hallow"] .crypt .wreveal::before { animation: none; opacity: 1; }
   html[data-skin="hallow"] .crypt .wreveal > :not(.hfx):not(.wrlater) { animation: none; opacity: 1; }
+}
+
+/* ---------- широкий экран альбомом (iPad mini альбомом — 1133×744, компьютер; просьба пользователя 2026-10-18) ---------- */
+@media (orientation: landscape) and (min-width: 900px) and (min-height: 600px) {
+  /* Гримуар кругом: круг слева во всю высоту экрана (за вычетом шапки, вкладок и полей карточки), справа — шапка, блефы, Странники */
+  html.wgrim #app { max-width: 1240px; }
+  .grimcard.isring { --gcw: min(calc(100dvh - 168px), 60vw); display: grid; grid-template-columns: var(--gcw) minmax(280px, 1fr);
+    grid-template-rows: auto 1fr; column-gap: 22px; row-gap: 12px; align-items: start; }
+  .grimcard.isring > .gtop { grid-column: 2; grid-row: 1; }
+  .grimcard.isring > .gcwrap { grid-column: 1; grid-row: 1 / 3; }
+  .grimcard.isring > .grest { grid-column: 2; grid-row: 2; }
+  .grimcard.isring .gcwrap > .gcirc { margin: 0; }
+  /* круги в слоях (рассадка, номинация, ночной выбор, Гримуар Шпиона) — тоже не выше экрана */
+  .ringbox .ring, .grimbox .gcirc { width: min(100%, calc(100dvh - 210px)); margin-inline: auto; }
+  .nightring { width: min(100%, calc(100dvh - 250px)); margin-inline: auto; }
+  /* склеп — на всю ширину экрана: сундуки в 4–5 столбцов, размер — чтобы все ряды влезли по высоте (--wmax из wallOverlay) */
+  html[data-skin="hallow"] .crypt .wall { max-width: none; background-position: center 34%; }
+  html[data-skin="hallow"] .crypt .wgrid { grid-template-columns: repeat(var(--wc, 5), minmax(0, 1fr)); width: min(92%, var(--wmax, 100%)); margin-inline: auto; flex: 0 0 auto; margin-block: auto; }
+  html[data-skin="hallow"] .crypt .wscroll { padding-bottom: calc(84px + env(safe-area-inset-bottom, 0px)); }
+  html[data-skin="hallow"] .crypt .hpump { width: 72px; height: 72px; } html[data-skin="hallow"] .crypt .hcand { width: 74px; height: 86px; }
+}
+
+/* ---------- планшет (iPad mini: 744×1133 и больше): показ игрокам крупнее ---------- */
+@media (min-width: 700px) and (min-height: 700px) {
+  .shcard { width: min(86vw, 680px); }
+  .shframe { width: min(80vw, 620px); }
+  .shrole { max-width: 600px; }
+  .shic { width: min(42vmin, 340px); height: min(42vmin, 340px); }
+  .shroles.n2 .shic, .shroles.n3 .shic { width: min(22vmin, 200px); height: min(22vmin, 200px); }
+  .shroles.stack .shic { width: min(34vmin, 280px); height: min(34vmin, 280px); }
+  .shname { font-size: 46px; } .shroles.n2 .shname, .shroles.n3 .shname { font-size: 27px; }
+  .shrole.small .shic, .shroles.stack .shrole.small .shic { width: 92px; height: 92px; } .shrole.small .shname { font-size: 30px; }
+  .shpl span { font-size: 60px; } .shpl i { font-size: 20px; }
+  .shtext { font-size: 128px; } .shtext.long { font-size: 50px; }
+  .shtext.long.l1 { font-size: min(80px, calc(80vw / (var(--lw) * .66))); } .shtext.long.l2 { font-size: min(64px, calc(80vw / (var(--lw) * .66))); }
+  .shdig img { height: min(30vmin, 240px); }
+  .shab { font-size: 27px; max-width: 34ch; }
+  .shsub { font-size: 38px; } .shpre { font-size: 42px; }
+  .shcap { font-size: 34px; } .shthumb { font-size: 34px; } .shthumb span { font-size: 60px; }
+  .shhint { font-size: 16px; }
+}
+/* планшет альбомом: карточка и роль рядом, на одном экране (на телефоне альбомом — как было) */
+@media (orientation: landscape) and (min-width: 900px) and (min-height: 600px) {
+  .showov:not(.land) { flex-direction: row; flex-wrap: wrap; align-content: center; justify-content: center; column-gap: 5vw; row-gap: 10px; }
+  .showov:not(.land) > :first-child, .showov:not(.land) > :last-child { margin: 0; }
+  .showov:not(.land) .shcard { width: min(48vw, calc(76dvh * 1.58)); }
+  .showov:not(.land) .shframe { width: min(46vw, calc(72dvh * 1.2)); }
+  .showov:not(.land) .shroles { width: auto; flex: 0 1 auto; max-width: 44vw; }
+  .showov:not(.land) .shic { width: min(38dvh, 320px); height: min(38dvh, 320px); }
+  .showov:not(.land) .shhint { flex-basis: 100%; }
 }
 
 </style>
@@ -5936,10 +5989,13 @@ function viewTable() {
   const seatB = S.phase === 'setup' && n > 1 ? '<button class="btn ringbtn" data-act="ringSeat">Рассадка</button>' : '';
   const viewSeg = n > 1 ? `<div class="seg gview" role="group" aria-label="Вид Гримуара"><button class="${ring ? 'on' : ''}" data-act="grimGrid" data-arg="0">◯ Кругом</button><button class="${ring ? '' : 'on'}" data-act="grimGrid" data-arg="1">▦ Плиткой</button></div>` : '';
   const body = !n ? '<div class="muted">Игроков пока нет — добавьте их на вкладке «Игра»</div>'
-    : ring ? `${grimCircle({ names: true, notes: true, act: 'openP' })}<details class="ringdirbox"><summary class="small">Первый — внизу, у вас; номера идут ${dirName()} — изменить</summary>${dirSeg()}</details>`
+    : ring ? `<div class="gcwrap">${grimCircle({ names: true, notes: true, act: 'openP' })}</div>`
       : `<div class="grim">${S.players.map((p, i) => grimCell(p, i)).join('')}</div>`;
-  return `${S.phase === 'setup' ? poolCard() : ''}<div class="card"><div class="row ghead"><h3>Гримуар · ${esc(S.script.name)}</h3><span class="row gbtns">${seatB}<button class="btn lgbtn" data-act="legend" aria-label="Что значат значки"><span class="lgq" aria-hidden="true">?</span>Значки</button></span></div>
-    ${viewSeg}${body}${bluffsHtml()}${S.phase === 'setup' ? '' : travellerForm()}</div>${S.phase === 'setup' ? '' : fabledZone()}${savListCard()}`;
+  const dirBox = ring ? `<details class="ringdirbox"><summary class="small">Первый — внизу, у вас; номера идут ${dirName()} — изменить</summary>${dirSeg()}</details>` : '';
+  // на широком экране альбомом (iPad, компьютер; просьба пользователя 2026-10-18) круг — слева во всю высоту экрана, остальное — колонкой
+  // справа (.grimcard.isring в style.css); на телефоне — сверху вниз, как раньше
+  return `${S.phase === 'setup' ? poolCard() : ''}<div class="card grimcard ${ring ? 'isring' : ''}"><div class="gtop"><div class="row ghead"><h3>Гримуар · ${esc(S.script.name)}</h3><span class="row gbtns">${seatB}<button class="btn lgbtn" data-act="legend" aria-label="Что значат значки"><span class="lgq" aria-hidden="true">?</span>Значки</button></span></div>
+    ${viewSeg}</div>${body}<div class="grest">${dirBox}${bluffsHtml()}${S.phase === 'setup' ? '' : travellerForm()}</div></div>${S.phase === 'setup' ? '' : fabledZone()}${savListCard()}`;
 }
 // Савант: все факты списком (заметка пользователя 2026-10-16) — верные зелёным, неверные красным; нажатие выбирает (ещё раз — убирает),
 // выбранные — в карточке Саванта на экране дня. Список составляется при открытии вкладки днём и живёт до конца дня («Обновить список» — заново)
@@ -6330,6 +6386,13 @@ function hChestVars() {
   const c = (typeof ART_META !== 'undefined' && ART_META.hallow && ART_META.hallow.chest) || { w: 485, h: 375, box: [0, .11, 1, .89], lid: [0, 0, 1, .46] }, pc = v => (v * 100).toFixed(2) + '%';
   return `--hca:${c.w} / ${c.h};--hbx:${pc(c.box[0])};--hby:${pc(c.box[1])};--hbw:${pc(c.box[2])};--hbh:${pc(c.box[3])};--hlx:${pc(c.lid[0])};--hly:${pc(c.lid[1])};--hlw:${pc(c.lid[2])};--hlh:${pc(c.lid[3])}`;
 }
+// склеп на широком экране альбомом (style.css): 4 столбца до 8 сундуков, дальше 5; ширина сетки — чтобы все ряды влезли по высоте
+// (над сундуками — шапка и подсказка, внизу — свечи: ~210 px; между рядами 20 px, между столбцами 12 px)
+function cryptGrid(n) {
+  const c = (typeof ART_META !== 'undefined' && ART_META.hallow && ART_META.hallow.chest) || { w: 485, h: 375 };
+  const cols = n <= 8 ? 4 : 5, rows = Math.ceil(n / cols), ar = c.h / c.w;
+  return `--wc:${cols};--wmax:calc((100dvh - ${210 + (rows - 1) * 20}px) / ${(rows * ar).toFixed(3)} * ${cols} + ${(cols - 1) * 12}px)`;
+}
 // склеп: туман, свечи и тыквы по углам (поверх фона, под сундуками)
 const cryptDecor = () => `<div class="hcrypt" aria-hidden="true"><i class="hfog"></i>
   <span class="hcorner l"><i class="hpump" style="background-image:var(--a-h-pumpkin1)"></i><span class="hcand"><i class="hstick"></i><i class="hcf"></i></span></span>
@@ -6530,7 +6593,7 @@ function wallOverlay() {
           ? `<label for="wsel">${who}</label><span class="wsel"><select id="wsel" data-act="drawTurn" aria-label="${crypt ? 'Кто открывает сундук' : 'Кто открывает ячейку'}" ${d.open !== null ? 'disabled' : ''}>${others.map(id => `<option value="${id}" ${id === d.turn ? 'selected' : ''}>${esc(E.nm(S, id))}</option>`).join('')}</select><span aria-hidden="true">▾</span></span>`
           : `<span>${who}</span><b>${esc(turn.name)}</b>`}</div>
         <button class="wbtn" data-act="undo" ${HISTORY.length ? '' : 'disabled'} aria-label="Отменить последнее">↶</button></div>
-      <div class="wgrid">${cells}</div>
+      <div class="wgrid" ${crypt ? `style="${cryptGrid(d.cells.length)}"` : ''}>${cells}</div>
       <div class="whint">${turn ? (crypt ? 'Нажмите на сундук со светящейся руной' : 'Нажмите на светящуюся ячейку') : 'Все роли выданы. Верните телефон рассказчику'}</div>
     </div></div>
     <button class="grimx" data-act="wallHide" aria-label="${crypt ? 'Свернуть склеп' : 'Свернуть стену'}"></button>
@@ -6821,6 +6884,8 @@ function render() {
   // днём и на остальных экранах — всегда светлая тема, даже если телефон переключился на тёмную
   document.documentElement.dataset.theme = 'light';
   document.documentElement.dataset.skin = UI.skin || 'basic';
+  // Гримуар кругом: на широком экране альбомом страница шире — круг слева, колонка справа (style.css, html.wgrim)
+  document.documentElement.classList.toggle('wgrim', UI.tab === 'table' && !UI.grimGrid && S.players.length > 1 && !rolesHidden());
   const ph = S.phase === 'setup' ? 'Подготовка' : S.phase === 'night' ? `Ночь ${S.n} · ${S.night.i + 1}/${S.night.steps.length}` : S.phase === 'day' ? `День ${S.n}` : 'Игра окончена';
   UI.showGroups = [];
   // правка из журнала открыта, а запись ночи с тех пор изменилась (отмена, новая ночь) — форма устарела, закрываем
@@ -7153,10 +7218,11 @@ const A = {
   rolesHide: () => { draft(S => { if (S.draw) S.draw.hidden = true; }); window.scrollTo(0, 0); },
   drawTurn: (a, el) => { const id = el && el.value; if (id) draft(S => { S.draw.turn = id; }); },
   drawOpen: i => { UI.openAt = Date.now();
-    // склеп: откуда вылетает нечисть (центр сундука на стене) и кто — случайно; из крайних столбцов летит к середине
+    // склеп: откуда вылетает нечисть (центр сундука на стене) и кто — случайно; от краёв летит к середине (по месту сундука на экране:
+    // столбцов 3 на телефоне, 4–5 на широком экране)
     const cell = document.querySelector(`.wcell[data-arg="${i}"]`), wall = document.querySelector('.wall');
-    if (cell && wall) { const a = cell.getBoundingClientRect(), b = wall.getBoundingClientRect(), col = +i % 3;
-      UI.openPos = { x: Math.round(a.left + a.width / 2 - b.left), y: Math.round(a.top + a.height * .35 - b.top), dir: col === 2 ? -1 : col === 0 ? 1 : (Math.random() < .5 ? -1 : 1) }; }
+    if (cell && wall) { const a = cell.getBoundingClientRect(), b = wall.getBoundingClientRect(), fx = (a.left + a.width / 2 - b.left) / b.width;
+      UI.openPos = { x: Math.round(a.left + a.width / 2 - b.left), y: Math.round(a.top + a.height * .35 - b.top), dir: fx > .62 ? -1 : fx < .38 ? 1 : (Math.random() < .5 ? -1 : 1) }; }
     UI.openFx = HFX[Math.floor(Math.random() * HFX.length)];
     act(S => E.drawOpen(S, +i), 'жребий: ячейка открыта'); },
   // закрыть роль можно не раньше чем через 2 секунды — чтобы игрок успел прочитать и не закрыл случайно (было 3 с; просьба пользователя 2026-10-18)
