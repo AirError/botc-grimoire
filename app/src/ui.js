@@ -1413,7 +1413,7 @@ function wallOverlay() {
     <button class="grimx" data-act="wallHide" aria-label="Свернуть стену"></button>
     ${open ? (() => { const op = E.P(S, open.pid), r = (op && seenRole(op)) || E.drawShown(open), al = isGoodRole(r) ? 'good' : 'evil';
       // ячейка «распахивается»: роль вырастает из её места на стене; за иконкой — вспышка и магический круг цвета её рун.
-      // Имени нет — только «Ваша роль»; закрыть можно через 3 секунды (подсказка появляется тогда же)
+      // Имени нет — только «Ваша роль»; закрыть можно через 2 секунды (подсказка появляется тогда же)
       const col = d.open % 3, row = Math.floor(d.open / 3);
       return `<div class="wreveal side-${al} c-${open.color}" data-act="drawClose" role="dialog" aria-label="Ваша роль" style="transform-origin:${Math.round((col + 0.5) / 3 * 100)}% ${170 + row * 122}px">
         <div class="wrfor">Ваша роль</div>
@@ -2029,8 +2029,8 @@ const A = {
   rolesHide: () => { draft(S => { if (S.draw) S.draw.hidden = true; }); window.scrollTo(0, 0); },
   drawTurn: (a, el) => { const id = el && el.value; if (id) draft(S => { S.draw.turn = id; }); },
   drawOpen: i => { UI.openAt = Date.now(); act(S => E.drawOpen(S, +i), 'жребий: ячейка открыта'); },
-  // закрыть роль можно не раньше чем через 3 секунды — чтобы игрок успел прочитать (и не закрыл случайно)
-  drawClose: () => { if (UI.openAt && Date.now() - UI.openAt < 3000) return; UI.openAt = null;
+  // закрыть роль можно не раньше чем через 2 секунды — чтобы игрок успел прочитать и не закрыл случайно (было 3 с; просьба пользователя 2026-10-18)
+  drawClose: () => { if (UI.openAt && Date.now() - UI.openAt < 2000) return; UI.openAt = null;
     UI.cracking = S.draw.open; act(S => E.drawClose(S), 'жребий: ячейка закрыта'); setTimeout(() => { UI.cracking = null; }, 1600); },
   drawCancel: () => { UI.wall = false; act(S => E.drawCancel(S), 'жребий отменён'); },
   edRole: (id, el) => act(S => E.storytellerRole(S, E.P(S, id), el.value || null), 'роль ' + E.nm(S, id)),

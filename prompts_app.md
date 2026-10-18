@@ -24,6 +24,7 @@
 | 8. Пьянство: значок, рамка, пена | `drunk_mug`, `drunk_frame`, `drunk_foam` | готово, в приложении |
 | 9. Пробное оформление (4 варианта) | А: `a_skyline`, `a_splash`, `a_thorns`; Б: `b_header`, `b_splash`, `b_seals`; В: `c_engraving`, `c_frontis`, `c_ornaments`; Г: `d_rose`, `d_lancets` | готово; выбраны В и Г |
 | 10. Стили «Лунная гравюра» и «Витраж во тьме» | В: `c_night`, `c_tabs`, `c_glyphs`, `c_emblems`, `c_win_good`, `c_win_evil`, `c_dial`; Г: `d_rose2`, `d_tabs` | готово, в приложении |
+| Стиль «Хэллоуин» | отдельный файл **`prompts_halloween.md`** («Промпты — Хэллоуин.md» в «Загрузки\Гримуар») | ждёт картинок |
 
 ---
 

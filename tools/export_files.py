@@ -16,6 +16,7 @@ FILES = [
     (OUT / "night.pdf", "Everyone Can Be Evil — ночной порядок.pdf"),
     (ROOT / "four_demons_script.json", "Everyone Can Be Evil.json"),
     (ROOT / "prompts_app.md", "Промпты — приложение.md"),
+    (ROOT / "prompts_halloween.md", "Промпты — Хэллоуин.md"),
     (ROOT / "prompts_sheets.md", "Промпты — листы сценария.md"),
 ]
 for src, name in FILES:

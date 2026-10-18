@@ -768,13 +768,13 @@ img.shroud { object-fit: contain; }
 .idealist { display: flex; flex-direction: column; gap: 6px; margin-top: 6px; }
 .idea { text-align: left; border: 1px solid var(--line); border-radius: 9px; background: var(--paper); padding: 8px 10px; font-size: 14px; line-height: 1.35; cursor: pointer; }
 .idea.on { border: 2px solid var(--gold); background: var(--goldbg); font-weight: 700; }
-/* стена: имя того, кто открывает ячейку, — крупно; роль — способность жирным, закрыть можно через 3 секунды */
+/* стена: имя того, кто открывает ячейку, — крупно; роль — способность жирным, закрыть можно через 2 секунды */
 .wturn b, .wsel select { font-size: 30px; }
 .wsel select { padding: 4px 38px 4px 18px; min-height: 48px; border-width: 1.5px; }
 .wturn label, .wturn > span { font-size: 13px; }
 .wrab { font-weight: 700; color: #EFE6D2; }
 .wrfor { font-size: 18px; font-weight: 800; color: #CFC6B4; }
-.wrlater { opacity: 0; animation: wrLater .4s 3s ease-out forwards; }
+.wrlater { opacity: 0; animation: wrLater .4s 2s ease-out forwards; }
 @keyframes wrLater { to { opacity: 1; } }
 .shtext.long { font-size: 34px; line-height: 1.15; overflow-wrap: anywhere; max-width: 92vw; }
 @media (prefers-reduced-motion: reduce) { .wrlater { animation-duration: .01s; } }

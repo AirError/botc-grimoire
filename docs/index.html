@@ -771,13 +771,13 @@ img.shroud { object-fit: contain; }
 .idealist { display: flex; flex-direction: column; gap: 6px; margin-top: 6px; }
 .idea { text-align: left; border: 1px solid var(--line); border-radius: 9px; background: var(--paper); padding: 8px 10px; font-size: 14px; line-height: 1.35; cursor: pointer; }
 .idea.on { border: 2px solid var(--gold); background: var(--goldbg); font-weight: 700; }
-/* стена: имя того, кто открывает ячейку, — крупно; роль — способность жирным, закрыть можно через 3 секунды */
+/* стена: имя того, кто открывает ячейку, — крупно; роль — способность жирным, закрыть можно через 2 секунды */
 .wturn b, .wsel select { font-size: 30px; }
 .wsel select { padding: 4px 38px 4px 18px; min-height: 48px; border-width: 1.5px; }
 .wturn label, .wturn > span { font-size: 13px; }
 .wrab { font-weight: 700; color: #EFE6D2; }
 .wrfor { font-size: 18px; font-weight: 800; color: #CFC6B4; }
-.wrlater { opacity: 0; animation: wrLater .4s 3s ease-out forwards; }
+.wrlater { opacity: 0; animation: wrLater .4s 2s ease-out forwards; }
 @keyframes wrLater { to { opacity: 1; } }
 .shtext.long { font-size: 34px; line-height: 1.15; overflow-wrap: anywhere; max-width: 92vw; }
 @media (prefers-reduced-motion: reduce) { .wrlater { animation-duration: .01s; } }
@@ -6169,7 +6169,7 @@ function wallOverlay() {
     <button class="grimx" data-act="wallHide" aria-label="Свернуть стену"></button>
     ${open ? (() => { const op = E.P(S, open.pid), r = (op && seenRole(op)) || E.drawShown(open), al = isGoodRole(r) ? 'good' : 'evil';
       // ячейка «распахивается»: роль вырастает из её места на стене; за иконкой — вспышка и магический круг цвета её рун.
-      // Имени нет — только «Ваша роль»; закрыть можно через 3 секунды (подсказка появляется тогда же)
+      // Имени нет — только «Ваша роль»; закрыть можно через 2 секунды (подсказка появляется тогда же)
       const col = d.open % 3, row = Math.floor(d.open / 3);
       return `<div class="wreveal side-${al} c-${open.color}" data-act="drawClose" role="dialog" aria-label="Ваша роль" style="transform-origin:${Math.round((col + 0.5) / 3 * 100)}% ${170 + row * 122}px">
         <div class="wrfor">Ваша роль</div>
@@ -6785,8 +6785,8 @@ const A = {
   rolesHide: () => { draft(S => { if (S.draw) S.draw.hidden = true; }); window.scrollTo(0, 0); },
   drawTurn: (a, el) => { const id = el && el.value; if (id) draft(S => { S.draw.turn = id; }); },
   drawOpen: i => { UI.openAt = Date.now(); act(S => E.drawOpen(S, +i), 'жребий: ячейка открыта'); },
-  // закрыть роль можно не раньше чем через 3 секунды — чтобы игрок успел прочитать (и не закрыл случайно)
-  drawClose: () => { if (UI.openAt && Date.now() - UI.openAt < 3000) return; UI.openAt = null;
+  // закрыть роль можно не раньше чем через 2 секунды — чтобы игрок успел прочитать и не закрыл случайно (было 3 с; просьба пользователя 2026-10-18)
+  drawClose: () => { if (UI.openAt && Date.now() - UI.openAt < 2000) return; UI.openAt = null;
     UI.cracking = S.draw.open; act(S => E.drawClose(S), 'жребий: ячейка закрыта'); setTimeout(() => { UI.cracking = null; }, 1600); },
   drawCancel: () => { UI.wall = false; act(S => E.drawCancel(S), 'жребий отменён'); },
   edRole: (id, el) => act(S => E.storytellerRole(S, E.P(S, id), el.value || null), 'роль ' + E.nm(S, id)),
