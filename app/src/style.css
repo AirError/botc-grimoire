@@ -952,8 +952,8 @@ img.shroud { object-fit: contain; }
 /* ================= Оформление (html[data-skin]): basic — как было; engr — «Лунная гравюра»; glass — «Витраж во тьме» =================
    Правила стилей — в конце файла и через :where(), чтобы не перебивать частные случаи (.card.curtain и т. п.). */
 .tabs .ti, .gbg { display: none; }
-:is([data-skin="engr"], [data-skin="glass"]) .tabs button { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 2px; font-size: 11px; padding-top: 4px; }
-:is([data-skin="engr"], [data-skin="glass"]) .tabs .ti { display: block; width: 23px; height: 23px; flex: none; }
+:is([data-skin="engr"], [data-skin="glass"], [data-skin="hallow"]) .tabs button { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 2px; font-size: 11px; padding-top: 4px; }
+:is([data-skin="engr"], [data-skin="glass"], [data-skin="hallow"]) .tabs .ti { display: block; width: 23px; height: 23px; flex: none; }
 .tabs .ti .f { fill: none; }
 /* заставка при запуске */
 .splash { position: fixed; inset: 0; z-index: 40; display: flex; flex-direction: column; align-items: center; justify-content: flex-end; background: #000000; color: #EDE6D6; cursor: pointer;
@@ -1067,3 +1067,180 @@ html:root.oled[data-skin="glass"] { --paper: #000000; --card: #000000; --ink: #E
 :where([data-skin="glass"]) .gbg { display: block; position: absolute; border-radius: 50%; pointer-events: none;
   background: var(--a-d-rose) center / 100% 100% no-repeat; filter: saturate(.5) brightness(.95); opacity: .55; }
 :where([data-skin="glass"].oled) .gbg, :where([data-skin="glass"]) .grimov .gbg { filter: saturate(.6) brightness(.48); opacity: 1; }
+
+/* ---------- «Хэллоуин»: пергамент с тыквенным днём, чёрный с оранжевыми огоньками ночью (prompts_halloween.md) ---------- */
+html:root[data-skin="hallow"] {
+  --paper: #F2EADC; --card: #FBF6EC; --ink: #1E1714; --muted: #6F6358; --line: #DCCDB5;
+  --good: #23457E; --goodbg: #E2E8F2; --evil: #9B1F1F; --evilbg: #F6E0DC; --gold: #B4530C; --goldbg: #F8E3CC;
+  --f-sc: 'Kurale', 'Alegreya Sans', Georgia, serif; --f-wet: 'Rubik Wet Paint', 'Kurale', Georgia, serif; --r: 10px; }
+html:root.oled[data-skin="hallow"] {
+  --paper: #000000; --card: #000000; --ink: #EDE3D0; --muted: #9A8F80; --line: #2A221C;
+  --good: #9DB8EE; --goodbg: #000000; --evil: #F08C8C; --evilbg: #000000; --gold: #F08A2C; --goldbg: #000000; }
+/* паутина в верхних углах карточек */
+:where([data-skin="hallow"]) main > .card { position: relative; }
+:where([data-skin="hallow"]) main > .card::before, :where([data-skin="hallow"]) main > .card::after { content: ''; position: absolute; top: 1px; width: 44px; height: 44px;
+  pointer-events: none; opacity: .3; background: var(--ink); -webkit-mask: center / contain no-repeat; mask: center / contain no-repeat; }
+:where([data-skin="hallow"]) main > .card::before { left: 1px; -webkit-mask-image: var(--a-h-web-tl); mask-image: var(--a-h-web-tl); }
+:where([data-skin="hallow"]) main > .card::after { right: 1px; -webkit-mask-image: var(--a-h-web-tr); mask-image: var(--a-h-web-tr); }
+:where([data-skin="hallow"].oled) main > .card::before, :where([data-skin="hallow"].oled) main > .card::after { opacity: .2; }
+/* шапка — кладбище; под ней летучая мышь-разделитель */
+.phase-art.hhead { border-radius: 10px; max-height: 112px; object-fit: cover; }
+:where([data-skin="hallow"].oled) .phase-art.hhead { filter: brightness(.78); }
+:where([data-skin="hallow"]) .phase-wrap::after { content: ''; display: block; width: 62%; height: 14px; margin: 6px auto 0; background: var(--ink); opacity: .5;
+  -webkit-mask: var(--a-h-batline) center / contain no-repeat; mask: var(--a-h-batline) center / contain no-repeat; }
+:where([data-skin="hallow"]) .btn.primary { background: linear-gradient(#E3832B, #B4530C); border-color: #8E400A; color: #1E1714; }
+:where([data-skin="hallow"].oled) .btn.primary { background: #000000; color: var(--gold); border: 2px solid var(--gold); }
+:where([data-skin="hallow"]) .tabs button.on .tig { filter: drop-shadow(0 0 5px rgba(240, 138, 44, .75)); }
+:where([data-skin="hallow"].oled) .tabs .tig { filter: grayscale(.45) brightness(.8) opacity(.85); }
+:where([data-skin="hallow"].oled) .tabs button.on .tig { filter: brightness(.95) drop-shadow(0 0 6px rgba(240, 138, 44, .6)); }
+/* значок ночного шага — в венке из сухих кленовых листьев */
+:where([data-skin="hallow"]) .steprole .si { padding: 12px 18px 16px; width: 80px; height: 72px; background: var(--a-h-wreath) center / 100% 100% no-repeat; }
+/* Гримуар кругом — на каменной плите с ритуальным кругом и свечами */
+:where([data-skin="hallow"]) .gbg { display: block; position: absolute; border-radius: 50%; pointer-events: none; background: var(--a-h-ring) center / 100% 100% no-repeat; }
+:where([data-skin="hallow"].oled) .gbg, :where([data-skin="hallow"]) .grimov .gbg { filter: brightness(.7); }
+/* показ игроку — рамка из костей и веток, эмблема, надпись */
+.shframe.hframe { border: 0; outline: 0; aspect-ratio: 1199 / 940; padding: 8cqw 12cqw 9cqw; gap: 2cqw; background: var(--a-h-frame) center / 100% 100% no-repeat; }
+.hframe .shem { width: 30cqw; height: 30cqw; }
+.hframe .shft { font-family: var(--f-tale); font-weight: 700; color: #F3E6CC; text-shadow: 0 2px 8px #000; letter-spacing: .04em; padding: 0 4%; }
+.hframe.side-good .shft { color: #A9C4F5; } .hframe.side-evil .shft { color: #F59A9A; }
+.showov.land .shframe.hframe { width: min(calc(var(--long) * .62), calc(var(--short) * .82 * 1.275)); }
+/* экраны победы — тушь на белом: умножением на бумагу */
+:where([data-skin="hallow"]) .win-art { mix-blend-mode: multiply; }
+:where([data-skin="hallow"]) .banner .w { font-family: var(--f-wet); font-weight: 400; color: var(--gold); letter-spacing: .02em; }
+/* заставка — склеп под луной на весь экран, вылетают летучие мыши */
+.splash .spart.cover { left: 0; top: 0; transform: none; width: 100%; height: 100%; max-height: none; object-fit: cover; object-position: 50% 20%; }
+[data-skin="hallow"] .sptitle { font-family: var(--f-wet); font-weight: 400; color: #F08A2C; text-shadow: 0 2px 14px #000, 0 0 30px rgba(240, 138, 44, .35); }
+[data-skin="hallow"] .spsub { color: #C9B9A2; text-shadow: 0 1px 6px #000; }
+/* мыши тёмные — на тёмном фоне их обводит тёплый отсвет свечей */
+.hsbat, .hbatf { filter: drop-shadow(0 0 1.5px rgba(255, 196, 130, .85)) drop-shadow(0 0 8px rgba(255, 140, 40, .4)); }
+.hsbat { position: absolute; width: 88px; height: 64px; margin: -32px 0 0 -44px; left: 50%; top: 38%; z-index: 1; pointer-events: none; opacity: 0;
+  background: var(--a-h-bat-strip) 0 0 / 600% 100% no-repeat; }
+.hsbat.b1 { animation: hFlap .42s steps(6, jump-none) infinite, hBatOut1 1.9s .15s ease-in forwards; }
+.hsbat.b2 { animation: hFlap .38s steps(6, jump-none) infinite, hBatOut2 1.8s .35s ease-in forwards; }
+.hsbat.b3 { animation: hFlap .45s steps(6, jump-none) infinite, hBatOut3 2s .55s ease-in forwards; }
+.hsbat.b4 { animation: hFlap .4s steps(6, jump-none) infinite, hBatOut4 1.7s .8s ease-in forwards; }
+@keyframes hFlap { from { background-position-x: 0%; } to { background-position-x: 100%; } }
+@keyframes hBatOut1 { 0% { opacity: 0; transform: scale(.3); } 12% { opacity: 1; } 85% { opacity: 1; } 100% { opacity: 0; transform: translate(-48vw, -30vh) scale(1.7); } }
+@keyframes hBatOut2 { 0% { opacity: 0; transform: scale(.3); } 12% { opacity: 1; } 85% { opacity: 1; } 100% { opacity: 0; transform: translate(46vw, -24vh) scale(1.5); } }
+@keyframes hBatOut3 { 0% { opacity: 0; transform: scale(.3); } 12% { opacity: 1; } 85% { opacity: 1; } 100% { opacity: 0; transform: translate(-32vw, -36vh) scale(1.2); } }
+@keyframes hBatOut4 { 0% { opacity: 0; transform: scale(.3); } 12% { opacity: 1; } 85% { opacity: 1; } 100% { opacity: 0; transform: translate(38vw, -34vh) scale(1.6); } }
+
+/* ---------- «Хэллоуин»: склеп выдачи ролей ---------- */
+html[data-skin="hallow"] .wallov.crypt { background: #0A0705; }
+html[data-skin="hallow"] .crypt .wall { background: var(--a-h-crypt) center top / cover no-repeat, #0B0806; box-shadow: none; }
+html[data-skin="hallow"] .crypt .wall::after { display: none; }
+html[data-skin="hallow"] .crypt .wall.roll { animation: hCryptIn 1.1s ease-out both; }
+@keyframes hCryptIn { from { opacity: 0; filter: brightness(.15); transform: scale(1.06); } to { opacity: 1; filter: none; transform: none; } }
+.crypt .wscroll { position: relative; z-index: 1; padding-bottom: calc(96px + env(safe-area-inset-bottom, 0px)); }
+/* сундуки стоят посреди склепа, между рядами — проход */
+html[data-skin="hallow"] .crypt .wgrid { align-content: center; row-gap: 20px; }
+.crypt .whint { color: #CDBBA0; text-shadow: 0 1px 4px #000; }
+.hcrypt { position: absolute; inset: 0; z-index: 0; overflow: hidden; pointer-events: none; }
+/* туман: широкая полоса плывёт влево и повторяется без шва */
+.hfog { position: absolute; left: 0; bottom: 0; width: 200%; height: 30%; opacity: .4; background: #D8D2E6;
+  -webkit-mask: var(--a-h-fog) 0 100% / 50% 100% repeat-x; mask: var(--a-h-fog) 0 100% / 50% 100% repeat-x; animation: hFog 46s linear infinite; }
+@keyframes hFog { to { transform: translateX(-50%); } }
+/* по углам — тыквы (свет «дышит») и свечи (пламя дрожит) */
+.hcorner { position: absolute; bottom: calc(6px + env(safe-area-inset-bottom, 0px)); display: flex; align-items: flex-end; z-index: 1; }
+.hcorner.l { left: 2px; } .hcorner.r { right: 2px; }
+.hpump { display: block; width: 58px; height: 58px; background: center bottom / contain no-repeat; filter: drop-shadow(0 0 8px rgba(255, 140, 40, .5)); animation: hPump 3.4s ease-in-out infinite; }
+.hcorner.r .hpump { animation-delay: -1.7s; }
+@keyframes hPump { 50% { filter: drop-shadow(0 0 16px rgba(255, 150, 50, .85)) brightness(1.1); } }
+.hcand { position: relative; width: 62px; height: 72px; }
+.hstick { position: absolute; inset: 0; background: var(--a-h-candle3) center bottom / contain no-repeat; }
+.hcf { position: absolute; left: 50%; top: -12px; width: 26px; height: 26px; margin-left: -13px; background: #FFC46A; transform-origin: 50% 90%;
+  -webkit-mask: var(--a-h-cflame1) center / contain no-repeat; mask: var(--a-h-cflame1) center / contain no-repeat;
+  filter: drop-shadow(0 0 5px #FF9A3C) drop-shadow(0 0 12px rgba(255, 140, 40, .65)); animation: hFlick 1.35s ease-in-out infinite; }
+.hcorner.r .hcf { animation-delay: -.7s; }
+@keyframes hFlick { 0%, 100% { transform: scale(1) rotate(0); opacity: 1; } 30% { transform: scale(.9, 1.1) rotate(-4deg); opacity: .88; } 60% { transform: scale(1.06, .94) rotate(3deg); } }
+/* сундуки: короб и крышка по геометрии закрытого (--hbx…), руна — на замке, под сундуком — свечение руны */
+html[data-skin="hallow"] .crypt .wcell { aspect-ratio: var(--hca); background: none !important; border: 0; border-radius: 0; box-shadow: none; overflow: visible; animation: none; filter: none; }
+html[data-skin="hallow"] .crypt .wcell::after { display: none; }
+html[data-skin="hallow"] .crypt .wcell::before { content: ''; display: block; position: absolute; inset: auto 6% -8% 6%; height: 36%; z-index: -1; border-radius: 50%;
+  background: radial-gradient(ellipse at 50% 50%, var(--glow), transparent 70%); opacity: .5; -webkit-mask: none; mask: none; animation: hGlow 2.6s ease-in-out infinite; animation-delay: calc(var(--d) * -1); }
+@keyframes hGlow { 50% { opacity: .8; transform: scale(1.06); } }
+.hchest { position: absolute; inset: 0; perspective: 420px; }
+.hbox, .hlid, .hopen { position: absolute; background: center / 100% 100% no-repeat; }
+.hbox { left: var(--hbx); top: var(--hby); width: var(--hbw); height: var(--hbh); background-image: var(--a-h-chest-box); }
+.hlid { left: var(--hlx); top: var(--hly); width: var(--hlw); height: var(--hlh); background-image: var(--a-h-chest-lid); transform-origin: 50% 92%; backface-visibility: hidden; }
+.hopen { display: none; left: -4%; right: -4%; bottom: 0; height: 130%; background: var(--a-h-chest-open) center bottom / contain no-repeat; }
+html[data-skin="hallow"] .crypt .wcell .runeg { inset: auto; left: 39.5%; top: 51%; width: 21%; height: auto; aspect-ratio: 1; z-index: 2; }
+html[data-skin="hallow"] .crypt .wcell.done::before, html[data-skin="hallow"] .crypt .wcell.done .hbox, html[data-skin="hallow"] .crypt .wcell.done .hlid,
+html[data-skin="hallow"] .crypt .wcell.done .runeg { display: none; }
+html[data-skin="hallow"] .crypt .wcell.done .hopen { display: block; filter: brightness(.6) saturate(.8); }
+html[data-skin="hallow"] .crypt .wcell.cracking .hopen { animation: hSettle .5s ease-out; }
+@keyframes hSettle { 0% { transform: translateY(-4%) scale(1.04); filter: brightness(1.1); } 100% { transform: none; filter: brightness(.6) saturate(.8); } }
+/* открытие: сундук вздрагивает, крышка распахивается и улетает в темноту, руна вспыхивает и гаснет */
+html[data-skin="hallow"] .crypt .wcell.opened { animation: hShake .34s ease-in-out 1; filter: none; }
+html[data-skin="hallow"] .crypt .wcell.opened .hlid { animation: hLid .6s .2s ease-out forwards; }
+html[data-skin="hallow"] .crypt .wcell.opened .runeg { animation: hRuneOut .7s ease-out forwards; }
+html[data-skin="hallow"] .crypt .wcell.opened::before { animation: hGlowBurst .8s ease-out forwards; }
+@keyframes hShake { 0%, 100% { transform: none; } 20% { transform: translateX(-3px) rotate(-1.6deg); } 45% { transform: translateX(3px) rotate(1.6deg); } 70% { transform: translateX(-2px) rotate(-.8deg); } }
+/* крышку откидывает назад — до упора, с отскоком (за 90° не заходит: обратной стороны у картинки нет) */
+@keyframes hLid { 0% { transform: none; } 45% { transform: translateY(-36%) rotateX(86deg); } 70% { transform: translateY(-26%) rotateX(68deg); } 100% { transform: translateY(-30%) rotateX(78deg); } }
+@keyframes hRuneOut { 0% { transform: scale(1); } 30% { transform: scale(1.5); filter: brightness(2); } 100% { transform: scale(.6); opacity: 0; } }
+@keyframes hGlowBurst { 0% { opacity: .5; } 30% { opacity: 1; transform: scale(1.5); } 100% { opacity: 0; transform: scale(1.8); } }
+/* роль: сначала поверх склепа летит нечисть, потом темнеет и из темноты поднимается карточка */
+html[data-skin="hallow"] .crypt .wreveal { background: none; animation: hRevealBg 1.4s ease-out forwards; }
+@keyframes hRevealBg { 0%, 62% { background-color: rgba(6, 4, 3, 0); } 100% { background-color: rgba(6, 4, 3, .95); } }
+html[data-skin="hallow"] .crypt .wreveal > :not(.hfx):not(.wrlater) { opacity: 0; animation: hCardIn .5s 1.05s ease-out forwards; }
+@keyframes hCardIn { from { opacity: 0; transform: translateY(18px) scale(.96); } to { opacity: 1; transform: none; } }
+html[data-skin="hallow"] .crypt .wrfor { font-family: var(--f-wet); font-weight: 400; font-size: 32px; letter-spacing: .02em; text-transform: none; color: #F08A2C; text-shadow: 0 0 18px rgba(240, 138, 44, .4); }
+.hfx { position: absolute; inset: 0; z-index: 3; overflow: hidden; pointer-events: none; }
+.hfx > * { position: absolute; left: var(--x); top: var(--y); }
+.hburst { width: 150px; height: 240px; margin: -230px 0 0 -75px; background: var(--glow); opacity: 0; transform-origin: 50% 100%;
+  -webkit-mask: var(--a-h-burst) center bottom / contain no-repeat; mask: var(--a-h-burst) center bottom / contain no-repeat;
+  filter: drop-shadow(0 0 10px var(--glow)); animation: hBurst 1s .32s ease-out forwards; }
+@keyframes hBurst { 0% { opacity: 0; transform: scaleY(.15); } 25% { opacity: .8; } 100% { opacity: 0; transform: scaleY(1.35); } }
+.hsm { width: 90px; height: 90px; margin: -60px 0 0 -45px; background: #D9D3E3; opacity: 0; -webkit-mask: center / contain no-repeat; mask: center / contain no-repeat; }
+.hsm.s1 { -webkit-mask-image: var(--a-h-smoke1); mask-image: var(--a-h-smoke1); animation: hSmoke 1.3s .3s ease-out forwards; }
+.hsm.s2 { -webkit-mask-image: var(--a-h-smoke3); mask-image: var(--a-h-smoke3); animation: hSmoke2 1.4s .42s ease-out forwards; }
+@keyframes hSmoke { 0% { opacity: 0; transform: scale(.4); } 30% { opacity: .7; } 100% { opacity: 0; transform: translate(calc(var(--dir) * 26px), -130px) scale(1.7); } }
+@keyframes hSmoke2 { 0% { opacity: 0; transform: scale(.4); } 30% { opacity: .55; } 100% { opacity: 0; transform: translate(calc(var(--dir) * -34px), -110px) scale(1.5); } }
+/* призрак: выныривает → летит → растворяется (три позы сменяют друг друга по ходу полёта) */
+.fx-ghost .hcre { width: 120px; height: 120px; margin: -60px 0 0 -60px; opacity: 0; animation: hGhostFly 1.5s .3s cubic-bezier(.45, .05, .4, 1) forwards; }
+.hg { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: contain; transform: scaleX(var(--dir)); opacity: 0; animation: 1.5s .3s linear forwards; }
+.hg.g1 { animation-name: hG1; } .hg.g2 { animation-name: hG2; } .hg.g3 { animation-name: hG3; }
+@keyframes hG1 { 0%, 26% { opacity: 1; } 32%, 100% { opacity: 0; } }
+@keyframes hG2 { 0%, 26% { opacity: 0; } 32%, 70% { opacity: 1; } 76%, 100% { opacity: 0; } }
+@keyframes hG3 { 0%, 70% { opacity: 0; } 76%, 100% { opacity: 1; } }
+@keyframes hGhostFly { 0% { opacity: 0; transform: translateY(20px) scale(.3); } 10% { opacity: 1; } 30% { transform: translateY(-80px) scale(.95); }
+  70% { transform: translate(calc(var(--dir) * 26vw), calc(-80px - 20vh)) scale(1.05); opacity: 1; } 100% { transform: translate(calc(var(--dir) * 40vw), calc(-80px - 34vh)) scale(1.15); opacity: 0; } }
+/* летучие мыши: машут крыльями (6 кадров) и разлетаются веером */
+.hbatf { width: 80px; height: 58px; margin: -29px 0 0 -40px; opacity: 0; background: var(--a-h-bat-strip) 0 0 / 600% 100% no-repeat; }
+.hbatf.f1 { --ex: calc(var(--dir) * 40vw); --ey: -42vh; animation: hFlap .36s steps(6, jump-none) infinite, hBatFly 1.3s .3s ease-in forwards; }
+.hbatf.f2 { --ex: calc(var(--dir) * 18vw); --ey: -50vh; animation: hFlap .32s steps(6, jump-none) infinite, hBatFly 1.2s .38s ease-in forwards; }
+.hbatf.f3 { --ex: calc(var(--dir) * 46vw); --ey: -22vh; animation: hFlap .4s steps(6, jump-none) infinite, hBatFly 1.35s .45s ease-in forwards; }
+.hbatf.f4 { --ex: calc(var(--dir) * -14vw); --ey: -46vh; animation: hFlap .34s steps(6, jump-none) infinite, hBatFly 1.25s .52s ease-in forwards; }
+.hbatf.f5 { --ex: calc(var(--dir) * 30vw); --ey: -58vh; animation: hFlap .38s steps(6, jump-none) infinite, hBatFly 1.3s .6s ease-in forwards; }
+.hbatf.f6 { --ex: calc(var(--dir) * 8vw); --ey: -34vh; animation: hFlap .36s steps(6, jump-none) infinite, hBatFly 1.15s .68s ease-in forwards; }
+@keyframes hBatFly { 0% { opacity: 0; transform: scale(.4); } 12% { opacity: 1; } 85% { opacity: 1; } 100% { opacity: 0; transform: translate(var(--ex), var(--ey)) scale(1.5); } }
+/* череп в зелёном пламени: летит дугой, покачиваясь, пламя тянется хвостом позади */
+.fx-skull .hcre { width: 76px; height: 92px; margin: -46px 0 0 -38px; opacity: 0; animation: hSkullFly 1.45s .3s cubic-bezier(.4, .1, .4, 1) forwards; }
+.hsk { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: contain; transform: scaleX(var(--dir)); }
+.hfl { position: absolute; left: 50%; top: 50%; width: 170px; height: 74px; margin-top: -37px; transform-origin: 0 50%; transform: scaleX(calc(var(--dir) * -1));
+  background: #7CFF6A; filter: drop-shadow(0 0 8px #3CFF5A); -webkit-mask: var(--a-h-flame) left center / contain no-repeat; mask: var(--a-h-flame) left center / contain no-repeat; }
+@keyframes hSkullFly { 0% { opacity: 0; transform: translateY(10px) scale(.3); } 12% { opacity: 1; } 35% { transform: translate(calc(var(--dir) * 6vw), -110px) scale(1) rotate(calc(var(--dir) * -8deg)); }
+  65% { transform: translate(calc(var(--dir) * 24vw), calc(-110px - 16vh)) scale(1.05) rotate(calc(var(--dir) * 6deg)); opacity: 1; } 100% { transform: translate(calc(var(--dir) * 44vw), calc(-110px - 30vh)) scale(1.1) rotate(calc(var(--dir) * -4deg)); opacity: 0; } }
+/* ворон: два ворона машут крыльями (4 кадра) и улетают вверх */
+.hrav { width: 100px; height: 140px; margin: -70px 0 0 -50px; opacity: 0; filter: drop-shadow(0 0 1.5px rgba(255, 196, 130, .8)) drop-shadow(0 0 8px rgba(255, 140, 40, .35)); }
+.hrav::after { content: ''; position: absolute; inset: 0; transform: scaleX(var(--dir)); background: var(--a-h-raven-strip) 0 0 / 400% 100% no-repeat; animation: hFlap4 .44s steps(4, jump-none) infinite; }
+.hrav.r1 { animation: hRavFly 1.4s .3s ease-in forwards; }
+.hrav.r2 { animation: hRavFly2 1.35s .5s ease-in forwards; transform: scale(.8); }
+@keyframes hFlap4 { from { background-position-x: 0%; } to { background-position-x: 100%; } }
+@keyframes hRavFly { 0% { opacity: 0; transform: scale(.45); } 12% { opacity: 1; } 85% { opacity: 1; } 100% { opacity: 0; transform: translate(calc(var(--dir) * 42vw), -46vh) scale(1.5); } }
+@keyframes hRavFly2 { 0% { opacity: 0; transform: scale(.4); } 12% { opacity: 1; } 85% { opacity: 1; } 100% { opacity: 0; transform: translate(calc(var(--dir) * 20vw), -56vh) scale(1.2); } }
+/* болотные огоньки цвета руны: поднимаются спиралью и гаснут */
+.hwi { width: 48px; height: 48px; margin: -24px 0 0 -24px; opacity: 0; background: var(--glow); filter: drop-shadow(0 0 8px var(--glow));
+  -webkit-mask: var(--m) center / contain no-repeat; mask: var(--m) center / contain no-repeat; }
+.hwi.w1 { animation: hWisp1 1.5s .3s ease-out forwards; } .hwi.w2 { animation: hWisp2 1.6s .4s ease-out forwards; } .hwi.w3 { animation: hWisp3 1.4s .5s ease-out forwards; }
+.hwi.w4 { animation: hWisp2 1.5s .62s ease-out reverse forwards; } .hwi.w5 { animation: hWisp1 1.7s .7s ease-out forwards; }
+@keyframes hWisp1 { 0% { opacity: 0; transform: scale(.3); } 15% { opacity: 1; } 50% { transform: translate(-40px, -120px) scale(1); } 100% { opacity: 0; transform: translate(30px, -42vh) scale(.6); } }
+@keyframes hWisp2 { 0% { opacity: 0; transform: scale(.3); } 15% { opacity: 1; } 50% { transform: translate(50px, -100px) scale(1.1); } 100% { opacity: 0; transform: translate(-30px, -38vh) scale(.5); } }
+@keyframes hWisp3 { 0% { opacity: 0; transform: scale(.3); } 15% { opacity: 1; } 50% { transform: translate(0, -150px) scale(.9); } 100% { opacity: 0; transform: translate(calc(var(--dir) * 30vw), -48vh) scale(.4); } }
+@media (prefers-reduced-motion: reduce) {
+  .hfog, .hpump, .hcf, .hsbat, html[data-skin="hallow"] .crypt .wcell::before, html[data-skin="hallow"] .crypt .wcell.opened, html[data-skin="hallow"] .crypt .wcell.opened .hlid { animation: none !important; }
+  .hfx { display: none; }
+  html[data-skin="hallow"] .crypt .wreveal { animation: none; background-color: rgba(6, 4, 3, .95); }
+  html[data-skin="hallow"] .crypt .wreveal > :not(.hfx):not(.wrlater) { animation: none; opacity: 1; }
+}

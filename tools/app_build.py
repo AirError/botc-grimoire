@@ -10,7 +10,7 @@ FONTS = ('<link rel="preconnect" href="https://fonts.googleapis.com">'
          '<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>'
          '<link rel="stylesheet" href="https://fonts.googleapis.com/css2?'
          'family=Alegreya+Sans:ital,wght@0,400;0,500;0,700;0,800;1,400&family=Alegreya:wght@700;800&family=Kurale'
-         '&family=Old+Standard+TT:ital,wght@0,400;0,700;1,400&display=swap">')  # Old Standard TT — стиль «Лунная гравюра»
+         '&family=Old+Standard+TT:ital,wght@0,400;0,700;1,400&family=Rubik+Wet+Paint&display=swap">')  # Old Standard TT — «Лунная гравюра», Rubik Wet Paint — «Хэллоуин»
 
 import base64
 import io
@@ -56,6 +56,23 @@ ART.update({"c_night": (CUT / "c_night.png", 800), "c_dial": (CUT / "c_dial.png"
 ART.update({f"c_tab_{k}": (CUT / f"c_tab_{k}.png", 96) for k in ("day", "night", "setup", "table", "log", "roles", "menu")})
 ART.update({f"d_tab_{k}": (CUT / f"d_tab_{k}.png", 96) for k in ("day", "night", "setup", "table", "log", "roles", "menu")})
 ART.update({f"c_g_{k}": (CUT / f"c_g_{k}.png", 128) for k in ("dusk", "dawn", "minioninfo", "demoninfo", "nominate", "vote", "execute", "dead")})
+# стиль «Хэллоуин» (prep_art.halloween, prompts_halloween.md): склеп выдачи ролей, нечисть, значки, шапки, показ игроку
+_H = {"h_crypt.jpg": 720, "h_splash.jpg": 720, "h_header_day.jpg": 800, "h_header_night.jpg": 800, "h_win_good.jpg": 800, "h_win_evil.jpg": 800,
+      "h_ring.png": 640, "h_frame.png": 600, "h_skull.png": 200, "h_chest_open.png": 300, "h_chest_box.png": 300, "h_chest_lid.png": 300,
+      "h_spider.png": 80, "h_batline.png": 360, "h_wreath.png": 160, "h_bat_strip.png": 656, "h_raven_strip.png": 400, "h_flame.png": 360,
+      "h_burst.png": 360, "h_fog.png": 800}
+_H.update({f"h_tab_{k}.png": 96 for k in ("day", "night", "setup", "table", "log", "roles", "menu")})
+_H.update({f"h_g_{k}.png": 128 for k in ("dusk", "dawn", "minioninfo", "demoninfo", "nominate", "vote", "execute", "dead")})
+_H.update({f"h_em_{k}.png": 220 for k in ("demon", "minions", "notinplay", "youare", "selected", "thisplayer", "yourrole",
+                                          "yes", "no", "good", "evil", "general_good", "general_evil", "general_neither", "moon")})
+_H.update({f"h_web_{k}.png": 120 for k in ("tl", "tr", "bl", "br")})
+_H.update({f"h_ghost{i}.png": 240 for i in (1, 2, 3)})
+_H.update({f"h_wisp{i}.png": 96 for i in range(1, 7)})
+_H.update({f"h_smoke{i}.png": 200 for i in range(1, 5)})
+_H.update({f"h_cflame{i}.png": 60 for i in range(1, 5)})
+_H.update({f"h_candle{i}.png": 160 for i in range(1, 5)})
+_H.update({f"h_pumpkin{i}.png": 160 for i in range(1, 5)})
+ART.update({f.rsplit(".", 1)[0]: (CUT / f, w) for f, w in _H.items()})
 ART.update({f"c_em_{k}": (CUT / f"c_em_{k}.png", 220) for k in ("demon", "minions", "notinplay", "youare", "selected", "thisplayer", "yourrole",
                                                                "yes", "no", "good", "evil", "general_good", "general_evil", "general_neither", "moon")})
 
@@ -72,7 +89,9 @@ def webp_uri(path, width, alpha_quality=100):
 
 # маски гравюры (белое + прозрачность): прозрачность можно сжать с потерями — вдвое легче, на глаз не видно
 LOSSY_ALPHA = {"c_engr", "c_frontis", "c_wreath", "c_night", "c_dial", "c_win_good", "c_win_evil"}
-art = {k: webp_uri(p, w, 70 if k in LOSSY_ALPHA or k.startswith("c_em_") else 100) for k, (p, w) in ART.items() if p.exists()}
+LOSSY_ALPHA |= {"h_flame", "h_burst", "h_fog", "h_batline"}
+lossy = lambda k: k in LOSSY_ALPHA or k.startswith(("c_em_", "h_em_", "h_ghost", "h_smoke", "h_wisp", "h_cflame", "h_web_"))
+art = {k: webp_uri(p, w, 70 if lossy(k) else 100) for k, (p, w) in ART.items() if p.exists()}
 meta = json.loads((CUT / "meta.json").read_text(encoding="utf-8")) if (CUT / "meta.json").exists() else {}
 art_js = ("const ART = " + json.dumps(art, separators=(",", ":")) + ";\n"
           + "const ART_META = " + json.dumps(meta) + ";\n")

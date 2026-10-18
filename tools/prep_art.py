@@ -199,7 +199,113 @@ def beauty():
     meta["marks"] = marks()
     meta["digits"] = digits()
     meta["skins"] = skins()
+    meta["hallow"] = halloween()
     (OUT / "meta.json").write_text(json.dumps(meta), encoding="utf-8")
+
+
+def light_rgba(src, lift=10):
+    """Цветной свет на чёрном (призрак) → RGBA: прозрачность = яркость, цвет без затемнения (ложится на любой фон)."""
+    a = np.asarray(Image.open(src).convert("RGB")).astype(float)
+    m = a.max(axis=2)
+    al = np.clip((m - lift) / (255 - lift), 0, 1)
+    rgb = np.clip(a / np.maximum(m[..., None], 1) * 255, 0, 255)
+    return Image.fromarray(np.dstack([rgb, al * 255]).round().astype(np.uint8), "RGBA")
+
+
+def black_alpha(src, thr=40):
+    """Предметы на чёрном (эмблемы): фон, связанный с краем кадра, — прозрачный с мягким краем; тёмное внутри предмета остаётся."""
+    a = np.asarray(Image.open(src).convert("RGB")).astype(float)
+    m = a.max(axis=2)
+    lab, _ = ndimage.label(m < thr)
+    edge = set(lab[0, :]) | set(lab[-1, :]) | set(lab[:, 0]) | set(lab[:, -1]); edge.discard(0)
+    bg = np.isin(lab, list(edge))
+    al = np.where(bg, np.clip((m - 8) / (thr - 8), 0, 1) * 255, 255)
+    return Image.fromarray(np.dstack([a, al]).round().astype(np.uint8), "RGBA")
+
+
+def grid_frames(im, cols, rows, pad=6):
+    """Кадры покадровой анимации: клетки сетки обрезаются одной общей рамкой — тело не прыгает между кадрами."""
+    W, H = im.size; a = np.asarray(im)[..., 3] > 24; cells, box = [], [10**9, 10**9, -1, -1]
+    for r in range(rows):
+        for c in range(cols):
+            x0, y0 = round(c * W / cols), round(r * H / rows); x1, y1 = round((c + 1) * W / cols), round((r + 1) * H / rows)
+            ys, xs = np.where(a[y0:y1, x0:x1]); cells.append((x0, y0))
+            if len(xs): box = [min(box[0], xs.min()), min(box[1], ys.min()), max(box[2], xs.max()), max(box[3], ys.max())]
+    bx0, by0, bx1, by1 = box[0] - pad, box[1] - pad, box[2] + pad + 1, box[3] + pad + 1
+    return [im.crop((x0 + bx0, y0 + by0, x0 + bx1, y0 + by1)) for x0, y0 in cells]
+
+
+def strip(frames, h):
+    """Кадры в одну горизонтальную полосу одинаковой высоты (для CSS steps())."""
+    fr = [f.resize((round(f.width * h / f.height), h), Image.LANCZOS) for f in frames]
+    out = Image.new("RGBA", (sum(f.width for f in fr), h), (255, 255, 255, 0)); x = 0
+    for f in fr: out.paste(f, (x, 0)); x += f.width
+    return out
+
+
+def halloween():
+    """Стиль «Хэллоуин» (prompts_halloween.md, файлы h_*) → art/cut; геометрия сундука — в meta.hallow."""
+    out = {}
+    def have(n): return (SRC / f"{n}.png").exists()
+    def save(name, im, fmt="png"):
+        if fmt == "jpg": im.convert("RGB").save(OUT / f"{name}.jpg", quality=90)
+        else: im.save(OUT / f"{name}.png")
+        out[name] = list(im.size)
+    if have("h_tabs"):  # 4×2: крест, луна, котёл, книга с зубами / книга некромантии, маска, три глаза, тыква
+        for k, im in zip(["day", "night", "setup", "table", "log", "roles", "menu", "pumpkin"], grid_pieces(white_alpha(SRC / "h_tabs.png"), 4, 2)):
+            save("h_tab_" + k, im)
+    for n in ("h_crypt", "h_splash"):
+        if have(n): save(n, Image.open(SRC / f"{n}.png"), "jpg")
+    for n in ("h_header_day", "h_header_night"):  # шапки: средняя полоса
+        if have(n): im = Image.open(SRC / f"{n}.png"); w, h = im.size; save(n, im.crop((0, round(h * .26), w, round(h * .74))), "jpg")
+    for n in ("h_win_good", "h_win_evil"):  # на светлом экране конца игры — с умножением (белое становится прозрачным)
+        if have(n): save(n, Image.open(SRC / f"{n}.png"), "jpg")
+    for n in ("h_ring", "h_frame", "h_skull", "h_chest_open"):
+        if have(n): save(n, alpha_bbox(white_alpha(SRC / f"{n}.png"), thr=20))
+    if have("h_emblems"):
+        keys = ["demon", "minions", "notinplay", "youare", "selected", "thisplayer", "yourrole", "yes", "no", "good", "evil",
+                "general_good", "general_evil", "general_neither", "moon"]
+        for k, im in zip(keys, grid_pieces(black_alpha(SRC / "h_emblems.png"), 5, 3, thr=60)): save("h_em_" + k, im)
+    if have("h_glyphs"):
+        for k, im in zip(["dusk", "dawn", "minioninfo", "demoninfo", "nominate", "vote", "execute", "dead"], grid_pieces(white_alpha(SRC / "h_glyphs.png"), 4, 2)):
+            save("h_g_" + k, im)
+    if have("h_decor"):  # тушь: 4 уголка паутины сверху; паук, разделитель-мышь, венок снизу
+        o = dark_mask(Image.open(SRC / "h_decor.png"), lo=40, hi=230); bs = sheet_pieces(o, dil=12)
+        top = sorted([b for b in bs if b[3] < o.height * .4], key=lambda b: b[0])
+        low = sorted([b for b in bs if b[1] >= o.height * .35], key=lambda b: b[0])
+        for k, b in zip(["tl", "tr", "bl", "br"], top): save("h_web_" + k, o.crop(b))
+        for k, b in zip(["spider", "batline", "wreath"], low): save("h_" + k, o.crop(b))
+        if (OUT / "h_wreath.png").exists():  # венок у значка ночного шага — осенним оранжевым (фон — картинка, не маска)
+            w = np.asarray(Image.open(OUT / "h_wreath.png")).copy(); w[..., 0], w[..., 1], w[..., 2] = 214, 120, 44
+            save("h_wreath", Image.fromarray(w, "RGBA"))
+        print("украшения Хэллоуина:", len(top), "уголка,", len(low), "нижних")
+    if have("h_chest1"):  # сундук: закрытый, короб без крышки, крышка — по x; крышка и короб ставятся по закрытому
+        c = white_alpha(SRC / "h_chest1.png"); bs = sorted(sheet_pieces(c, dil=8), key=lambda b: b[0])[:3]
+        closed, box, lid = [c.crop(b) for b in bs]
+        save("h_chest_closed", closed); save("h_chest_box", box); save("h_chest_lid", lid)
+        cw, ch = closed.size
+        # короб — по низу и центру закрытого сундука, крышка — по верху и центру (доли размера закрытого сундука)
+        out["chest"] = {"w": cw, "h": ch,
+                        "box": [round((cw - box.width) / 2 / cw, 4), round((ch - box.height) / ch, 4), round(box.width / cw, 4), round(box.height / ch, 4)],
+                        "lid": [round((cw - lid.width) / 2 / cw, 4), 0, round(lid.width / cw, 4), round(lid.height / ch, 4)]}
+        print("сундук:", out["chest"])
+    if have("h_ghost"):  # призрак — цветной свет на чёрном, 3 позы
+        for i, im in enumerate(grid_pieces(light_rgba(SRC / "h_ghost.png"), 3, 1, thr=30), 1): save(f"h_ghost{i}", im)
+    if have("h_bat"):
+        save("h_bat_strip", strip(grid_frames(white_alpha(SRC / "h_bat.png"), 3, 2), 120))
+    if have("h_raven"):
+        save("h_raven_strip", strip(grid_frames(white_alpha(SRC / "h_raven.png"), 4, 1), 140))
+    if have("h_flame"): save("h_flame", alpha_bbox(light_mask(SRC / "h_flame.png", lift=14), thr=8))
+    if have("h_burst"): save("h_burst", alpha_bbox(light_mask(SRC / "h_burst.png", lift=12), thr=8))
+    for n, cols, rows, k in (("h_wisps", 3, 2, "h_wisp"), ("h_smoke", 4, 1, "h_smoke"), ("h_candle_flame", 4, 1, "h_cflame")):
+        if have(n):
+            for i, im in enumerate(grid_pieces(light_mask(SRC / f"{n}.png", lift=12), cols, rows, thr=20), 1): save(f"{k}{i}", im)
+    for n, k in (("h_candles", "h_candle"), ("h_pumpkins", "h_pumpkin")):
+        if have(n):
+            for i, im in enumerate(grid_pieces(white_alpha(SRC / f"{n}.png"), 4, 1), 1): save(f"{k}{i}", im)
+    if have("h_fog"):
+        f = light_mask(SRC / "h_fog.png", lift=10); w, h = f.size; save("h_fog", f.crop((0, h // 2 - 40, w, h)))
+    return out
 
 
 def dark_mask(im, lo=40, hi=225):

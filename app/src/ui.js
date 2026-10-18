@@ -131,6 +131,9 @@ const art = (k, cls) => {
   if (typeof ART === 'undefined') return '';
   if (UI.skin === 'engr' && ENGR_GLYPHS.includes(k) && ART['c_g_' + k]) return `<span class="${cls} gm" aria-hidden="true" style="--m:var(--a-c-g-${k})"></span>`;
   if (UI.skin === 'engr' && (k === 'win_good' || k === 'win_evil') && ART['c_' + k]) k = 'c_' + k;
+  // «Хэллоуин»: глифы — свои медальоны, экраны победы — свои (на светлом экране — умножением, белое уходит)
+  if (UI.skin === 'hallow' && ENGR_GLYPHS.includes(k) && ART['h_g_' + k]) k = 'h_g_' + k;
+  if (UI.skin === 'hallow' && (k === 'win_good' || k === 'win_evil') && ART['h_' + k]) k = 'h_' + k;
   return ART[k] ? `<img class="${cls}" src="${ART[k]}" alt="">` : '';
 };
 const roleLine = p => p.role ? `<span class="cr t-${team(p.role)}">${esc(E.rname(p.role))}${p.believes ? ' → ' + esc(E.rname(p.believes)) : ''}${E.isTraveller(p) ? ' · Странник' : ''}</span>` : '<span class="cr muted">без роли</span>';
@@ -273,7 +276,7 @@ function legendOverlay() {
     </div></div></div>`;
 }
 /* ---------- оформление: Basic (как было), «Лунная гравюра», «Витраж во тьме» — у каждого устройства своё (localStorage) ---------- */
-const SKINS = [['basic', 'Basic'], ['engr', 'Лунная гравюра'], ['glass', 'Витраж во тьме']];
+const SKINS = [['basic', 'Basic'], ['engr', 'Лунная гравюра'], ['glass', 'Витраж во тьме'], ['hallow', 'Хэллоуин']];
 const SKIN_KEY = 'botc-grimoire-skin';
 function skinLoad() { try { const v = localStorage.getItem(SKIN_KEY); return SKINS.some(s => s[0] === v) ? v : 'basic'; } catch (e) { return 'basic'; } }
 // значки вкладок (в Basic скрыты): контур, у .f — заливка выбранной вкладки в «Витраже», .k — детали поверх заливки
@@ -287,17 +290,21 @@ const TAB_ICO = {
   menu: '<path class="f" d="M5.5 9.6l2.4 2.4-2.4 2.4-2.4-2.4zM12 9.6l2.4 2.4-2.4 2.4-2.4-2.4zM18.5 9.6l2.4 2.4-2.4 2.4-2.4-2.4z"/>',
 };
 const tabIco = k => UI.skin === 'engr' && HAS_ART('c_tab_' + k) ? `<span class="ti tim" aria-hidden="true" style="--m:var(--a-c-tab-${k})"></span>`
-  : UI.skin === 'glass' && HAS_ART('d_tab_' + k) ? `<img class="ti tig" src="${ART['d_tab_' + k]}" alt="" aria-hidden="true">` : `<svg class="ti" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${TAB_ICO[k]}</svg>`;
+  : UI.skin === 'glass' && HAS_ART('d_tab_' + k) ? `<img class="ti tig" src="${ART['d_tab_' + k]}" alt="" aria-hidden="true">`
+  : UI.skin === 'hallow' && HAS_ART('h_tab_' + k) ? `<img class="ti tig" src="${ART['h_tab_' + k]}" alt="" aria-hidden="true">` : `<svg class="ti" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${TAB_ICO[k]}</svg>`;
 // картинка фазы над экраном ночи и дня: в гравюре — гравюра тушью (днём чернила, ночью серебро), в витраже ночью — ничего
 function phaseArt(k) {
   if (UI.skin === 'engr' && HAS_ART('c_engr')) return `<div class="phase-wrap"><div class="skengr ${k === 'night' && HAS_ART('c_night') ? 'night' : ''}" role="img" aria-label="Городок под луной"></div></div>`;
   if (UI.skin === 'glass' && k === 'night') return '';
+  if (UI.skin === 'hallow' && HAS_ART('h_header_' + k)) return `<div class="phase-wrap"><img class="phase-art hhead" src="${ART['h_header_' + k]}" alt=""></div>`;
   return `<div class="phase-wrap">${art(k, 'phase-art')}</div>`;
 }
 // заставка при запуске (кроме Basic): исчезает сама через 2 секунды или по нажатию
 function splashHtml() {
   if (!UI.splash || UI.skin === 'basic') return '';
-  const pic = UI.skin === 'engr' ? art('c_frontis', 'spart') : art('d_rose', 'spart');
+  // «Хэллоуин»: склеп под луной на весь экран, из-за него вылетают летучие мыши
+  const bats = HAS_ART('h_bat_strip') ? [1, 2, 3, 4].map(i => `<i class="hsbat b${i}" aria-hidden="true"></i>`).join('') : '';
+  const pic = UI.skin === 'engr' ? art('c_frontis', 'spart') : UI.skin === 'hallow' ? art('h_splash', 'spart cover') + bats : art('d_rose', 'spart');
   const ph = S.phase === 'setup' ? 'подготовка' : S.phase === 'night' ? `ночь ${S.n}` : S.phase === 'day' ? `день ${S.n}` : 'игра окончена';
   return `<div class="splash" data-act="splashOff" role="dialog" aria-label="Гримуар рассказчика">${pic}
     <div class="spt"><div class="sptitle">Гримуар<br>рассказчика</div><div class="spsub">${esc(S.script.name)} · ${ph}</div><div class="sphint">Нажмите, чтобы продолжить</div></div></div>`;
@@ -307,7 +314,11 @@ function artVars() {
   if (typeof ART === 'undefined') return;
   const keys = ['wall_bg', 'wall_edge', 'tablet', 'tablet_cracked', 'wall_glow', 'fx_open', 'fx_circle', 'poison_drips', 'poison_frame', 'drunk_foam', 'drunk_frame',
     'c_engr', 'c_night', 'c_dial', 'c_wreath', 'c_fl_short', 'c_fl_mid', 'c_fl_long', 'c_cor_tl', 'c_cor_tr', 'c_cor_bl', 'c_cor_br', 'd_rose']
-    .concat(['day', 'night', 'setup', 'table', 'log', 'roles', 'menu'].map(k => 'c_tab_' + k), ENGR_GLYPHS.map(k => 'c_g_' + k), [...Array(24).keys()].map(i => 'rune' + i));
+    .concat(['day', 'night', 'setup', 'table', 'log', 'roles', 'menu'].map(k => 'c_tab_' + k), ENGR_GLYPHS.map(k => 'c_g_' + k), [...Array(24).keys()].map(i => 'rune' + i))
+    // «Хэллоуин»: склеп, сундук, нечисть, свет и дым, украшения
+    .concat(['h_crypt', 'h_ring', 'h_frame', 'h_chest_box', 'h_chest_lid', 'h_chest_open', 'h_bat_strip', 'h_raven_strip', 'h_wreath', 'h_spider', 'h_batline',
+      'h_flame', 'h_burst', 'h_fog', 'h_web_tl', 'h_web_tr', 'h_candle3', 'h_pumpkin1', 'h_pumpkin3'],
+      [1, 2, 3, 4, 5, 6].map(i => 'h_wisp' + i), [1, 2, 3, 4].map(i => 'h_smoke' + i), [1, 2, 3, 4].map(i => 'h_cflame' + i));
   const el = document.createElement('style'); el.id = 'artvars';
   el.textContent = `:root{${keys.filter(HAS_ART).map(k => `--a-${k.replace(/_/g, '-')}:url("${ART[k]}");`).join('')}--frame-slice:${(typeof ART_META !== 'undefined' && ART_META.frame_slice) || 0};--drunk-slice:${(typeof ART_META !== 'undefined' && ART_META.drunk_slice) || 0};}`;
   document.head.appendChild(el);
@@ -381,6 +392,13 @@ const CARD_ART = { 'ЭТО ДЕМОН': 'card_demon', 'ЭТО ВАШИ ПРИС�
   'ДОБРО': 'card_general_good', 'ЗЛО': 'card_general_evil', 'НИЧЬЯ': 'card_general_neither' };
 function cardHtml(text, thumb) {
   const key = CARD_ART[String(text).toUpperCase()];
+  // «Хэллоуин»: рамка из костей и веток с паучком, эмблема карточки и надпись
+  if (UI.skin === 'hallow' && HAS_ART('h_frame')) {
+    const n = String(text).length, side = thumb ? (thumb === 'down' ? 'evil' : thumb === 'side' ? 'none' : 'good') : '';
+    const em = 'h_em_' + (key ? key.replace('card_', '') : 'moon');
+    return `<div class="shframe hframe ${side ? 'side-' + side : ''}" role="img" aria-label="${esc(text)}">${HAS_ART(em) ? `<img class="shem" src="${ART[em]}" alt="">` : ''}
+      <span class="shft sz-${n <= 3 ? 'xl' : n <= 12 ? 'l' : 'm'}">${esc(text)}</span></div>`;
+  }
   // «Лунная гравюра»: серебряная рамка с гравированными уголками, гравированная эмблема карточки и крупная надпись
   if (UI.skin === 'engr' && HAS_ART('c_cor_tl')) {
     const n = String(text).length, side = thumb ? (thumb === 'down' ? 'evil' : thumb === 'side' ? 'none' : 'good') : '';
@@ -581,7 +599,7 @@ function dealButtons() {
   if (d && d.finished) return '<div class="note-ok">Роли выданы жребием (стена). Заново не раздаются; роль можно сменить только на роль сценария, которой нет в игре.</div>';
   if (d) return '<div class="small muted">Идёт жребий (карточка «Выдача ролей» выше): роли закреплены за игроками — случайная раздача недоступна.</div>';
   const prob = E.drawProblem(S);
-  return `<div class="row"><button class="btn" data-act="deal">${E.validPool(S) ? 'Раздать выбранные роли случайно' : 'Раздать роли случайно'}</button><button class="btn" data-act="drawStart" ${prob ? 'disabled' : ''}>Жребий: каменная стена</button></div>
+  return `<div class="row"><button class="btn" data-act="deal">${E.validPool(S) ? 'Раздать выбранные роли случайно' : 'Раздать роли случайно'}</button><button class="btn" data-act="drawStart" ${prob ? 'disabled' : ''}>Жребий: ${cryptOn() ? 'склеп' : 'каменная стена'}</button></div>
     ${prob && S.pool && S.pool.length ? `<div class="small muted">${esc(prob)}</div>` : ''}`;
 }
 // подсказки (ideas.js): нажатие подставляет текст в поле
@@ -1334,15 +1352,18 @@ function drawCard() {
   const waiting = d && !d.finished ? core.filter(p => !p.role) : [], hid = rolesHidden();
   // роли открыты — можно снова закрыть «шторкой» (например, перед тем как снова выкатить стену)
   const hideBtn = d && !hid ? '<button class="btn" data-act="rolesHide">Скрыть роли</button>' : '';
-  return `<div class="card drawcard"><h3>Выдача ролей · каменная стена</h3>
-    <div class="small muted">Игроки по кругу открывают светящиеся ячейки — как тянут жетон из мешочка: роли разложены по ячейкам в случайном порядке, и какую ячейку игрок выберет, ту роль и получит. Где какая роль, не видит никто, и вы тоже. ${src} Пока игрок не открыл ячейку, в его карточке можно назначить роль или тип роли — назначенное выпадет ему из любой ячейки. Пьяница увидит роль, которой себя считает. Свернуть стену — невидимой кнопкой в <b>левом нижнем углу</b> экрана; после неё роли на экране закрыты, пока вы не нажмёте «Показать роли».</div>
+  const cr = cryptOn(); // «Хэллоуин»: вместо стены — склеп с сундуками
+  return `<div class="card drawcard"><h3>Выдача ролей · ${cr ? 'склеп' : 'каменная стена'}</h3>
+    <div class="small muted">${cr
+      ? `Игроки по кругу открывают сундуки со светящимися рунами — как тянут жетон из мешочка: роли разложены по сундукам в случайном порядке, и какой сундук игрок выберет, ту роль и получит. Где какая роль, не видит никто, и вы тоже. ${src} Пока игрок не открыл сундук, в его карточке можно назначить роль или тип роли — назначенное выпадет ему из любого сундука. Пьяница увидит роль, которой себя считает. Свернуть склеп — невидимой кнопкой в <b>левом нижнем углу</b> экрана; после него роли на экране закрыты, пока вы не нажмёте «Показать роли».`
+      : `Игроки по кругу открывают светящиеся ячейки — как тянут жетон из мешочка: роли разложены по ячейкам в случайном порядке, и какую ячейку игрок выберет, ту роль и получит. Где какая роль, не видит никто, и вы тоже. ${src} Пока игрок не открыл ячейку, в его карточке можно назначить роль или тип роли — назначенное выпадет ему из любой ячейки. Пьяница увидит роль, которой себя считает. Свернуть стену — невидимой кнопкой в <b>левом нижнем углу</b> экрана; после неё роли на экране закрыты, пока вы не нажмёте «Показать роли».`}</div>
     ${!ok ? '<div class="warn">Нужно от 5 до 15 игроков (без Странников).</div>'
       : d && d.finished ? `<div class="note-ok">Роли выданы жребием. Заново их не раздать; роль можно сменить только на роль сценария, которой нет в игре.</div>${hideBtn}`
-      : d ? `<div class="note-ok">Жребий идёт: осталось ячеек — ${left}. Очередь: ${esc(E.nm(S, d.turn))}</div>
+      : d ? `<div class="note-ok">Жребий идёт: осталось ${cr ? 'сундуков' : 'ячеек'} — ${left}. Очередь: ${esc(E.nm(S, d.turn))}</div>
         ${waiting.length ? `<div class="flabel"><span>Ещё не открыли — нажмите, чтобы назначить роль или тип</span></div><div class="seg">${waiting.map(p => `<button data-act="openP" data-arg="${p.id}">${esc(p.name)}${!hid && (S.assign || {})[p.id] ? ' → ' + esc(assignLabel(S.assign[p.id])) : ''}</button>`).join('')}</div>` : ''}
         <div class="row"><button class="btn primary" data-act="wallShow">Продолжить жребий</button><button class="btn danger" data-act="drawCancel">Отменить жребий</button>${hideBtn}</div>`
       : prob ? `<div class="warn">${esc(prob)}</div>`
-      : '<button class="btn primary wide" data-act="drawStart">Выкатить стену</button>'}</div>`;
+      : `<button class="btn primary wide" data-act="drawStart">${cr ? 'Открыть склеп' : 'Выкатить стену'}</button>`}</div>`;
 }
 
 // «Роли на игру»: рассказчик отмечает роли сценария; раздача и жребий берут только их (по числу игроков)
@@ -1383,43 +1404,68 @@ function assignHtml(p) {
     <select data-act="assign" data-arg="${p.id}">${opt('', 'Случайно (по умолчанию)')}
       ${teams.length ? `<optgroup label="Тип роли">${teams.map(t => opt('t:' + t, 'Любой: ' + E.TEAM_RU[t])).join('')}</optgroup>` : ''}
       ${['townsfolk', 'outsider', 'minion', 'demon'].map(t => { const rs = roles.filter(r => team(r) === t); return rs.length ? `<optgroup label="${TEAM_PL[t]}">${rs.map(r => opt('r:' + r, E.rname(r))).join('')}</optgroup>` : ''; }).join('')}
-    </select></div><div class="small muted">Какую ячейку стены игрок ни откроет — выпадет назначенное. Только из ролей на игру; роли, выданные или назначенные другим, здесь не предлагаются.</div></div>`;
+    </select></div><div class="small muted">${cryptOn() ? 'Какой сундук склепа' : 'Какую ячейку стены'} игрок ни откроет — выпадет назначенное. Только из ролей на игру; роли, выданные или назначенные другим, здесь не предлагаются.</div></div>`;
+}
+/* «Хэллоуин»: склеп вместо стены (просьба пользователя 2026-10-18). Ячейка — сундук: короб и крышка отдельными картинками (крышка
+   распахивается), руна — на замке; после выдачи — открытый пустой сундук с паутиной. При открытии из сундука вылетает случайная нечисть */
+const HFX = ['ghost', 'bats', 'skull', 'raven', 'wisps'];
+const cryptOn = () => UI.skin === 'hallow' && HAS_ART('h_chest_box') && HAS_ART('h_crypt');
+const hChest = () => '<span class="hchest" aria-hidden="true"><i class="hbox"></i><i class="hlid"></i><i class="hopen"></i></span>';
+// геометрия сундука (prep_art.halloween → meta.hallow.chest): короб и крышка в долях закрытого сундука
+function hChestVars() {
+  const c = (typeof ART_META !== 'undefined' && ART_META.hallow && ART_META.hallow.chest) || { w: 485, h: 375, box: [0, .11, 1, .89], lid: [0, 0, 1, .46] }, pc = v => (v * 100).toFixed(2) + '%';
+  return `--hca:${c.w} / ${c.h};--hbx:${pc(c.box[0])};--hby:${pc(c.box[1])};--hbw:${pc(c.box[2])};--hbh:${pc(c.box[3])};--hlx:${pc(c.lid[0])};--hly:${pc(c.lid[1])};--hlw:${pc(c.lid[2])};--hlh:${pc(c.lid[3])}`;
+}
+// склеп: туман, свечи и тыквы по углам (поверх фона, под сундуками)
+const cryptDecor = () => `<div class="hcrypt" aria-hidden="true"><i class="hfog"></i>
+  <span class="hcorner l"><i class="hpump" style="background-image:var(--a-h-pumpkin1)"></i><span class="hcand"><i class="hstick"></i><i class="hcf"></i></span></span>
+  <span class="hcorner r"><span class="hcand"><i class="hstick"></i><i class="hcf"></i></span><i class="hpump" style="background-image:var(--a-h-pumpkin3)"></i></span></div>`;
+// нечисть, вылетающая из сундука: место — центр сундука (UI.openPos), куда лететь — в сторону от края (--dir)
+function cryptFx() {
+  const pos = UI.openPos || { x: 180, y: 300, dir: 1 }, fx = UI.openFx || 'ghost';
+  const body = fx === 'ghost' ? `<i class="hcre"><img class="hg g1" src="${ART.h_ghost1}" alt=""><img class="hg g2" src="${ART.h_ghost2}" alt=""><img class="hg g3" src="${ART.h_ghost3}" alt=""></i>`
+    : fx === 'bats' ? [1, 2, 3, 4, 5, 6].map(i => `<i class="hbatf f${i}"></i>`).join('')
+      : fx === 'skull' ? `<i class="hcre"><i class="hfl"></i><img class="hsk" src="${ART.h_skull}" alt=""></i>`
+        : fx === 'raven' ? '<i class="hrav r1"></i><i class="hrav r2"></i>'
+          : [1, 2, 3, 4, 5].map(i => `<i class="hwi w${i}" style="--m:var(--a-h-wisp${i})"></i>`).join('');
+  return `<div class="hfx fx-${fx}" aria-hidden="true" style="--x:${pos.x}px;--y:${pos.y}px;--dir:${pos.dir}"><i class="hburst"></i><i class="hsm s1"></i><i class="hsm s2"></i>${body}</div>`;
 }
 function wallOverlay() {
   const d = S.draw; if (!UI.wall || !d) return '';
-  const turn = d.turn && E.P(S, d.turn), open = d.open !== null ? d.cells[d.open] : null;
+  const turn = d.turn && E.P(S, d.turn), open = d.open !== null ? d.cells[d.open] : null, crypt = cryptOn();
   const cells = d.cells.map((c, i) => {
     const used = !!c.pid, crack = c.done && !HAS_ART('tablet_cracked') ? `<svg class="crack" viewBox="0 0 48 48" aria-hidden="true" style="transform:rotate(${(i * 67) % 360}deg)"><path d="${CRACKS[i % 3]}"/></svg>` : '';
     // руна: рисованная маска (24 знака из runes.png) или запасной SVG
     const rune = HAS_ART('rune0') ? `<span class="runeg" aria-hidden="true"><i class="runei" style="--rm:var(--a-rune${c.glyph % 24})"></i></span>`
       : `<svg class="rune" viewBox="0 0 48 48" aria-hidden="true"><path d="${RUNES[c.glyph % RUNES.length]}"/></svg>`;
-    return `<button class="wcell c-${c.color} ${c.done ? 'done' : ''} ${UI.cracking === i ? 'cracking' : ''} ${d.open === i ? 'opened' : ''}" data-act="drawOpen" data-arg="${i}" ${used || !turn ? 'disabled' : ''} aria-label="${used ? 'Открытая ячейка' : 'Ячейка ' + (i + 1)}" style="--d:${(i * 0.37) % 2.4}s">
-      ${rune}${crack}</button>`;
+    return `<button class="wcell c-${c.color} ${c.done ? 'done' : ''} ${UI.cracking === i ? 'cracking' : ''} ${d.open === i ? 'opened' : ''}" data-act="drawOpen" data-arg="${i}" ${used || !turn ? 'disabled' : ''} aria-label="${used ? (crypt ? 'Открытый сундук' : 'Открытая ячейка') : (crypt ? 'Сундук ' : 'Ячейка ') + (i + 1)}" style="--d:${(i * 0.37) % 2.4}s">
+      ${crypt ? hChest() : ''}${rune}${crack}</button>`;
   }).join('');
   const others = d.order.filter(id => (id === d.turn || !d.cells.some(c => c.pid === id)) && E.P(S, id)); // кто ещё не открывал (и тот, чья ячейка открыта сейчас)
+  const who = crypt ? 'Сундук открывает' : 'Ячейку открывает';
   // свернуть стену — невидимой кнопкой в левом нижнем углу (.grimx, как у Гримуара Шпиона): игроки не закроют её случайно
   // и не увидят чужих ролей на экране рассказчика (заметка пользователя 2026-10-16)
-  return `<div class="ov wallov" role="dialog" aria-label="Каменная стена: выдача ролей">
-    <div class="wall ${UI.wallAnim ? 'roll' : ''}"><div class="wscroll">
+  return `<div class="ov wallov ${crypt ? 'crypt' : ''}" role="dialog" aria-label="${crypt ? 'Склеп' : 'Каменная стена'}: выдача ролей">
+    <div class="wall ${UI.wallAnim ? 'roll' : ''}" ${crypt ? `style="${hChestVars()}"` : ''}>${crypt ? cryptDecor() : ''}<div class="wscroll">
       <div class="wtop"><span aria-hidden="true"></span>
         <div class="wturn">${!turn ? '<b>Все роли выданы</b>' : others.length > 1
           // очередь по кругу; другой игрок — выбором из списка (компактно, не занимает экран)
-          ? `<label for="wsel">Ячейку открывает</label><span class="wsel"><select id="wsel" data-act="drawTurn" aria-label="Кто открывает ячейку" ${d.open !== null ? 'disabled' : ''}>${others.map(id => `<option value="${id}" ${id === d.turn ? 'selected' : ''}>${esc(E.nm(S, id))}</option>`).join('')}</select><span aria-hidden="true">▾</span></span>`
-          : `<span>Ячейку открывает</span><b>${esc(turn.name)}</b>`}</div>
+          ? `<label for="wsel">${who}</label><span class="wsel"><select id="wsel" data-act="drawTurn" aria-label="${crypt ? 'Кто открывает сундук' : 'Кто открывает ячейку'}" ${d.open !== null ? 'disabled' : ''}>${others.map(id => `<option value="${id}" ${id === d.turn ? 'selected' : ''}>${esc(E.nm(S, id))}</option>`).join('')}</select><span aria-hidden="true">▾</span></span>`
+          : `<span>${who}</span><b>${esc(turn.name)}</b>`}</div>
         <button class="wbtn" data-act="undo" ${HISTORY.length ? '' : 'disabled'} aria-label="Отменить последнее">↶</button></div>
       <div class="wgrid">${cells}</div>
-      <div class="whint">${turn ? 'Нажмите на светящуюся ячейку' : 'Все роли выданы. Верните телефон рассказчику'}</div>
+      <div class="whint">${turn ? (crypt ? 'Нажмите на сундук со светящейся руной' : 'Нажмите на светящуюся ячейку') : 'Все роли выданы. Верните телефон рассказчику'}</div>
     </div></div>
-    <button class="grimx" data-act="wallHide" aria-label="Свернуть стену"></button>
+    <button class="grimx" data-act="wallHide" aria-label="${crypt ? 'Свернуть склеп' : 'Свернуть стену'}"></button>
     ${open ? (() => { const op = E.P(S, open.pid), r = (op && seenRole(op)) || E.drawShown(open), al = isGoodRole(r) ? 'good' : 'evil';
       // ячейка «распахивается»: роль вырастает из её места на стене; за иконкой — вспышка и магический круг цвета её рун.
       // Имени нет — только «Ваша роль»; закрыть можно через 2 секунды (подсказка появляется тогда же)
       const col = d.open % 3, row = Math.floor(d.open / 3);
       return `<div class="wreveal side-${al} c-${open.color}" data-act="drawClose" role="dialog" aria-label="Ваша роль" style="transform-origin:${Math.round((col + 0.5) / 3 * 100)}% ${170 + row * 122}px">
-        <div class="wrfor">Ваша роль</div>
+        ${crypt ? cryptFx() : ''}<div class="wrfor">Ваша роль</div>
         <div class="wrart">${HAS_ART('fx_circle') ? '<i class="fxc"></i>' : ''}${HAS_ART('fx_open') ? '<i class="fxo"></i>' : ''}${ico(r, al, 'wric')}</div><div class="wrname">${esc(E.rname(r))}</div>
         <div class="wrteam">${esc(E.TEAM_RU[team(r)] || '')} · ${al === 'good' ? 'добро' : 'зло'}</div><div class="wrab">${esc(DATA.roles[r].ability)}</div>
-        <div class="shhint wrlater">Запомните роль и нажмите — ячейка закроется</div></div>`; })() : ''}</div>`;
+        <div class="shhint wrlater">${crypt ? 'Запомните роль и нажмите — сундук закроется' : 'Запомните роль и нажмите — ячейка закроется'}</div></div>`; })() : ''}</div>`;
 }
 
 function editorHtml(p) {
@@ -1647,7 +1693,7 @@ function viewMenu() {
     <div class="small muted">${UI.save === 'cloud' ? 'Игра сохраняется после каждого действия: на этом устройстве и в вашем аккаунте claude.ai.' : 'Игра сохраняется после каждого действия на этом устройстве.'}</div></div>
     <div class="card"><h3>Оформление</h3>
       <div class="seg skinseg" role="group" aria-label="Оформление">${SKINS.map(([k, l]) => `<button class="${UI.skin === k ? 'on' : ''}" data-act="skin" data-arg="${k}" aria-pressed="${UI.skin === k}">${l}</button>`).join('')}</div>
-      <div class="small muted">Basic — как было. «Лунная гравюра» — книжные гравюры: днём тушью, ночью серебром. «Витраж во тьме» — витражи в тёмной оправе, Гримуар на витражной розе. Выбор запоминается на этом устройстве.</div></div>
+      <div class="small muted">Basic — как было. «Лунная гравюра» — книжные гравюры: днём тушью, ночью серебром. «Витраж во тьме» — витражи в тёмной оправе, Гримуар на витражной розе. «Хэллоуин» — тыквы, паутина и склеп с сундуками, из которых вылетает нечисть. Выбор запоминается на этом устройстве.</div></div>
     <div class="card"><h3>Перенос игры</h3>
       <button class="btn" data-act="copyJson">Скопировать игру</button>${UI.copied ? `<div class="note-ok">${esc(UI.copied)}</div>` : ''}
       <textarea id="importJson" data-act="importText" placeholder="Вставьте сюда скопированную игру">${esc(UI.importText)}</textarea>
@@ -2028,7 +2074,13 @@ const A = {
     render(); },
   rolesHide: () => { draft(S => { if (S.draw) S.draw.hidden = true; }); window.scrollTo(0, 0); },
   drawTurn: (a, el) => { const id = el && el.value; if (id) draft(S => { S.draw.turn = id; }); },
-  drawOpen: i => { UI.openAt = Date.now(); act(S => E.drawOpen(S, +i), 'жребий: ячейка открыта'); },
+  drawOpen: i => { UI.openAt = Date.now();
+    // склеп: откуда вылетает нечисть (центр сундука на стене) и кто — случайно; из крайних столбцов летит к середине
+    const cell = document.querySelector(`.wcell[data-arg="${i}"]`), wall = document.querySelector('.wall');
+    if (cell && wall) { const a = cell.getBoundingClientRect(), b = wall.getBoundingClientRect(), col = +i % 3;
+      UI.openPos = { x: Math.round(a.left + a.width / 2 - b.left), y: Math.round(a.top + a.height * .35 - b.top), dir: col === 2 ? -1 : col === 0 ? 1 : (Math.random() < .5 ? -1 : 1) }; }
+    UI.openFx = HFX[Math.floor(Math.random() * HFX.length)];
+    act(S => E.drawOpen(S, +i), 'жребий: ячейка открыта'); },
   // закрыть роль можно не раньше чем через 2 секунды — чтобы игрок успел прочитать и не закрыл случайно (было 3 с; просьба пользователя 2026-10-18)
   drawClose: () => { if (UI.openAt && Date.now() - UI.openAt < 2000) return; UI.openAt = null;
     UI.cracking = S.draw.open; act(S => E.drawClose(S), 'жребий: ячейка закрыта'); setTimeout(() => { UI.cracking = null; }, 1600); },
