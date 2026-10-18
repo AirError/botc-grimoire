@@ -652,6 +652,7 @@ python tools\export_files.py # готовое из out/ → Загрузки\Г�
 - Обновить сайт: `tools/site_build.py` (поднять `VERSION` — номер в имени кэша service worker; хэш страницы добавляется сам),
   скопировать `out/site/*` в `docs/`, закоммитить и `git push` (git из `%LOCALAPPDATA%\botc-grimoire\git`, вход через gh уже настроен
   в локальном конфиге репозитория). Почта коммитов: `252884166+AirError@users.noreply.github.com` — личную не использовать.
+  Страница ~9,4 МБ: `git push` может оборваться «HTTP 408» — повторить с `git -c http.postBuffer=524288000 push` (2026-10-18).
 - gh в сессиях Claude Desktop видит только свой вход (AppData изолирована): если `gh auth status` говорит «не вошли» —
   запустить `gh auth login --hostname github.com --git-protocol https --web` в фоне и передать пользователю одноразовый код.
 - Готовые файлы пользователя: `%USERPROFILE%\Downloads\Гримуар` (сборки, PDF, сайт, JSON, промпты) —
