@@ -209,6 +209,7 @@ def light_rgba(src, lift=10):
     m = a.max(axis=2)
     al = np.clip((m - lift) / (255 - lift), 0, 1)
     rgb = np.clip(a / np.maximum(m[..., None], 1) * 255, 0, 255)
+    rgb[al < .01] = 0  # цвет под полной прозрачностью — шум, только раздувает файл
     return Image.fromarray(np.dstack([rgb, al * 255]).round().astype(np.uint8), "RGBA")
 
 
@@ -276,14 +277,26 @@ def halo(im, rgb=(255, 150, 60), sigma=3.0, k=.6):
 
 
 def sprite_grid(im, grid_old, grid_new):
-    """Сетка листа: старая или новая (больше кадров) — та, чьи границы клеток пустее (предметы не пересекают границ своих клеток)."""
+    """Сетка листа: новая (больше кадров), если её границы клеток пусты — ни один предмет их не пересекает; иначе старая.
+    (Сравнивать «чья пустее» нельзя: у ворона линии сетки 4×1 входят в 4×2.)"""
     a = np.asarray(im)[..., 3] > 24; H, W = a.shape
-    def score(g):
-        c, r = g; bw, bh = max(2, W // 100), max(2, H // 100)
-        lines = [a[:, round(W * k / c) - bw:round(W * k / c) + bw].mean() for k in range(1, c)]
-        lines += [a[round(H * k / r) - bh:round(H * k / r) + bh, :].mean() for k in range(1, r)]
-        return max(lines) if lines else 0
-    return grid_new if score(grid_new) < score(grid_old) else grid_old
+    c, r = grid_new; bw, bh = max(2, W // 100), max(2, H // 100)
+    lines = [a[:, round(W * k / c) - bw:round(W * k / c) + bw].mean() for k in range(1, c)]
+    lines += [a[round(H * k / r) - bh:round(H * k / r) + bh, :].mean() for k in range(1, r)]
+    return grid_new if max(lines) < .03 else grid_old
+
+
+def alpha_pad(im, thr=8):
+    """Кадр из общей рамки: всё, что слабее порога (туман от соседней клетки, шум), — прозрачное."""
+    a = np.asarray(im).copy(); a[a[..., 3] < thr] = 0
+    return Image.fromarray(a, "RGBA")
+
+
+def facing(im):
+    """Куда смотрит летящая фигура: голова (верхняя треть силуэта) правее середины — вправо (1), левее — влево (−1)."""
+    a = np.asarray(im)[..., 3].astype(float); ys, xs = np.nonzero(a > 40)
+    top = ys < ys.min() + (ys.max() - ys.min()) * .3
+    return 1 if xs[top].mean() >= xs.mean() else -1
 
 
 def halloween():
@@ -335,8 +348,12 @@ def halloween():
     if have("h_ghost"):  # призрак — цветной свет на чёрном: 3 позы в ряд (первый лист) или 4 позы сеткой 2×2 (страшный, с броском)
         g = light_rgba(SRC / "h_ghost.png"); cols, rows = sprite_grid(g, (3, 1), (2, 2))
         for f in OUT.glob("h_ghost[0-9].png"): f.unlink()
-        for i, im in enumerate(grid_pieces(g, cols, rows, thr=30), 1): save(f"h_ghost{i}", im)
-        out["ghost_n"] = cols * rows
+        # позы — в одной общей рамке (а не каждая по своему контуру): при смене поз фигура не меняет размер
+        poses = [alpha_pad(p) for p in grid_frames(g, cols, rows, pad=0)]
+        # «тает» (4-я поза) должна лететь туда же, куда «летит» (2-я): на листе пользователя 2026-10-18 она смотрела влево
+        if len(poses) >= 4 and facing(poses[3]) != facing(poses[1]): poses[3] = poses[3].transpose(Image.FLIP_LEFT_RIGHT)
+        for i, im in enumerate(poses, 1): save(f"h_ghost{i}", im)
+        out["ghost_n"] = len(poses)
     # взмахи крыльев: 6 / 4 кадра (первые листы) или 12 / 8 (плавнее); отсвет свечей — в картинке
     for n, old, new, h, key in (("h_bat", (3, 2), (4, 3), 120, "bat"), ("h_raven", (4, 1), (4, 2), 140, "raven")):
         if have(n):

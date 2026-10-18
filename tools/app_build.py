@@ -66,7 +66,7 @@ _H.update({f"h_g_{k}.png": 128 for k in ("dusk", "dawn", "minioninfo", "demoninf
 _H.update({f"h_em_{k}.png": 220 for k in ("demon", "minions", "notinplay", "youare", "selected", "thisplayer", "yourrole",
                                           "yes", "no", "good", "evil", "general_good", "general_evil", "general_neither", "moon")})
 _H.update({f"h_web_{k}.png": 120 for k in ("tl", "tr", "bl", "br")})
-_H.update({f"h_ghost{i}.png": 400 for i in (1, 2, 3, 4)})  # призрак в конце броска вырастает в 2,5 раза — нужен запас
+_H.update({f"h_ghost{i}.png": 480 for i in (1, 2, 3, 4)})  # призрак в конце броска вырастает в 3,3 раза — нужен запас
 _H.update({f"h_wisp{i}.png": 96 for i in range(1, 7)})
 _H.update({f"h_soul{i}.png": 160 for i in range(1, 7)})
 _H.update({f"h_smoke{i}.png": 200 for i in range(1, 5)})

@@ -1427,12 +1427,13 @@ function cryptFx() {
   const pos = UI.openPos || { x: 180, y: 300, dir: 1 }, fx = UI.openFx || 'ghost';
   const ghosts = [1, 2, 3, 4].filter(i => ART['h_ghost' + i]), souls = [1, 2, 3, 4, 5, 6].filter(i => ART['h_soul' + i]);
   const bat = hSprite('bat', 'hs-bat'), rav = hSprite('raven', 'hs-rav');
-  const body = fx === 'ghost' ? `<i class="hcre"><i class="hflip">${ghosts.map(i => `<img class="hg" src="${ART['h_ghost' + i]}" alt="">`).join('')}</i></i>`
+  const body = fx === 'ghost' ? `<i class="hcre"><i class="hflip">${ghosts.map(i => `<img class="hgp" src="${ART['h_ghost' + i]}" alt="">`).join('')}</i></i>`
     : fx === 'bats' ? [1, 2, 3, 4, 5, 6].map(() => `<i class="hbatf" style="width:${Math.round(84 * bat.ar)}px;height:84px;margin:-42px 0 0 ${-Math.round(42 * bat.ar)}px">${bat.html}</i>`).join('')
       : fx === 'skull' ? `<i class="hcre hsku"><i class="hflip"><i class="hfl"></i><img class="hsk" src="${ART.h_skull}" alt=""></i></i>`
         : fx === 'raven' ? [1, 2].map(() => `<i class="hrav" style="width:${Math.round(150 * rav.ar)}px;height:150px;margin:-75px 0 0 ${-Math.round(75 * rav.ar)}px"><i class="hflip">${rav.html}</i></i>`).join('')
-          // души (если нарисованы) или болотные огоньки
-          : [1, 2, 3, 4, 5].map(i => souls.length ? `<i class="hwi soul" style="--m:var(--a-h-soul${souls[(i - 1) % souls.length]})"></i>` : `<i class="hwi" style="--m:var(--a-h-wisp${i})"></i>`).join('');
+          // души (если нарисованы; четыре разных лица из шести) или болотные огоньки
+          : souls.length ? souls.map(n => [hRand((UI.openAt || 7) + n)(), n]).sort((a, b) => a[0] - b[0]).slice(0, 4).map(([, n]) => `<i class="hwi soul" style="--m:var(--a-h-soul${n})"></i>`).join('')
+            : [1, 2, 3, 4, 5].map(i => `<i class="hwi" style="--m:var(--a-h-wisp${i})"></i>`).join('');
   return `<div class="hfx fx-${fx}" aria-hidden="true" data-fx="${fx}" data-x="${pos.x}" data-y="${pos.y}" data-dir="${pos.dir}" style="--x:${pos.x}px;--y:${pos.y}px;--dir:${pos.dir}"><i class="hburst"></i><i class="hsm s1"></i><i class="hsm s2"></i>${body}</div>`;
 }
 /* Полёт нечисти — кодом (Web Animations). Путь — плавная кривая через опорные точки, ключевые кадры через ~30 мс и линейно между
@@ -1480,19 +1481,21 @@ function cryptFly(fx) {
   const N = { bat: hSprite('bat').n, raven: hSprite('raven').n };
   if (kind === 'ghost') {
     // выныривает из сундука (вытянут), уходит в сторону, покачиваясь, — и бросается на зрителя, вырастая и растворяясь
-    const g = fx.querySelector('.hcre'), poses = [...fx.querySelectorAll('.hg')], dur = 1750;
+    // банши (4 позы: выныривает / летит / кричит / рассыпается): чаще бросается на зрителя с криком, иногда уносится и рассыпается на лету
+    const g = fx.querySelector('.hcre'), poses = [...fx.querySelectorAll('.hgp')], flee = poses.length >= 4 && R() < .35, dur = flee ? 1650 : 1750;
     const lx = (W / 2 - x0) * .9, ly = H * .42 - y0; // бросок — в середину экрана, на зрителя
-    const P = [[0, 24], [dir * 6, -50], [dir * 38, -118], [dir * 92, -150], [dir * 70 + lx * .3, -150 + (ly + 150) * .4], [lx, ly]];
-    hAnim(g, u => { const v = hAt(P, u), L = hRamp(u, .64, 1), big = 1 + 2.3 * Math.pow(L, 1.6), sway = Math.sin(u * Math.PI * 3.2) * (1 - L);
+    const P = flee ? [[0, 24], [dir * 6, -50], [dir * 40, -118], [dir * 110, -160], [dir * W * .45, -H * .3], [dir * W * .8, -H * .42]]
+      : [[0, 24], [dir * 6, -50], [dir * 38, -118], [dir * 92, -150], [dir * 70 + lx * .3, -150 + (ly + 150) * .4], [lx, ly]];
+    hAnim(g, u => { const v = hAt(P, u), L = flee ? 0 : hRamp(u, .64, 1), big = 1 + 2.3 * Math.pow(L, 1.6), sway = Math.sin(u * Math.PI * 3.2) * (1 - L), grow = flee ? 1 + .25 * hRamp(u, .5, 1) : 1;
       return { x: v.x + sway * 7, y: v.y, r: sway * 6 + hClamp(v.vx * dir * .35, -10, 10) * dir * (1 - L) + Math.sin(L * 40) * 4 * L,
-        sx: (.55 + .45 * hSmooth(hRamp(u, 0, .22))) * big, sy: (1.5 - .5 * hSmooth(hRamp(u, 0, .22))) * big, o: hFadeIO(u, .07, .9) }; }, dur, D);
-    // позы сменяются плавно (наплывом), а не скачком: 3 позы — выныривает / летит / тает; 4 — выныривает / летит / кричит / тает
-    const win = poses.length >= 4 ? [[0, .26], [.26, .6], [.6, .86], [.86, 1]] : [[0, .26], [.26, .64], [.64, 1]];
-    poses.forEach((im, i) => { const [a, b] = win[i] || [2, 2], w = .09;
-      hFade(im, u => (i === 0 ? 1 : hRamp(u, a - w / 2, a + w / 2)) * (i === win.length - 1 ? 1 : 1 - hRamp(u, b - w / 2, b + w / 2)), dur, D); });
+        sx: (.55 + .45 * hSmooth(hRamp(u, 0, .22))) * big * grow, sy: (1.5 - .5 * hSmooth(hRamp(u, 0, .22))) * big * grow, o: hFadeIO(u, .07, flee ? .8 : .9) }; }, dur, D);
+    // позы сменяются плавно (наплывом), а не скачком; [начало, конец] доли полёта, null — поза не показывается
+    const win = poses.length < 4 ? [[0, .26], [.26, .64], [.64, 1]] : flee ? [[0, .26], [.26, .62], null, [.62, 1]] : [[0, .26], [.26, .6], [.6, 1], null];
+    poses.forEach((im, i) => { const wi = win[i], w = .09, last = win.slice(i + 1).every(x => !x);
+      hFade(im, u => !wi ? 0 : (i === 0 ? 1 : hRamp(u, wi[0] - w / 2, wi[0] + w / 2)) * (last ? 1 : 1 - hRamp(u, wi[1] - w / 2, wi[1] + w / 2)), dur, D); });
     // крик: склеп вздрагивает, когда призрак бросается
     const sc = document.querySelector('.crypt .wscroll');
-    if (sc) sc.animate([0, 1, 2, 3, 4, 5, 6].map(i => ({ transform: i % 6 ? `translate(${(i % 2 ? 4 : -4) * (1 - i / 7)}px, ${(i % 3 - 1) * 2}px)` : 'none' })), { duration: 320, delay: D + dur * .7, easing: 'linear' });
+    if (sc && !flee) sc.animate([0, 1, 2, 3, 4, 5, 6].map(i => ({ transform: i % 6 ? `translate(${(i % 2 ? 4 : -4) * (1 - i / 7)}px, ${(i % 3 - 1) * 2}px)` : 'none' })), { duration: 320, delay: D + dur * .66, easing: 'linear' });
   } else if (kind === 'bats') {
     // стая вырывается веером в сторону полёта; каждая по своей дуге, с креном на поворотах
     fx.querySelectorAll('.hbatf').forEach((b, i) => {
@@ -1523,14 +1526,17 @@ function cryptFly(fx) {
       hFlap(b.querySelector('.hspr'), N.raven, N.raven > 4 ? 520 : 440, i * 170);
     });
   } else {
-    // огоньки / души: спираль вокруг сундука (ближняя сторона крупнее и ярче), потом разлетаются вверх; свет мерцает
-    fx.querySelectorAll('.hwi').forEach((w, i) => {
-      const ph = i * Math.PI * 2 / 5 + rnd(0, .6), turns = rnd(1.3, 1.8), rise = Math.min(y0 + 80, H * .7), out = rnd(-1, 1) * W * .35;
-      const pos = u => { const th = ph + dir * u * turns * Math.PI * 2, rad = 16 + 66 * hSmooth(hRamp(u, 0, .45)), up = .15 * u + .85 * u * u;
+    // огоньки / души: спираль вокруг сундука (ближняя сторона крупнее и ярче), души растут, будто летят к зрителю, и разлетаются; свет мерцает
+    const ws = [...fx.querySelectorAll('.hwi')], soul = ws.length && ws[0].classList.contains('soul');
+    ws.forEach((w, i) => {
+      const ph = i * Math.PI * 2 / ws.length + rnd(0, .6), turns = soul ? rnd(.9, 1.2) : rnd(1.3, 1.8), rise = Math.min(y0 + (soul ? 140 : 80), H * (soul ? .85 : .7));
+      const out = rnd(-1, 1) * W * (soul ? .45 : .35), R0 = soul ? 26 : 16, R1 = soul ? 104 : 66;
+      const pos = u => { const th = ph + dir * u * turns * Math.PI * 2, rad = R0 + R1 * hSmooth(hRamp(u, 0, .5)), up = .15 * u + .85 * u * u;
         return [Math.sin(th) * rad + out * u * u * u, 12 - rise * up, Math.cos(th)]; };
       hAnim(w, u => { const [x, y, z] = pos(u), [x2] = pos(Math.min(1, u + .02)), near = (z + 1) / 2;
-        return { x, y, r: hClamp((x2 - x) * -2.2, -30, 30), s: (.55 + .35 * near) * (.4 + .6 * hSmooth(hRamp(u, 0, .2))),
-          o: hFadeIO(u, .1, .82) * (.55 + .45 * near) * (.86 + .14 * Math.sin(u * 47 + i * 2.1)) }; }, rnd(1550, 1850), D + i * 70);
+        return { x, y, r: hClamp((x2 - x) * -2.2, -30, 30),
+          s: soul ? (.65 + .35 * near) * (.45 + .8 * hSmooth(hRamp(u, 0, .65))) : (.55 + .35 * near) * (.4 + .6 * hSmooth(hRamp(u, 0, .2))),
+          o: hFadeIO(u, .08, soul ? .86 : .82) * (soul ? .78 + .22 * near : .55 + .45 * near) * (.88 + .12 * Math.sin(u * 47 + i * 2.1)) }; }, soul ? rnd(1650, 1900) : rnd(1550, 1850), D + i * (soul ? 90 : 70));
     });
   }
 }
