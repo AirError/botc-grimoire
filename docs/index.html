@@ -5730,12 +5730,15 @@ function viewDay() {
   // Савант: раз в день приватно — 2 факта, один правда, другой ложь (подбор из текущей игры — ideas.js)
   // (выбор старых версий мог набрать больше — в запись идут первый верный и первый ложный, savOneEach)
   // на экране дня — без пометок «правда / ложь» (их видно в Журнале → «Факты Саванта»); факты можно показать на весь экран
-  // (заметка пользователя 2026-10-16). Факты сказаны — записываются, и сегодня Саванту больше не подбираются
+  // (заметка пользователя 2026-10-16). Факты сказаны — записываются, и сегодня Саванту больше не подбираются; записанные факты остаются
+  // в карточке без пометок и их можно снова показать Саванту (заметка пользователя 2026-10-18: «после записи доступны только в журнале с П и Л»)
   for (const sv of S.players.filter(p => p.role === 'savant' && p.alive)) {
-    const pair = picks['sav_' + sv.id], off = E.abilityOff(S, sv), told = (S.flags.savantFacts || []).some(x => x.n === S.n && x.pid === sv.id);
+    const pair = picks['sav_' + sv.id], off = E.abilityOff(S, sv), told = (S.flags.savantFacts || []).find(x => x.n === S.n && x.pid === sv.id);
     parts.push(`<div class="card"><h3>Савант</h3>
       ${boundsHtml([{ w: 'Игрок', t: 'раз в день может прийти к вам: приватно — 2 факта, один правда, другой ложь' }, { w: 'Вы решаете', t: off ? `Савант ${off}: можно оба правдой или оба ложью` : 'какие факты; Демона прямо не называйте' }])}
-      ${told ? '<div class="note-ok">Сегодня факты уже сказаны — они в Журнале («Факты Саванта»).</div>' : `
+      ${told ? `<div class="reveal"><div class="lab">Сегодня сказано Саванту</div>${told.facts.map(f => `<div class="ln"><b>${esc(f.text)}</b></div>`).join('')}
+        ${showButtons(told.facts.map(f => ({ label: 'Саванту', text: f.text })))}</div>
+        <div class="small muted">Что правда, а что ложь, — в Журнале («Факты Саванта»).</div>` : `
       ${pair ? `<div class="reveal"><div class="lab">Скажите Саванту</div>${pair.map((x, i) => `<div class="ln savln"><b>${esc(x.text)}</b><button class="savdel" data-act="savDel" data-arg="${sv.id}|${i}" aria-label="Убрать факт">✕</button></div>`).join('')}
         ${showButtons(pair.map(x => ({ label: 'Саванту', text: x.text })))}</div>` : ''}
       <div class="row"><button class="btn" data-act="savGoList">Выбрать из списка</button><button class="btn" data-act="savGen" data-arg="${sv.id}">${pair ? 'Другие случайные' : 'Подобрать случайно'}</button>${pair ? `<button class="btn primary" data-act="savLog" data-arg="${sv.id}">Сказано — записать</button>` : ''}</div>
@@ -7313,12 +7316,14 @@ function ghostLostHtml() {
     <div class="small muted">Голос призрака потрачен — больше эти игроки голосовать не могут.</div>
     <button class="btn primary wide" data-act="ghostLostClose">Понятно</button></div></div>`;
 }
-// все факты, сказанные Саванту за игру: по дням, П — правда, Л — ложь
+// все факты, сказанные Саванту за игру: по дням, П — правда, Л — ложь (только рассказчику); у каждого дня — показ Саванту на весь экран:
+// одни факты, без пометок (заметка пользователя 2026-10-18)
 function savFactsHtml() {
   if (!UI.savFacts) return '';
   const list = S.flags.savantFacts || [];
   const body = list.length ? list.map(x => `<div class="savday"><div class="lab">День ${x.n}${S.players.filter(p => p.role === 'savant').length > 1 ? ` · ${esc(E.nm(S, x.pid))}` : ''}</div>
-    ${x.facts.map(f => `<div class="savf"><b class="savtag ${f.truth ? 't' : 'f'}">${f.truth ? 'П' : 'Л'}</b><span>${esc(f.text)}${f.own ? ' <span class="muted small">(свой)</span>' : ''}</span></div>`).join('')}</div>`).join('')
+    ${x.facts.map(f => `<div class="savf"><b class="savtag ${f.truth ? 't' : 'f'}">${f.truth ? 'П' : 'Л'}</b><span>${esc(f.text)}${f.own ? ' <span class="muted small">(свой)</span>' : ''}</span></div>`).join('')}
+    ${showButtons(x.facts.map(f => ({ label: 'Саванту', text: f.text })))}</div>`).join('')
     : '<div class="small muted">Пока ни одного факта не сказано. Факты попадают сюда кнопкой «Сказано — записать» на экране дня.</div>';
   return `<div class="ov editres" role="dialog" aria-label="Факты Саванта"><div class="statbg" data-act="savFactsClose"></div><div class="erbox statbox">
     <h3>Факты Саванта</h3>${body}<button class="btn wide" data-act="savFactsClose">Закрыть</button></div></div>`;
