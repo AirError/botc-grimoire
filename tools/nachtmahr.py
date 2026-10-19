@@ -151,10 +151,24 @@ ROLES_JS = """<script>
 </script>"""
 
 
+# перестановки на листе ролей относительно порядка конструктора: роль → после какой роли встать
+# (просьба пользователя: Истребитель под Монаха — короче правая колонка Горожан, крупнее кегль)
+MOVES = {"slayer": "monk"}
+
+
+def sheet_order(roles, moves):
+    roles = list(roles)
+    for rid, after in moves.items():
+        if rid in roles and after in roles:
+            roles.remove(rid)
+            roles.insert(roles.index(after) + 1, rid)
+    return roles
+
+
 def build_roles():
     secs = ""
     for t, label in TEAMS:
-        roles = [r for r in ids if team[r] == t]
+        roles = sheet_order([r for r in ids if team[r] == t], MOVES)
         k = (len(roles) + 1) // 2
         parts = ["".join(role_html(r) for r in part) for part in (roles[:k], roles[k:])]
         if t == "demon":  # сноска — в конце правой колонки Демонов
