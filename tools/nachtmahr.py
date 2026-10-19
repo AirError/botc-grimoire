@@ -83,7 +83,7 @@ body { -webkit-print-color-adjust: exact; print-color-adjust: exact; font-family
 # ---------------------------------------------------------------- лист ролей (приоритет тексту)
 
 ROLES_CSS = """
-:root { --ab: 10pt; --gap: 1mm; }
+:root { --ab: 10pt; --gap: var(--gap0); --gap0: 2.5mm; }  /* промежуток между ролями не меньше 2.5 мм — просьба пользователя (воздух важнее 0.7 pt) */
 .content { position: absolute; left: 8.5mm; right: 8.5mm; top: 8mm; bottom: 8.5mm; display: flex; flex-direction: column; }
 .head { flex: none; display: flex; align-items: center; justify-content: space-between; padding: 0 3mm 0 4mm; }
 .titlebox { display: flex; align-items: flex-end; gap: 2.5mm; }
@@ -131,8 +131,10 @@ ROLES_JS = """<script>
   }
   let ab = 14;
   for (; ab >= 7.5; ab = Math.round((ab - 0.1) * 10) / 10) { root.setProperty('--ab', ab + 'pt'); balance(); if (!over()) break; }
-  let gap = 1;
-  for (; gap <= 4; gap = Math.round((gap + 0.1) * 10) / 10) {
+  const gap0 = parseFloat(getComputedStyle(document.documentElement).getPropertyValue('--gap0'));
+  root.setProperty('--gap', gap0 + 'mm');
+  let gap = gap0;
+  for (; gap <= gap0 + 3; gap = Math.round((gap + 0.1) * 10) / 10) {
     root.setProperty('--gap', gap + 'mm'); balance();
     if (over()) { gap = Math.round((gap - 0.1) * 10) / 10; root.setProperty('--gap', gap + 'mm'); balance(); break; }
   }
