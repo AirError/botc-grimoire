@@ -15,6 +15,9 @@ design/
 sheets/
 four_demons_script.json
 prompts_sheets.md
+prompts_badges.md
+badges/
+tools/build_badges.py
 ПЕРЕНОС_сценарий.md
 tools/build_sheets.py
 tools/sheet_data.py
