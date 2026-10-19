@@ -136,17 +136,15 @@ ROLES_JS = """<script>
     root.setProperty('--gap', gap + 'mm'); balance();
     if (over()) { gap = Math.round((gap - 0.1) * 10) / 10; root.setProperty('--gap', gap + 'mm'); balance(); break; }
   }
-  // корабль-призрак — в самый большой просвет под более короткой колонкой какой-нибудь секции (текст не теснит)
-  let room = 0, where = '';
-  if (scene) {
+  // корабль-призрак — в просвет под более короткой колонкой Приспешников (просьба пользователя);
+  // ставится уже после подгонки кегля и только в свободное место: приоритет тексту
+  let room = 0, where = 'нет места';
+  const g = groups.find(g => g.c.dataset.team === 'Приспешники');
+  if (scene && g) {
     const end = col => col.lastElementChild.getBoundingClientRect().bottom;
-    let best = null;
-    for (const g of groups) {
-      const [a, b] = g.cols, short = end(a) <= end(b) ? a : b;
-      const r = (Math.max(end(a), end(b)) - end(short)) / mm - gap - 1;
-      if (r > room) { room = r; best = short; where = g.c.dataset.team; }
-    }
-    if (best && room >= 9) { scene.style.height = Math.min(room, 30) + 'mm'; best.appendChild(scene); } else where = 'нет места';
+    const [a, b] = g.cols, short = end(a) <= end(b) ? a : b;
+    room = (Math.max(end(a), end(b)) - end(short)) / mm - gap - 1;
+    if (room >= 8) { scene.style.height = Math.min(room, 30) + 'mm'; short.appendChild(scene); where = 'Приспешники'; }
   }
   document.body.dataset.fit = 'ab=' + ab + 'pt gap=' + gap + 'mm scene=' + room.toFixed(1) + 'mm (' + where + ') overflow=' + over();
 })();
