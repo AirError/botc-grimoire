@@ -64,6 +64,7 @@ const TOK_RU = {
   master: 'Хозяин', mad: 'Помешан', hasability: 'Сохранил способность', twin: 'Близнец', grandchild: 'Внук',
   herring: 'Ложная цель', chosen: 'Выбран', note: 'Заметка', know: 'Раскрытый', lunch: 'Обед', shown: 'Показан', guessused: 'Догадка использована', second: 'Второй (Гарпия)',
   votes3: '3 голоса', voteneg: 'Голос против', sober: 'Трезв и здоров', twice: 'Действует дважды', bad: 'Что-то плохое',
+  fauxpaw: 'Кошачья лапка', fear: 'Страх',
 };
 
 function expire(S, when) { // when: 'dusk' | 'dawn'
@@ -141,6 +142,15 @@ function teaLadyProtects(S, p) {
 
 function vortoxActive(S) { return holders(S, 'vortox').some(v => demonAlive(v) && !abilityOff(S, v)); }
 
+// Оборотень (вики): «один из добрых игроков определяется злым» — «Кошачья лапка», пока у Оборотня есть способность (жив, трезв)
+const fauxPawOn = (S, q) => hasTok(q, 'fauxpaw', 'lycanthrope') && S.players.some(l => actsAs(l) === 'lycanthrope' && l.alive && !abilityOff(S, l));
+// определяется злым: злой — или «Кошачья лапка» (Затворника и Шпиона рассказчик решает сам — regNote)
+const regEvil = (S, q) => q.align === 'evil' || fauxPawOn(S, q);
+// Оборотень убил доброго этой ночью — Демон этой ночью не убивает (вики)
+const lycBlock = S => S.phase === 'night' && !!(S.night && S.night.data.lycKill);
+// Банши, убитая Демоном со способностью (вики): номинирует дважды в день и голосует дважды, без голоса призрака
+const bansheeVotes = (S, p) => !!p && hasTok(p, 'hasability', 'banshee') && !abilityOff(S, p);
+
 /* ------------------------------------------------------------ искажённая информация и Математик */
 // чужая способность, из-за которой способность игрока не работает (для Математика); своя роль (Пьяница, Безумец) — не в счёт
 function abnSource(S, p) {
@@ -188,6 +198,7 @@ function deathGuard(S, p, cause) {
 function attemptKill(S, p, cause, src, opts) {
   opts = opts || {};
   if (!p || !p.alive) return { died: false, why: 'уже мёртв' };
+  if (cause === 'demon' && lycBlock(S)) return saved(S, p, 'Оборотень убил этой ночью — Демон не убивает');
   if (cause !== 'unstoppable') {
     const guard = deathGuard(S, p, cause);
     if (guard) { if (guard.startsWith('Шут')) S.flags['foolUsed_' + p.id] = true; return saved(S, p, guard); }
@@ -308,6 +319,13 @@ function afterDeath(S, p, cause, fake, aliveBefore, opts) {
   if (p.role === 'widow') S.players.forEach(q => rmTok(q, 'poisoned', 'widow')); // яд Вдовы — пока она жива
   if (actsAs(p) === 'vigormortis' || p.role === 'vigormortis') vigorEnd(S); // способность убитых им Приспешников — пока он жив
   if (preventsMeeting(p) && !abilityOff(S, p)) evilMeetsTonight(S);
+  // Банши (вики): убита Демоном, имея способность, — все узнают об этом; дальше номинирует и голосует дважды. Пьяная или
+  // отравленная в момент смерти, убитая не Демоном — ничего не объявляют, способности нет до конца игры
+  if (cause === 'demon' && !fake && actsAs(p) === 'banshee' && !abilityOff(S, p)) {
+    addTok(S, p, 'hasability', 'banshee');
+    if (S.phase === 'night' && S.night) S.night.data.banshee = p.id;
+    log(S, `Банши (${p.name}) убита Демоном: все узнают об этом; теперь она номинирует дважды в день и голосует дважды`, 'effect');
+  }
   // Бабушка
   if (cause === 'demon' && S.flags.grandchild === p.id) {
     for (const g of holders(S, 'grandmother')) if (g.alive && !abilityOff(S, g)) {
@@ -404,6 +422,10 @@ function distribution(nPlayers, roles, mods, maxOut) {
   // Атеист [В игре нет злых ролей] (вики): злых убрать, добрых добавить до числа игроков; Горожан/Изгоев — на усмотрение рассказчика
   let free = false;
   if (roles.includes('atheist')) { t += m + d; m = 0; d = 0; free = true; notes.push('Атеист: злых ролей нет; сколько Горожан и Изгоев — решаете вы'); }
+  // Казали [Вы выбираете, какие игроки будут какими Приспешниками. −?/+? Изгоев] (вики): жетоны Приспешников убрать, вместо них —
+  // Горожане или Изгои; Приспешников Казали выберет в 1-ю ночь (kazali — сколько)
+  let kazali = 0;
+  if (roles.includes('kazali') && !free) { kazali = m; t += m; m = 0; free = true; notes.push(`Казали: Приспешников при раздаче нет — Казали выберет ${kazali} в 1-ю ночь; вместо них добрые роли, сколько Горожан и Изгоев — решаете вы`); }
   for (const [id, c] of Object.entries(OUT_CHOICES)) {
     if (!roles.includes(id)) continue;
     // Аэронавт сам Горожанин: хотя бы один Горожанин должен остаться
@@ -413,12 +435,12 @@ function distribution(nPlayers, roles, mods, maxOut) {
     choices.push({ id, opts, value: v });
     if (v !== null) { o += v; t -= v; }
   }
-  return { townsfolk: t, outsider: o, minion: m, demon: d, notes, choices, free, pending: choices.filter(c => c.value === null).map(c => c.id) };
+  return { townsfolk: t, outsider: o, minion: m, demon: d, notes, choices, free, kazali, pending: choices.filter(c => c.value === null).map(c => c.id) };
 }
 
 // роли и Сказочники, раскладку которых приложение умеет считать; с остальными (экспериментальные: Легион,
 // Казали и т. п.) раскладку проверяет рассказчик, и приложение не мешает начать игру
-const KNOWN_SETUP = new Set(['drunk', 'baron', 'godfather', 'fanggu', 'vigormortis', 'balloonist', 'sentinel', 'huntsman', 'atheist']);
+const KNOWN_SETUP = new Set(['drunk', 'baron', 'godfather', 'fanggu', 'vigormortis', 'balloonist', 'sentinel', 'huntsman', 'atheist', 'kazali']);
 const unknownSetup = S => [...new Set(S.players.map(p => p.role).concat(S.fabled || []))].filter(r => r && R(r) && R(r).setup && !KNOWN_SETUP.has(r));
 
 // сверка раскладки с таблицей: строки «есть / нужно» по типам ролей («?» — пока не выбран сдвиг Изгоев);
@@ -457,7 +479,8 @@ function randomPool(S, held) {
   const must = [...new Set(as.filter(a => a.role && roles.includes(a.role)).map(a => a.role).concat((held || []).filter(r => roles.includes(r))))];
   const byTeam = t => { const m = must.filter(r => R(r).team === t); return m.concat(shuffle(roles.filter(r => R(r) && R(r).team === t && r !== 'atheist' && !m.includes(r)))); };
   const base = BASE_DIST[Math.min(15, Math.max(5, n))];
-  const chosen = [byTeam('demon')[0], ...byTeam('minion').slice(0, base[2])].filter(Boolean);
+  const dem = byTeam('demon')[0]; // Казали: Приспешников в наборе нет — их место займут добрые роли
+  const chosen = [dem, ...(dem === 'kazali' ? [] : byTeam('minion').slice(0, base[2]))].filter(Boolean);
   const mods = S.flags.mods = Object.assign({}, S.flags.mods);
   if (chosen.includes('godfather') && mods.godfather == null) mods.godfather = pick([-1, 1]);
   const dist = extra => distribution(n, chosen.concat(extra, S.fabled || []), mods, scriptOutsiders(S));
@@ -596,6 +619,9 @@ function autoSetup(S, force) {
     const g = goodPlayers; S.flags.goodTwin = g.length ? pick(g).id : null;
   }
   if (inPlay(S, 'puzzlemaster') && (force || !S.flags.puzzleDrunk)) S.flags.puzzleDrunk = puzzleDrunkDefault(S);
+  // Оборотень: «Кошачья лапка» — добрый игрок (не сам Оборотень), который определяется злым
+  const pawOk = goodPlayers.filter(p => p.role !== 'lycanthrope' && !isTraveller(p));
+  if (inPlay(S, 'lycanthrope') && (force || !S.flags.fauxPaw)) S.flags.fauxPaw = pawOk.length ? pick(pawOk).id : null;
 }
 // Головоломщик (вики): при подготовке 1-й ночи один игрок пьян до конца игры, даже если Головоломщик умрёт; почти всегда лучше
 // Горожанин (Приспешника или Демона — только с очень веской причиной). Раз за игру он угадывает, кто это: угадал — рассказчик
@@ -707,6 +733,7 @@ function drawFinish(S) {
   if (inPlay(S, 'grandmother')) fix('grandchild', q => q.align === 'good' && q.role !== 'grandmother');
   if (inPlay(S, 'fortuneteller')) fix('ftHerring', q => q.align === 'good' && q.role !== 'fortuneteller');
   if (inPlay(S, 'eviltwin')) fix('goodTwin', q => q.align === 'good');
+  if (inPlay(S, 'lycanthrope')) fix('fauxPaw', q => q.align === 'good' && q.role !== 'lycanthrope');
   S.draw.finished = true;
   log(S, 'Роли выданы жребием (стена)', 'phase');
 }
@@ -734,7 +761,7 @@ function setupProblems(S) {
     if (diff.length && !odd && !S.flags.marionetteNeed) out.push('Раскладка не совпадает с таблицей: ' + diff.map(x => `${TEAM_RU[x.t]}: ${x.have} из ${x.want}`).join(', '));
     const c = countTeams(S);
     if (c.demon !== d.demon && !odd) out.push(d.demon ? 'В игре должен быть ровно 1 Демон' : 'Атеист в игре: злых ролей быть не должно');
-    if (d.free && c.minion) out.push('Атеист в игре: Приспешников быть не должно');
+    if (d.free && c.minion) out.push(d.kazali ? 'Казали в игре: при раздаче Приспешников нет — Казали выберет их в 1-ю ночь' : 'Атеист в игре: Приспешников быть не должно');
     if (inPlay(S, 'huntsman') && !inPlay(S, 'damsel')) out.push('Ловчий в игре — Девица тоже должна быть в игре');
     const roles = S.players.map(p => p.role);
     if (new Set(roles).size !== roles.length) out.push('Одна роль выдана дважды');
@@ -765,7 +792,7 @@ function startGame(S) {
   // Головоломщик: пьяный не выбран (или игрока нет) — случайный Горожанин
   if (inPlay(S, 'puzzlemaster') && !(S.flags.puzzleDrunk && P(S, S.flags.puzzleDrunk))) S.flags.puzzleDrunk = puzzleDrunkDefault(S);
   // выбор подготовки остаётся от прежней раздачи — ставим отметку, только если роль правда в игре (иначе выбор сбрасываем)
-  for (const [flag, rid, tok] of [['grandchild', 'grandmother', 'grandchild'], ['ftHerring', 'fortuneteller', 'herring'], ['goodTwin', 'eviltwin', 'twin'], ['puzzleDrunk', 'puzzlemaster', 'drunk']]) {
+  for (const [flag, rid, tok] of [['grandchild', 'grandmother', 'grandchild'], ['ftHerring', 'fortuneteller', 'herring'], ['goodTwin', 'eviltwin', 'twin'], ['puzzleDrunk', 'puzzlemaster', 'drunk'], ['fauxPaw', 'lycanthrope', 'fauxpaw']]) {
     const q = S.flags[flag] && P(S, S.flags[flag]);
     if (q && inPlay(S, rid)) addTok(S, q, tok, rid); else S.flags[flag] = null;
   }
@@ -905,6 +932,7 @@ function voteWeight(S, v) {
   let w = 1;
   if (hasTok(v, 'votes3', 'bureaucrat') && travellerWorks(S, 'bureaucrat')) w = 3;
   if (hasTok(v, 'voteneg', 'thief') && travellerWorks(S, 'thief')) w = -w;
+  if (bansheeVotes(S, v)) w *= 2; // Банши поднимает обе руки (вики: каждая рука — голос)
   return w;
 }
 const voteCount = (S, ids) => ids.reduce((sum, id) => sum + voteWeight(S, P(S, id)), 0);
@@ -920,6 +948,8 @@ function nominationPreview(S, byId, onId) {
   if (actsAs(by) === 'golem') out.notes.push(S.flags['golemUsed_' + by.id] ? 'Голем уже номинировал в этой игре — больше нельзя (вики: номинацию лучше не принимать)'
     : isDemon(on) ? 'Голем номинирует Демона — ничего не произойдёт (не говорите почему)' : abilityOff(S, by) ? 'Голем пьян или отравлен — номинированный не умрёт'
     : `Голем номинирует: ${on.name} сразу умрёт (если не защищён)${on.role === 'recluse' ? '. Затворник может определиться Демоном — тогда ничего (решите сами, отменив номинацию)' : ''}`);
+  const fm = fearTarget(S, by, on);
+  if (fm) out.notes.push(`Страшила номинирует выбранного им игрока: если ${on.name} казнят (даже если не умрёт) — проигрывает команда ${on.align === 'good' ? 'добрых' : 'злых'}`);
   if (actsAs(on) === 'virgin' && !S.flags['virginUsed_' + on.id]) {
     if (abilityOff(S, on)) out.notes.push('Девственница пьяна или отравлена: способность тратится впустую');
     else if (realTeam(by) === 'townsfolk') out.notes.push(`Девственница номинирована впервые, ${by.name} — Горожанин: его немедленно казнят`);
@@ -974,7 +1004,7 @@ function nominate(S, byId, onId, opts) {
 
 function recordVote(S, onId, voterIds) {
   const d = S.day, vd = voudonActive(S);
-  for (const id of voterIds) { const v = P(S, id); if (!v.alive && !vd) v.ghost = false; if (isDemon(v)) d.demonVoted = true; }
+  for (const id of voterIds) { const v = P(S, id); if (!v.alive && !vd && !bansheeVotes(S, v)) v.ghost = false; if (isDemon(v)) d.demonVoted = true; }
   const nomi = d.noms.find(x => x.on === onId && x.open) || { on: onId };
   const count = voteCount(S, voterIds), raw = voterIds.length;
   Object.assign(nomi, { voters: voterIds.slice(), count, open: false, butcher: !!d.butcherOpen });
@@ -988,7 +1018,7 @@ function recordVote(S, onId, voterIds) {
 
 // кто из голосующих сейчас потратит голос призрака: мёртвые, у которых он ещё был (при Шамане Вуду голос не тратится).
 // После подсчёта — окно «последнего голоса лишились» (заметка пользователя 2026-10-16)
-const ghostSpent = (S, voterIds) => voudonActive(S) ? [] : voterIds.map(id => P(S, id)).filter(v => v && !v.alive && v.ghost);
+const ghostSpent = (S, voterIds) => voudonActive(S) ? [] : voterIds.map(id => P(S, id)).filter(v => v && !v.alive && v.ghost && !bansheeVotes(S, v));
 // сколько голосов нужно текущей номинации (заметка пользователя 2026-10-16): для казни — порог, а если кто-то уже на плахе —
 // на 1 больше, чем у него; для отмены — столько же, сколько у него (ничья — никого не казнят). Номинация Мясника — только порог
 function voteNeeds(S) {
@@ -1017,6 +1047,9 @@ function execute(S, pid, opts) {
   log(S, `Казнь: ${p.name}`, 'day');
   if (S.flags.goodTwin === pid && S.players.some(q => q.role === 'eviltwin' && q.alive && !abilityOff(S, q)))
     return endGame(S, 'evil', 'казнён добрый близнец');
+  // Страшила (вики): номинировал выбранного им игрока, и того казнили — его команда проигрывает, даже если он не умер
+  const by = S.day.nomBy && S.day.nomBy[pid] && P(S, S.day.nomBy[pid]);
+  if (fearTarget(S, by, p)) return endGame(S, p.align === 'good' ? 'evil' : 'good', `Страшила номинировал выбранного им игрока (${p.name}), его казнили — команда ${p.align === 'good' ? 'добрых' : 'злых'} проигрывает`);
   if (S.flags.mastermindDay && S.flags.mastermindDay === S.n) {
     return endGame(S, p.align === 'good' ? 'evil' : 'good', `Кукловод: в дополнительный день казнён ${p.align === 'good' ? 'добрый' : 'злой'} игрок`);
   }
@@ -1038,6 +1071,8 @@ function execute(S, pid, opts) {
     if (!r.fake) cannibalEats(S, p);
   }
 }
+// Страшила номинирует игрока, которого выбрал последним (жетон «Страх»), и его способность работает
+const fearTarget = (S, by, on) => !!by && !!on && actsAs(by) === 'fearmonger' && !abilityOff(S, by) && on.tokens.some(t => t.k === 'fear' && t.src === 'fearmonger' && t.by === by.id);
 // работает ли способность (жив, трезв) у кого-то с этой ролью или полученной ею
 const roleWorks = (S, rid) => S.players.some(q => actsAs(q) === rid && q.alive && !abilityOff(S, q));
 // что нужно решить до казни (окно после «Завершить день»): Пацифист — помиловать доброго; Психопат — «камень-ножницы-бумага»
@@ -1336,6 +1371,7 @@ function stepSpec(S, step) {
   if (role.team === 'demon' && S.night.data.pithagDemon) base.warn.push(S.night.data.pithagDemon === 'changed'
     ? 'Яга превратила Демона в другого Демона: смерти этой ночью — на ваше усмотрение. Вики советует, чтобы никто не умер (знак добрым, что Демон сменился): выслушайте выбор Демона и нажмите «Пропустить».'
     : 'Яга создала Демона этой ночью: смерти — на ваше усмотрение (вики). Нападение можно пропустить.');
+  if (role.team === 'demon' && !first && S.night.data.lycKill) base.warn.push('Оборотень убил доброго этой ночью — Демон не убивает (вики): разбудите его как обычно, но его выбор никого не убьёт.');
   const logic = LOGIC[step.id];
   const spec = logic ? Object.assign(base, logic(S, p, first, !!off, base) || {}) : Object.assign(base, genericLogic(S, p, first, !!off, base));
   // мёртвый просыпается, если способность сохранена (Вигормортис) или возвращена (Собиратель Костей)
@@ -1384,17 +1420,21 @@ function specialSpec(S, step, first) {
   const spec = { title: sp.name, who: '', text: (first ? sp.first : sp.other) || '', active: true, reason: '', inputs: [], defaults: {}, warn: [], info: () => null, apply: () => {}, bounds: boundsFor(step.id, first) };
   // Марионетка (вики) не просыпается с Приспешниками и не узнаётся ими; Демон узнаёт её на её шаге
   const minions = S.players.filter(p => realTeam(p) === 'minion' && p.role !== 'marionette'), demon = S.players.find(isDemon);
+  // Фокусник (вики): Приспешникам указывают на Демона и Фокусника, Демону — на Приспешников и Фокусника (в любом порядке — по местам)
+  const mag = S.players.find(p => actsAs(p) === 'magician' && p.alive && !abilityOff(S, p));
+  const magIds = mag ? [mag.id] : [];
   // Приспешникам — только «ЭТО ДЕМОН» (друг друга они видят, проснувшись вместе; решение пользователя); Демону — Приспешники и блефы
-  const minionCards = () => [{ label: 'Приспешникам', caption: CARD.demon, players: demon ? [demon.id] : [] }];
-  const demonCards = () => [{ label: 'Демону', caption: CARD.minions, players: minions.map(m => m.id) }];
-  if (step.id === 'minioninfo') spec.info = () => ({ show: `Демон: ${demon ? demon.name : '—'}`, lines: [`Приспешники: ${minions.map(m => m.name).join(', ') || '—'}`], tokens: minionCards() });
+  const minionCards = () => [{ label: 'Приспешникам', caption: CARD.demon, players: seatSort(S, (demon ? [demon.id] : []).concat(magIds)) }];
+  const demonCards = () => [{ label: 'Демону', caption: CARD.minions, players: seatSort(S, minions.map(m => m.id).concat(magIds)) }];
+  const magLine = mag ? `Фокусник: ${mag.name} — ${step.id === 'minioninfo' ? 'Приспешникам укажите и на него, как на Демона' : 'Демону укажите и на него, как на Приспешника'} (порядок — по местам)` : '';
+  if (step.id === 'minioninfo') spec.info = () => ({ show: `Демон: ${demon ? demon.name : '—'}`, lines: [`Приспешники: ${minions.map(m => m.name).join(', ') || '—'}`, magLine], tokens: minionCards() });
   const blocker = meetingBlocker(S);
   if (step.meet) {
     spec.title = step.id === 'minioninfo' ? 'Злые знакомятся: Приспешники' : 'Злые знакомятся: Демон';
     spec.text = step.id === 'minioninfo' ? 'Разбудите Приспешников, пусть посмотрят друг на друга. Покажите жетон *ЭТО ДЕМОН* и укажите на Демона.'
       : 'Разбудите Демона. Покажите жетон *ЭТО ВАШИ ПРИСПЕШНИКИ* и укажите на Приспешников.';
     spec.bounds = [Y('Носитель свойства «злые не знакомятся» умер трезвым — злые узнают друг друга этой ночью')];
-    if (step.id === 'demoninfo') spec.info = () => ({ show: `Приспешники: ${minions.map(m => m.name).join(', ') || '—'}`, lines: [], tokens: demonCards() });
+    if (step.id === 'demoninfo') spec.info = () => ({ show: `Приспешники: ${minions.map(m => m.name).join(', ') || '—'}`, lines: [magLine], tokens: demonCards() });
     return spec;
   }
   if (first && blocker && step.id === 'minioninfo') { spec.active = false; spec.reason = `в игре ${rname(blocker.role)} — Приспешники и Демон не знакомятся`; }
@@ -1417,7 +1457,7 @@ function specialSpec(S, step, first) {
     return spec;
   }
   if (step.id === 'demoninfo') {
-    spec.info = () => ({ show: `Блефы: ${S.bluffs.map(rname).join(', ')}`, lines: [`Приспешники: ${minions.map(m => m.name).join(', ') || '—'}`, lunLine],
+    spec.info = () => ({ show: `Блефы: ${S.bluffs.map(rname).join(', ')}`, lines: [`Приспешники: ${minions.map(m => m.name).join(', ') || '—'}`, magLine, lunLine],
       tokens: lunCards().concat(demonCards(), bluffCards(S, 'Демону')) });
   }
   if (step.id === 'dawn') {
@@ -1428,6 +1468,8 @@ function specialSpec(S, step, first) {
     // Аль-Адихия (вики): на рассвете объявить, кто из троих выбранных жив, а кто мёртв — даже если ничего не изменилось
     const alh = (S.night.data.alh || []).map(id => P(S, id)).filter(Boolean);
     if (alh.length) pend.unshift(`Аль-Адихия: объявите, кто из выбранных жив и кто мёртв — ${alh.map(q => `${q.name}: ${q.alive ? 'жив' : 'мёртв'}`).join(', ')}`);
+    if (S.night.data.fearNew) pend.unshift('Страшила выбрал нового игрока — объявите всем: «Страшила выбрал игрока» (кого — не говорите)');
+    if (S.night.data.banshee) pend.unshift(`Банши (${nm(S, S.night.data.banshee)}) убита Демоном — объявите всем: «Банши пробудилась»`);
     // «Снова жив» — так же крупно, как смерти (заметка пользователя 2026-10-15, Аль-Адихия)
     spec.info = () => ({ show: nightDeaths(S).length ? `Умерли: ${nightDeaths(S).map(d => nm(S, d.pid)).join(', ')}` : 'Никто не умер', show2: back.length ? `Снова жив: ${back.join(', ')}` : null,
       lines: [back.length ? 'Объявите после смертей, что они снова живы (не говорите почему)' : ''].concat(pend) });
@@ -1455,6 +1497,8 @@ const regNote = (S, ids) => {
   const ps = ids.map(id => P(S, id)).filter(Boolean), out = [];
   if (ps.some(q => q.role === 'recluse')) out.push('Среди выбранных Затворник: может определиться злым, Приспешником или Демоном — решите сами.');
   if (ps.some(q => q.role === 'spy')) out.push('Среди выбранных Шпион: может определиться добрым, Горожанином или Изгоем — решите сами.');
+  const paw = ps.find(q => fauxPawOn(S, q));
+  if (paw) out.push(`Среди выбранных «Кошачья лапка» Оборотня (${paw.name}): добрый, но определяется злым.`);
   return out;
 };
 // случайное значение, закреплённое на эту ночь (чтобы подсказки не менялись при перерисовке)
@@ -1623,12 +1667,12 @@ const LOGIC = {
   investigator: infoPair('minion'),
   chef: countInfo((S) => {
     const ps = S.players, n = ps.length; let c = 0;
-    for (let i = 0; i < n; i++) if (ps[i].align === 'evil' && ps[(i + 1) % n].align === 'evil') c++;
+    for (let i = 0; i < n; i++) if (regEvil(S, ps[i]) && regEvil(S, ps[(i + 1) % n])) c++; // «Кошачья лапка» Оборотня — тоже злой
     return { n: c, lines: regNote(S, ps.map(q => q.id)) };
   }, 'Пар соседей-злодеев (покажите пальцами)'),
   empath: countInfo((S, p) => {
     const nb = aliveNeighbours(S, p);
-    return { n: nb.filter(q => q.align === 'evil').length, lines: [`Соседи: ${nb.map(q => q.name).join(' и ')}`, ...regNote(S, nb.map(q => q.id))] };
+    return { n: nb.filter(q => regEvil(S, q)).length, lines: [`Соседи: ${nb.map(q => q.name).join(' и ')}`, ...regNote(S, nb.map(q => q.id))] };
   }, 'Злых среди живых соседей'),
   fortuneteller: (S, p, first, off) => {
     const truth = inp => (inp.t || []).map(id => P(S, id)).some(q => q && (isDemon(q) || q.id === S.flags.ftHerring));
@@ -2128,7 +2172,7 @@ const LOGIC = {
     if (demonExorcised(S, p, base)) return {};
     // прыжок — только если Изгой правда умер бы (вики: «если выбранный Изгой не умирает, он не становится Фань Гу»)
     const shield = t => hasTok(t, 'protected', 'monk') ? 'Монах' : hasTok(t, 'protected', 'innkeeper') ? 'Трактирщик' : teaLadyProtects(S, t) ? 'Травница' : '';
-    const jumps = t => t && t.alive && realTeam(t) === 'outsider' && !S.flags.fangguJumped && !off && !shield(t);
+    const jumps = t => t && t.alive && realTeam(t) === 'outsider' && !S.flags.fangguJumped && !off && !shield(t) && !lycBlock(S); // после Оборотня Демон не убивает — и не прыгает
     return {
       inputs: [PL('t', 1, 'Кого убивает Фань Гу')], more: inp => mayorInput(S, inp),
       info: inp => { const t = inp.t && P(S, inp.t[0]);
@@ -2511,6 +2555,91 @@ const LOGIC = {
       },
     };
   },
+  /* --- сценарии Ильи (Bon Appétit, Nachtmahr; 2026-10-19) — экспериментальные роли по вики */
+  // Управляющий (вики): в 1-ю ночь (или в ночь, когда появился) узнаёт 1 доброго игрока — игрока, не роль. Пьян/отравлен — можно злого
+  steward: (S, p, first, off) => {
+    if (!first) return { active: false, reason: 'Управляющий узнаёт только в свою первую ночь' };
+    const dist = distortion(S, p), others = S.players.filter(q => q.id !== p.id && !isTraveller(q));
+    const def = stable(S, `steward:${p.id}:${dist ? 'f' : 't'}`, () => {
+      const good = others.filter(q => !regEvil(S, q)), evil = others.filter(q => q.align === 'evil');
+      const c = dist && evil.length ? evil : good; return c.length ? [pick(c).id] : [];
+    });
+    return { inputs: [PL('t', 1, `Укажите на 1 доброго игрока${dist ? ' (рекомендация — ложная)' : ''}`, notSelf(p))], defaults: { t: def },
+      info: inp => { const t = inp.t && P(S, inp.t[0]); if (!t) return null; const ok = t.align === 'good';
+        return { show: t.name, lines: [ok ? 'Информация верная' : `${t.name} злой — информация ложная`, dist && dist.must && ok ? 'Вортокс: нужна ЛОЖНАЯ информация' : '', ...regNote(S, [t.id])],
+          tokens: [{ players: [t.id], lead: 'Этот игрок — добрый:' }] }; },
+      apply: inp => { const t = P(S, inp.t[0]); S.players.forEach(q => rmTok(q, 'know', 'steward')); addTok(S, t, 'know', 'steward');
+        log(S, `Управляющий (${p.name}) узнаёт доброго игрока: ${t.name}`, 'info'); if (dist && t.align !== 'good') recordAbn(S, p, 'ложная информация', dist.src); } };
+  },
+  // Казали (вики): в 1-ю ночь выбирает, какие игроки станут какими Приспешниками (только Приспешники сценария, без повторов), пока их
+  // не станет обычное число; каждого будят: «ТЕПЕРЬ ВЫ», жетон Приспешника, большой палец вниз. Появился посреди игры — не выбирает.
+  // Каждую ночь, кроме первой, выбирает игрока — он умирает
+  kazali: (S, p, first, off, base) => {
+    if (demonExorcised(S, p, base)) return {};
+    if (first) {
+      if (S.n !== 1) return { active: false, reason: 'Казали, появившийся посреди игры, не выбирает Приспешников (вики)' };
+      const want = (BASE_DIST[Math.min(15, Math.max(5, coreCount(S)))] || [0, 0, 0])[2];
+      const need = Math.max(0, want - S.players.filter(q => realTeam(q) === 'minion').length);
+      if (!need) return { active: false, reason: 'Приспешников в игре уже обычное число' };
+      const pool = scriptRoles(S, r => R(r).team === 'minion' && !inPlay(S, r));
+      const defR = stable(S, 'kazaliRoles', () => shuffle(pool));
+      const chosen = inp => (inp.t || []).map((id, i) => ({ q: P(S, id), r: inp['r' + i] || defR[i] })).filter(x => x.q);
+      return {
+        inputs: [PL('t', need, `Кого Казали делает Приспешниками (${need})`, q => q.id !== p.id && !isTraveller(q))],
+        more: inp => (inp.t || []).map((id, i) => ROLE('r' + i, `Каким Приспешником станет ${nm(S, id)} (сейчас ${rname(P(S, id).role)})`, r => pool.includes(r), { optional: true, def: defR[i] })),
+        info: inp => { const ch = chosen(inp); if (ch.length < need) return null; const rs = ch.map(x => x.r).filter(Boolean);
+          return { show: ch.map(x => `${x.q.name}: ${rname(x.r)}`).join(', '), lines: [
+              new Set(rs).size !== rs.length ? 'Один Приспешник выбран дважды — так нельзя (вики)' : '',
+              off ? 'Казали пьян или отравлен — решите сами, получается ли выбор (вики об этом молчит)' : '',
+              `Будите каждого: «ТЕПЕРЬ ВЫ», жетон Приспешника, большой палец вниз. Их прежние роли (${ch.map(x => rname(x.q.role)).join(', ')}) больше не в игре — их можно дать Демону блефами (вики)`],
+            tokens: ch.filter(x => x.r).map(x => ({ label: x.q.name, caption: CARD.youAre, role: x.r, thumb: 'down' })) }; },
+        apply: inp => {
+          const ch = chosen(inp), used = new Set(); // повтор (вики не разрешает) — берём свободного Приспешника сценария
+          for (const x of ch) { let r = x.r && !used.has(x.r) ? x.r : pool.find(z => !used.has(z) && !ch.some(y => y !== x && y.r === z)); if (!r) continue; used.add(r);
+            const old = changeRole(S, x.q, r, { keep: true, align: 'evil' }); log(S, `Казали: ${x.q.name} — ${rname(old)} → ${rname(r)} (злой)`, 'effect'); }
+          endOrphanEffects(S); rebuildRest(S); log(S, `Казали (${p.name}) выбрал Приспешников`, 'action');
+        },
+      };
+    }
+    return { inputs: [PL('t', 1, 'Кого убивает Казали')], more: inp => mayorInput(S, inp), apply: inp => demonKill(S, p, off, P(S, inp.t[0]), inp) };
+  },
+  // Оборотень (вики): каждую ночь, кроме первой, выбирает живого игрока. Добрый — умирает, и Демон этой ночью не убивает; злой
+  // (и «Кошачья лапка») — ничего. Добрый выжил (защита) — Демон убивает как обычно. Сам Оборотень ничего не узнаёт
+  lycanthrope: (S, p, first, off) => ({
+    inputs: [PL('t', 1, 'Кого выбирает Оборотень (только живого)', aliveOnly)],
+    info: inp => { const t = inp.t && P(S, inp.t[0]); if (!t) return null;
+      if (off) return { secret: true, show: `${t.name} не умирает: Оборотень ${abilityOff(S, p)}`, lines: ['Демон этой ночью убивает как обычно'] };
+      if (regEvil(S, t)) return { secret: true, show: `${t.name} ${t.align === 'evil' ? 'злой' : '— «Кошачья лапка», определяется злым'}: ничего не происходит`, lines: ['Демон этой ночью убивает как обычно'] };
+      const g = deathGuard(S, t, 'ability');
+      return { secret: true, show: g ? `${t.name} добрый, но не умирает: ${g}` : `${t.name} добрый — умирает`, lines: [g ? 'Демон этой ночью убивает как обычно' : 'Демон этой ночью не убивает: разбудите его как обычно, но его выбор никого не убьёт'] }; },
+    apply: inp => { const t = P(S, inp.t[0]);
+      log(S, `Оборотень (${p.name}) выбирает ${t.name}${off ? ' — не работает' : ''}`, 'action');
+      if (off) { if (!regEvil(S, t)) recordAbn(S, p, `${t.name} не умер`, abnSource(S, p)); return; }
+      if (regEvil(S, t)) return;
+      if (attemptKill(S, t, 'ability', 'lycanthrope').died) { S.night.data.lycKill = p.id; log(S, 'Оборотень убил доброго — Демон этой ночью не убивает', 'effect'); } },
+  }),
+  // Банши: шаг ночи — только если Демон убил её этой ночью и способность была (afterDeath); объявить всем
+  banshee: (S, p) => S.night.data.banshee !== p.id ? { active: false, reason: 'Банши не убита Демоном этой ночью', deadOk: true } : { deadOk: true,
+    info: () => ({ show: 'На рассвете объявите всем: «Банши пробудилась»', lines: [`${p.name} убита Демоном — все узнают об этом (вики). С этого дня Банши номинирует дважды в день и голосует дважды за номинацию, без голоса призрака`] }),
+    apply: () => log(S, `Банши (${p.name}) убита Демоном — объявить на рассвете`, 'info') },
+  // Фокусник (вики): не просыпается; в 1-ю ночь Приспешникам указывают на Демона и Фокусника, Демону — на Приспешников и Фокусника
+  magician: () => ({ active: false, reason: 'Не просыпается: на шагах «Информация Приспешникам» и «Информация Демону» приложение добавит Фокусника (при 5–6 игроках злые не знакомятся — он ни на что не влияет)', deadOk: true }),
+  // Страшила (Паникёр; вики): каждую ночь выбирает игрока — жетон «Страх». Выбран новый — объявить всем, что Страшила выбрал игрока
+  // (кого — не говорить); тот же — ничего. Номинирует выбранного и того казнят — его команда проигрывает (execute)
+  fearmonger: (S, p, first, off) => {
+    const prev = S.players.find(q => q.tokens.some(t => t.k === 'fear' && t.src === 'fearmonger' && t.by === p.id));
+    return {
+      inputs: [PL('t', 1, 'Кого выбирает Страшила')],
+      info: inp => { const t = inp.t && P(S, inp.t[0]); if (!t) return null; const fresh = !prev || prev.id !== t.id;
+        return { show: fresh ? 'Объявите всем: «Страшила выбрал игрока» (кого — не говорите)' : 'Тот же игрок, что и прошлой ночью: ничего не объявляйте',
+          lines: [prev && fresh ? `Прошлый выбор (${prev.name}) больше не действует` : '', `Если Страшила номинирует ${t.name} и его казнят — проигрывает команда ${t.align === 'good' ? 'добрых' : 'злых'} (даже если казнённый не умрёт)`,
+            off ? `Страшила ${abilityOff(S, p)}: пока он пьян или отравлен, казнь выбранного не закончит игру` : ''] }; },
+      apply: inp => { const t = P(S, inp.t[0]), fresh = !prev || prev.id !== t.id;
+        S.players.forEach(q => { q.tokens = q.tokens.filter(x => !(x.k === 'fear' && x.src === 'fearmonger' && x.by === p.id)); });
+        addTok(S, t, 'fear', 'fearmonger', null, { by: p.id }); if (fresh) S.night.data.fearNew = true;
+        log(S, `Страшила (${p.name}) выбирает ${t.name}${fresh ? ' — объявлено: «Страшила выбрал игрока»' : ' (тот же игрок)'}`, 'action'); },
+    };
+  },
 };
 // Аль-Адихия: что получится из ответов (без защит — их учтёт применение)
 function alhOutcome(S, ids, inp) {
@@ -2562,6 +2691,12 @@ const BOUNDS = {
   gambler: { other: [I('1 игрока и роль. Не угадал — Азартный игрок умирает')] },
   highpriestess: { all: [Y('Кого показать: живого или мёртвого, доброго или злого; можно того же, что прошлой ночью (вики)'),
     Y('Например: у игрока есть важная информация, которую он не раскрыл; злой с неубедительным блефом; добрый, которому мало верят или который идёт по ложному следу')] },
+  steward: { first: [Y('Любой добрый игрок — только игрок, без роли (вики)')] },
+  kazali: { first: [I('игроков и Приспешников сценария (без повторов), пока Приспешников не станет обычное число'), Y('Каждого — «ТЕПЕРЬ ВЫ», жетон Приспешника, палец вниз. Их прежние роли можно дать Демону блефами')],
+    other: [I('любого игрока: он умирает')] },
+  lycanthrope: { other: [I('1 живого игрока (мёртвого — покачайте головой, пусть выберет другого)'), Y('Добрый умирает, и Демон этой ночью не убивает; злой и «Кошачья лапка» — ничего')] },
+  banshee: { other: [Y('Убита Демоном, имея способность, — объявите всем. Пьяную, отравленную или убитую не Демоном — не объявляйте')] },
+  fearmonger: { all: [I('любого игрока'), Y('Выбран новый игрок — объявите всем, что Страшила выбрал игрока (кого — нет); тот же — ничего')] },
   gossip: { other: [Y('Было ли дневное заявление Сплетницы верным (было ли оно — отмечено в конце дня). Если да — вы выбираете, кто умирает')] },
   courtier: { all: [I('любую роль, раз за игру: её обладатель пьян 3 ночи и 3 дня')] },
   professor: { other: [I('1 мёртвого игрока, раз за игру; воскресает, только если он Горожанин')] },
@@ -2892,7 +3027,7 @@ function klutzChoose(S, pid) {
 }
 
 
-const ENGINE = { canBluff, droisoned, nightDeaths, revive, psychopathKill, exeQuestions, roleWorks, makeMarionette, makeDrunk, setupRole, storytellerRole, gossipPending, setGossip, pithagAdvice, puzzleHit, puzzleGuess, politicianStats, politiciansPending, politicianSide, voteNeeds, ghostSpent, demonSeatNeighbours, generalGuess, choiceCount, newGame, newPlayer, P, nm, rname, realTeam, actsAs, aliveCount, aliveAll, coreCount, isTraveller, exile, exileThreshold, addTraveller, meetingBlocker, isDemon, distribution, setupDistribution, distCheck, unknownSetup, countTeams, randomDeal,
+const ENGINE = { canBluff, bansheeVotes, fauxPawOn, droisoned, nightDeaths, revive, psychopathKill, exeQuestions, roleWorks, makeMarionette, makeDrunk, setupRole, storytellerRole, gossipPending, setGossip, pithagAdvice, puzzleHit, puzzleGuess, politicianStats, politiciansPending, politicianSide, voteNeeds, ghostSpent, demonSeatNeighbours, generalGuess, choiceCount, newGame, newPlayer, P, nm, rname, realTeam, actsAs, aliveCount, aliveAll, coreCount, isTraveller, exile, exileThreshold, addTraveller, meetingBlocker, isDemon, distribution, setupDistribution, distCheck, unknownSetup, countTeams, randomDeal,
   amnesiacGuess, AMNESIAC_ANSWERS, storytellerKill, voteCount, voteWeight, voudonActive, bishopActive, travellerWorks, executeNow,
   judgeRuling, gunslingerShot, tinkerDies, doomsayerKill, fiddlerEnd, swapSeats, goonWarn, damselGuess, changeRole, madnessExecute, harpyKill,
   finishRoles, autoSetup, setupProblems, drawStart, drawOpen, drawClose, drawCancel, drawShown, drawLocked, drawProblem, distortion,

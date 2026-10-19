@@ -1258,6 +1258,69 @@ try {
   ok('казни: 37 историй, названия разные, в каждой есть имя', EXECUTIONS.length === 37 && new Set(EXECUTIONS.map(x => x.t)).size === 37
     && EXECUTIONS.every(x => x.t && x.s.includes('{name}') && !/\[Имя\]/.test(x.s)));
 
+  // 31. сценарии Ильи (2026-10-19): раздачи, Казали, Оборотень, Банши, Страшила, Фокусник, Управляющий
+  {
+    // случайные раздачи: без проблем подготовки; с Казали Приспешников нет
+    const bad = [];
+    for (const key of ['bonappetit', 'nachtmahr']) for (let k = 0; k < 120; k++) {
+      const n = 5 + (k % 11), Q = E.newGame(key); for (let i = 0; i < n; i++) Q.players.push(E.newPlayer('И' + i));
+      E.randomDeal(Q); const pr = E.setupProblems(Q), kz = Q.players.some(p => p.role === 'kazali'), mn = Q.players.filter(p => E.realTeam(p) === 'minion').length;
+      if (pr.length || (kz && mn)) bad.push(`${key} ${n}: ${pr.join('; ') || 'Казали и Приспешники: ' + mn}`);
+    }
+    ok('сценарии Ильи: 240 случайных раздач без проблем, при Казали нет Приспешников', !bad.length, bad.slice(0, 3).join(' | '));
+    ok('Страшила и Ловчий — названия пользователя', DATA.roles.fearmonger.name === 'Страшила' && /Страшила выбрал/.test(DATA.roles.fearmonger.first) && DATA.roles.huntsman.name === 'Ловчий');
+    ok('джинкс Математик + Пьяница — по-русски', /^Математик узнаёт/.test(DATA.jinxes['mathematician|drunk'] || DATA.jinxes['drunk|mathematician'] || ''));
+    // Казали: раздача без Приспешников, в 1-ю ночь делает Повара Отравителем — Отравитель просыпается этой же ночью
+    let G = game(['chef', 'investigator', 'librarian', 'empath', 'fortuneteller', 'monk', 'saint', 'kazali'], 'bonappetit');
+    const dz = E.setupDistribution(G);
+    ok('Казали: раскладка без Приспешников', dz.minion === 0 && dz.kazali === 1 && !E.setupProblems(G).length, E.setupProblems(G).join('; '));
+    E.autoSetup(G, true); E.startGame(G);
+    const kz = E.stepSpec(G, G.night.steps.find(s => s.id === 'kazali'));
+    ok('Казали: в 1-ю ночь выбирает 1 Приспешника', kz.active && kz.inputs[0].n === 1);
+    runNight(G, { kazali: { t: [byRole(G, 'chef').id], r0: 'poisoner' }, poisoner: { t: [byRole(G, 'monk').id] } });
+    const ch = G.players.find(p => p.name.endsWith(':chef'));
+    ok('Казали: Повар стал злым Отравителем и отравил в ту же ночь', ch.role === 'poisoner' && ch.align === 'evil' && E.hasTok(byRole(G, 'monk'), 'poisoned', 'poisoner'), ch.role);
+    E.endDay(G);
+    runNight(G, { kazali: { t: [byRole(G, 'empath').id] }, poisoner: { t: [byRole(G, 'saint').id] }, monk: { t: [byRole(G, 'investigator').id] } });
+    ok('Казали убивает со 2-й ночи', !byRole(G, 'empath').alive);
+    // Оборотень, «Кошачья лапка», Банши, Фокусник
+    G = game(['chef', 'investigator', 'lycanthrope', 'banshee', 'monk', 'saint', 'poisoner', 'imp'], 'nachtmahr');
+    E.autoSetup(G, true); G.flags.fauxPaw = byRole(G, 'chef').id; E.startGame(G);
+    ok('«Кошачья лапка» на Поваре', E.hasTok(byRole(G, 'chef'), 'fauxpaw', 'lycanthrope') && E.fauxPawOn(G, byRole(G, 'chef')));
+    runNight(G, {});
+    E.endDay(G);
+    runNight(G, { lycanthrope: { t: [byRole(G, 'investigator').id] }, imp: { t: [byRole(G, 'saint').id] }, monk: { t: [byRole(G, 'chef').id] }, poisoner: { t: [byRole(G, 'poisoner').id] } });
+    ok('Оборотень убил доброго — Демон этой ночью не убивает', !byRole(G, 'investigator').alive && byRole(G, 'saint').alive);
+    E.endDay(G);
+    runNight(G, { lycanthrope: { t: [byRole(G, 'chef').id] }, imp: { t: [byRole(G, 'banshee').id] }, monk: { t: [byRole(G, 'saint').id] }, poisoner: { t: [byRole(G, 'poisoner').id] } });
+    const bn = byRole(G, 'banshee');
+    ok('Оборотень: «Кошачья лапка» не умирает; Демон убил Банши', byRole(G, 'chef').alive && !bn.alive);
+    ok('Банши убита Демоном: голос ×2, номинирует, голос призрака не тратится', E.bansheeVotes(G, bn) && E.voteWeight(G, bn) === 2 && E.ghostSpent(G, [bn.id]).length === 0);
+    E.nominate(G, bn.id, byRole(G, 'monk').id); E.recordVote(G, byRole(G, 'monk').id, [bn.id]);
+    ok('Банши проголосовала дважды, голос остался', G.day.noms[0].count === 2 && bn.ghost, String(G.day.noms[0].count));
+    // Банши, убитая Оборотнем, — без способности
+    G = game(['chef', 'investigator', 'lycanthrope', 'banshee', 'monk', 'saint', 'poisoner', 'imp'], 'nachtmahr');
+    E.autoSetup(G, true); G.flags.fauxPaw = byRole(G, 'chef').id; E.startGame(G); runNight(G, {}); E.endDay(G);
+    runNight(G, { lycanthrope: { t: [byRole(G, 'banshee').id] }, imp: { t: [byRole(G, 'saint').id] }, monk: { t: [byRole(G, 'chef').id] }, poisoner: { t: [byRole(G, 'chef').id] } });
+    ok('Банши, убитая Оборотнем, способности не получает', !byRole(G, 'banshee').alive && !E.bansheeVotes(G, byRole(G, 'banshee')));
+    // Фокусник: Приспешникам — Демон и Фокусник, Демону — Приспешники и Фокусник
+    G = game(['chef', 'investigator', 'magician', 'banshee', 'monk', 'saint', 'poisoner', 'imp'], 'nachtmahr');
+    E.autoSetup(G, true); E.startGame(G);
+    const mi = E.stepSpec(G, G.night.steps.find(s => s.id === 'minioninfo')).info({}), di = E.stepSpec(G, G.night.steps.find(s => s.id === 'demoninfo')).info({});
+    const mg = byRole(G, 'magician').id;
+    ok('Фокусник: Приспешники видят его Демоном, Демон — Приспешником', mi.tokens[0].players.includes(mg) && mi.tokens[0].players.includes(byRole(G, 'imp').id) && di.tokens.some(t => t.caption === E.CARD.minions && t.players.includes(mg)));
+    // Страшила: номинировал выбранного, его казнили — команда проигрывает
+    G = game(['steward', 'chef', 'investigator', 'monk', 'soldier', 'saint', 'fearmonger', 'imp'], 'nachtmahr');
+    E.autoSetup(G, true); E.startGame(G);
+    const sw = E.stepSpec(G, G.night.steps.find(s => s.id === 'steward'));
+    ok('Управляющий: 1-я ночь, по умолчанию — добрый игрок', sw.active && G.players.find(q => q.id === sw.defaults.t[0]).align === 'good');
+    runNight(G, { fearmonger: { t: [byRole(G, 'chef').id] } });
+    ok('Страшила: жетон «Страх», на рассвете объявить', E.hasTok(byRole(G, 'chef'), 'fear', 'fearmonger') && G.log.some(l => /Страшила выбрал игрока/.test(l.t)));
+    ok('Страшила: подсказка при номинации', E.nominationPreview(G, byRole(G, 'fearmonger').id, byRole(G, 'chef').id).notes.some(t => /Страшила/.test(t)));
+    E.nominate(G, byRole(G, 'fearmonger').id, byRole(G, 'chef').id); E.execute(G, byRole(G, 'chef').id);
+    ok('Страшила: казнь выбранного — победа зла', G.result && G.result.winner === 'evil', G.result && G.result.reason);
+  }
+
   for (const k of Object.keys(DATA.scripts)) ok('сценарий ' + k + ' — все роли в данных', DATA.scripts[k].roles.every(r => DATA.roles[r]));
 } catch (e) { results.push('ERROR ' + e.message + '\n' + e.stack); }
 

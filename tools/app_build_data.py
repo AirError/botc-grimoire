@@ -46,10 +46,14 @@ for f in sorted((D / "guide").glob("*.json")):
 USER_ABILITY = {
     "mutant": "Если вы внушаете, что вы Изгой, вас могут казнить.",  # 2026-10-11: «внушаете» вместо «помешаны»
 }
-# название роли по решению пользователя — как на его листах ролей (2026-10-18: Huntsman — «Ловчий», официально «Егерь»);
+# название роли по решению пользователя — как на его листах ролей (2026-10-18: Huntsman — «Ловчий», официально «Егерь»;
+# 2026-10-19: Fearmonger — «Страшила», официально «Паникёр», как на листе Nachtmahr);
 # то же имя по падежам заменяется во всех текстах официального перевода (ночные подсказки, джинксы, напоминания)
-USER_NAME = {"huntsman": "Ловчий"}
-USER_WORDS = [("Егерем", "Ловчим"), ("Егерю", "Ловчему"), ("Егеря", "Ловчего"), ("Егере", "Ловчем"), ("Егерь", "Ловчий")]
+USER_NAME = {"huntsman": "Ловчий", "fearmonger": "Страшила"}
+USER_WORDS = [("Егерем", "Ловчим"), ("Егерю", "Ловчему"), ("Егеря", "Ловчего"), ("Егере", "Ловчем"), ("Егерь", "Ловчий"),
+              ("Паникёром", "Страшилой"), ("Паникёра", "Страшилы"), ("Паникёр", "Страшила")]
+# джинксы без официального русского текста — перевод наш (тот же, что на листе ночей Nachtmahr)
+JINX_RU = {"mathematician|drunk": "Математик узнаёт и о том, что способность Пьяницы дала ложные сведения или не сработала как надо."}
 
 
 def user_words(s):
@@ -104,7 +108,7 @@ for entry in jinx_en:
     for j in entry["jinx"]:
         b = j["id"]
         if a in roles and b in roles:
-            text = ru["jinxes"].get(f"{a}-{b}") or ru["jinxes"].get(f"{b}-{a}") or j["reason"]
+            text = ru["jinxes"].get(f"{a}-{b}") or ru["jinxes"].get(f"{b}-{a}") or JINX_RU.get(f"{a}|{b}") or JINX_RU.get(f"{b}|{a}") or j["reason"]
             jinxes[f"{a}|{b}"] = text
 
 def edition_script(ed):
@@ -129,6 +133,21 @@ scripts = {
         "moonchild", "politician", "damsel", "puzzlemaster",
         "godfather", "poisoner", "witch", "mastermind",
         "imp"]},
+    # сценарии Ильи (2026-10-19; группа «Сценарии Ильи») — составы из bon_appetit/src/script.json и nachtmahr/src/script.json.
+    # Экспериментальные: Управляющий, Каннибал, Ловчий, Девица, Психопат, Казали; в Nachtmahr — ещё Оборотень, Банши, Фокусник,
+    # Страшила (Паникёр). Ловчий и Страшила — названия пользователя (USER_NAME)
+    "bonappetit": {"name": "Bon Appétit", "roles": [
+        "steward", "chef", "investigator", "librarian", "empath", "fortuneteller", "monk", "gambler", "huntsman", "slayer",
+        "soldier", "cannibal", "ravenkeeper", "mayor",
+        "drunk", "saint", "mutant", "damsel",
+        "godfather", "poisoner", "witch", "psychopath", "scarletwoman",
+        "imp", "kazali", "fanggu"]},
+    "nachtmahr": {"name": "Nachtmahr", "roles": [
+        "steward", "chef", "investigator", "librarian", "mathematician", "fortuneteller", "monk", "lycanthrope", "huntsman",
+        "slayer", "soldier", "cannibal", "banshee", "magician",
+        "drunk", "saint", "mutant", "damsel",
+        "godfather", "poisoner", "witch", "fearmonger", "scarletwoman",
+        "pukka", "imp", "fanggu"]},
     # Catfishing 11.1 by Emily (botcscripts.com/script/3/11.1.0); Странники — рекомендованные сценарием
     "catfishing": {"name": "Catfishing", "roles": [
         "investigator", "chef", "grandmother", "balloonist", "dreamer", "fortuneteller", "snakecharmer",

@@ -348,7 +348,7 @@ function tiles(key, n, filter, selected, act, opts) {
   opts = opts || {};
   return '<div class="tiles">' + (opts.order || S.players).map(p => {
     const i = S.players.indexOf(p), ok = filter(p), on = selected.includes(p.id);
-    const sub = [!p.alive ? (opts.ghost ? (p.ghost ? 'мёртв · голос' : 'мёртв · без голоса') : 'мёртв') : E.isTraveller(p) ? 'Странник' : '', opts.mark === p.id ? 'номинирован' : ''].filter(Boolean).join(' · ');
+    const sub = [!p.alive ? (opts.ghost ? (E.bansheeVotes(S, p) ? 'мёртв · Банши: голос ×2' : p.ghost ? 'мёртв · голос' : 'мёртв · без голоса') : 'мёртв') : E.isTraveller(p) ? 'Странник' : '', opts.mark === p.id ? 'номинирован' : ''].filter(Boolean).join(' · ');
     return `<button class="tile ${on ? 'on' : ''} ${p.alive ? '' : 'dead'} ${opts.mark === p.id ? 'mark' : ''}" data-act="${act}" data-arg="${key}|${p.id}|${n}" ${ok ? '' : 'disabled'} aria-pressed="${on}">
       <span class="tn">${i + 1}</span><span class="tname">${esc(p.name)}</span>${sub ? `<span class="tsub">${sub}</span>` : ''}${on ? '<span class="tck" aria-hidden="true">✓</span>' : ''}</button>`;
   }).join('') + '</div>';
@@ -586,7 +586,7 @@ function fabledZone() {
 /* ------------------------------------------------------------ экраны */
 // сценарий — выпадающим списком (решение пользователя: везде списком)
 function scriptSelect() {
-  const groups = [['Ваши сценарии', ['ecbe', 'blindhunt']], ['Базовая коробка', ['tb', 'bmr', 'snv']], ['Сообщество', ['catfishing', 'reptiles2', 'oasis', 'pies', 'uncertain']]];
+  const groups = [['Ваши сценарии', ['ecbe', 'blindhunt']], ['Сценарии Ильи', ['bonappetit', 'nachtmahr']], ['Базовая коробка', ['tb', 'bmr', 'snv']], ['Сообщество', ['catfishing', 'reptiles2', 'oasis', 'pies', 'uncertain']]];
   const known = new Set(groups.flatMap(g => g[1])), rest = Object.keys(DATA.scripts).filter(k => !known.has(k));
   const opt = k => `<option value="${k}" ${S.script.key === k ? 'selected' : ''}>${esc(DATA.scripts[k].name)}</option>`;
   return `<select class="scriptsel" data-act="script" aria-label="Сценарий">${S.script.key === 'custom' ? `<option value="custom" selected>Свой: ${esc(S.script.name)}</option>` : ''}
@@ -653,6 +653,7 @@ function viewSetup() {
       ${S.players.some(p => p.role === 'fortuneteller') ? pickSel('setFlag-ftHerring', 'Ложная цель Гадалки (добрый игрок)', S.flags.ftHerring, goodPl) : ''}
       ${S.players.some(p => p.role === 'eviltwin') ? pickSel('setFlag-goodTwin', 'Добрый близнец', S.flags.goodTwin, goodPl) : ''}
       ${S.players.some(p => p.role === 'puzzlemaster') ? pickSel('setFlag-puzzleDrunk', 'Головоломщик: кто пьян всю игру (вики: почти всегда лучше Горожанин; сам игрок не знает)', S.flags.puzzleDrunk, core.filter(p => p.role && p.role !== 'puzzlemaster')) : ''}
+      ${S.players.some(p => p.role === 'lycanthrope') ? pickSel('setFlag-fauxPaw', 'Оборотень: «Кошачья лапка» — добрый игрок, который определяется злым, пока Оборотень жив (Оборотень его не убьёт)', S.flags.fauxPaw, goodPl.filter(p => p.role !== 'lycanthrope')) : ''}
       ${S.flags.marionetteNeed || S.players.some(p => p.role === 'marionette') ? (() => { // Марионетка: сосед Демона с доброй ролью (вики)
         const cur = S.players.find(p => p.role === 'marionette'), cand = E.demonSeatNeighbours(S).filter(p => p.role && (isGoodRole(p.role) || p === cur));
         return `<div class="field ${cur ? '' : 'ask'}"><label>Марионетка — кто из соседей Демона ею станет (он будет считать себя своей ролью, как Пьяница)</label>
@@ -1192,9 +1193,10 @@ function grimZoomHtml() {
 function nomRules() {
   const d = S.day, vd = E.voudonActive(S), butcherTurn = !!d.butcherOpen;
   return { vd, bishop: E.bishopActive(S), butcherTurn,
-    byOk: butcherTurn ? (p => p.role === 'butcher' && p.alive) : (p => p.alive && !d.nominators.includes(p.id)),
+    // Банши, убитая Демоном (вики): номинирует дважды в день, даже мёртвая, и голосует без голоса призрака (её голос — за два)
+    byOk: butcherTurn ? (p => p.role === 'butcher' && p.alive) : (p => (p.alive && !d.nominators.includes(p.id)) || (E.bansheeVotes(S, p) && d.nominators.filter(x => x === p.id).length < 2)),
     onOk: p => !E.isTraveller(p) && (butcherTurn || !d.nominated.includes(p.id)),
-    canVote: vd ? (p => !p.alive || p.role === 'voudon') : (p => p.alive || p.ghost) };
+    canVote: vd ? (p => !p.alive || p.role === 'voudon') : (p => p.alive || p.ghost || E.bansheeVotes(S, p)) };
 }
 const ringBtn = () => '<button class="btn ringbtn" data-act="ringNom">◯ Кругом</button>';
 // место за столом: кружок с номером и именем (без ролей — экран может видеть стол); мёртвый — саван (белый контур — голос есть)
@@ -2003,6 +2005,7 @@ const A = {
   'setFlag-ftHerring': (a, el) => act(S => { S.flags.ftHerring = el.value || null; }, 'ложная цель Гадалки'),
   'setFlag-goodTwin': (a, el) => act(S => { S.flags.goodTwin = el.value || null; }, 'добрый близнец'),
   'setFlag-puzzleDrunk': (a, el) => act(S => { S.flags.puzzleDrunk = el.value || null; }, 'пьяный Головоломщика'),
+  'setFlag-fauxPaw': (a, el) => act(S => { S.flags.fauxPaw = el.value || null; }, '«Кошачья лапка» Оборотня'),
   autoPrep: () => act(S => E.autoSetup(S, true), 'подготовка случайно'),
   start: () => { UI.notes = []; act(S => E.startGame(S), 'начало игры'); window.scrollTo(0, 0); },
   // Странники и Сказочники
