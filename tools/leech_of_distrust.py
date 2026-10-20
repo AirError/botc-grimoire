@@ -19,7 +19,8 @@ ART = ROOT / "leech_of_distrust" / "art" / "src"
 OUT = ROOT / "out" / "leech_of_distrust"
 ru, team = ba.ru, ba.team
 ids = [x for x in json.loads((ROOT / "leech_of_distrust" / "src" / "script.json").read_text(encoding="utf-8")) if isinstance(x, str)]
-NAME = {rid: ru[rid]["name"] for rid in ids}
+KEEP = {"oracle": "Пророк"}  # решение пользователя: Пикси заменён Пророком = Оракул (Oracle, S&V), название — пользователя
+NAME = {rid: KEEP.get(rid, ru[rid]["name"]) for rid in ids}
 TEAMS = [("townsfolk", "Горожане", False), ("outsider", "Изгои", False), ("minion", "Приспешники", True), ("demon", "Демоны", True)]
 INK = "#111111"
 
