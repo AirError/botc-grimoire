@@ -586,7 +586,7 @@ function fabledZone() {
 /* ------------------------------------------------------------ экраны */
 // сценарий — выпадающим списком (решение пользователя: везде списком)
 function scriptSelect() {
-  const groups = [['Ваши сценарии', ['ecbe', 'blindhunt']], ['Сценарии Ильи', ['bonappetit', 'nachtmahr']], ['Базовая коробка', ['tb', 'bmr', 'snv']], ['Сообщество', ['catfishing', 'reptiles2', 'oasis', 'pies', 'uncertain']]];
+  const groups = [['Ваши сценарии', ['ecbe', 'blindhunt']], ['Сценарии Ильи', ['bonappetit', 'nachtmahr']], ['Teensyville (5–6 игроков)', ['leech', 'overtheriver', 'nogreaterjoy']], ['Базовая коробка', ['tb', 'bmr', 'snv']], ['Сообщество', ['catfishing', 'reptiles2', 'oasis', 'pies', 'uncertain']]];
   const known = new Set(groups.flatMap(g => g[1])), rest = Object.keys(DATA.scripts).filter(k => !known.has(k));
   const opt = k => `<option value="${k}" ${S.script.key === k ? 'selected' : ''}>${esc(DATA.scripts[k].name)}</option>`;
   return `<select class="scriptsel" data-act="script" aria-label="Сценарий">${S.script.key === 'custom' ? `<option value="custom" selected>Свой: ${esc(S.script.name)}</option>` : ''}
@@ -1915,9 +1915,20 @@ function polOverlay() {
     <div class="confirm"><button class="btn pgood" data-act="polSide" data-arg="${p.id}|good">Добрый</button><button class="btn pevil" data-act="polSide" data-arg="${p.id}|evil">Злой</button></div></div></div>`;
 }
 
+// названия ролей только для одного сценария (DATA.scripts[k].names): в A Leech of Distrust Оракул — «Пророк», как на листе
+// пользователя (2026-10-20); в остальных сценариях — обычные названия
+const BASE_NAMES = Object.fromEntries(Object.entries(DATA.roles).map(([k, r]) => [k, r.name]));
+let namesKey = null;
+function scriptNames() {
+  if (S.script.key === namesKey) return;
+  namesKey = S.script.key;
+  const own = (DATA.scripts[S.script.key] || {}).names || {};
+  for (const k in BASE_NAMES) DATA.roles[k].name = own[k] || BASE_NAMES[k];
+}
 function render() {
   const app = document.getElementById('app');
   if (!S) { app.innerHTML = '<main><div class="card">Загрузка…</div></main>'; return; }
+  scriptNames();
   // ночью — принудительный OLED: чистый чёрный фон, светятся только текст и иконки
   document.documentElement.classList.toggle('oled', S.phase === 'night');
   // днём и на остальных экранах — всегда светлая тема, даже если телефон переключился на тёмную

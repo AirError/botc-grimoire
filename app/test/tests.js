@@ -1321,6 +1321,37 @@ try {
     ok('Страшила: казнь выбранного — победа зла', G.result && G.result.winner === 'evil', G.result && G.result.reason);
   }
 
+  // 32. Teensyville (2026-10-20): раздачи на 5–6 игроков, Пиявица и джинкс с Истребителем
+  {
+    const bad = [];
+    for (const key of ['leech', 'overtheriver', 'nogreaterjoy']) for (let k = 0; k < 60; k++) {
+      const n = 5 + (k % 2), Q = E.newGame(key); for (let i = 0; i < n; i++) Q.players.push(E.newPlayer('И' + i));
+      E.randomDeal(Q);
+      if (Q.flags.marionetteNeed) { const nb = E.demonSeatNeighbours(Q).find(p => DATA.roles[p.role].team === 'townsfolk' || DATA.roles[p.role].team === 'outsider'); if (nb) E.makeMarionette(Q, nb.id); }
+      const pr = E.setupProblems(Q); if (pr.length) bad.push(`${key} ${n}: ${pr.join('; ')}`);
+    }
+    ok('Teensyville: 180 случайных раздач на 5–6 игроков без проблем', !bad.length, [...new Set(bad)].slice(0, 3).join(' | '));
+    ok('Пиявица: ночная подсказка без «The»', !/The/.test(DATA.roles.lleech.other || '') && DATA.scripts.leech.names.oracle === 'Пророк');
+    let G = game(['oracle', 'undertaker', 'exorcist', 'drunk', 'devilsadvocate', 'lleech'], 'leech');
+    E.autoSetup(G, true); E.startGame(G);
+    const host = byRole(G, 'undertaker'), ll = byRole(G, 'lleech');
+    runNight(G, { lleech: { t: [host.id] } });
+    ok('Пиявица: хозяин отравлен до конца игры', E.hasTok(host, 'poisoned', 'lleech') && !!E.abilityOff(G, host));
+    E.execute(G, ll.id);
+    ok('Пиявица: казнь не убивает, пока хозяин жив', ll.alive && G.day.exeResult && !G.day.exeResult.died && /хозяин/.test(G.day.exeResult.why), G.day.exeResult && G.day.exeResult.why);
+    E.endDay(G);
+    runNight(G, { lleech: { t: [byRole(G, 'oracle').id] }, devilsadvocate: { t: [host.id] }, exorcist: { t: [host.id] } });
+    ok('Пиявица убивает со 2-й ночи', !byRole(G, 'oracle').alive && host.alive);
+    E.storytellerKill(G, host.id, null, 'проверка');
+    ok('Пиявица: умер хозяин — умирает и она, добро побеждает', !ll.alive && G.result && G.result.winner === 'good', G.result && G.result.reason);
+    // джинкс: Истребитель стреляет в хозяина — хозяин умирает (и Пиявица с ним)
+    G = game(['slayer', 'juggler', 'fisherman', 'lunatic', 'marionette', 'lleech'], 'leech');
+    E.autoSetup(G, true); E.startGame(G); const h2 = byRole(G, 'juggler');
+    runNight(G, { lleech: { t: [h2.id] } });
+    E.slayerShot(G, byRole(G, 'slayer').id, h2.id);
+    ok('Джинкс Пиявица + Истребитель: выстрел в хозяина убивает его и Пиявицу', !h2.alive && !byRole(G, 'lleech').alive && G.result && G.result.winner === 'good');
+  }
+
   for (const k of Object.keys(DATA.scripts)) ok('сценарий ' + k + ' — все роли в данных', DATA.scripts[k].roles.every(r => DATA.roles[r]));
 } catch (e) { results.push('ERROR ' + e.message + '\n' + e.stack); }
 

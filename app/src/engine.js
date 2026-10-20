@@ -148,6 +148,14 @@ const fauxPawOn = (S, q) => hasTok(q, 'fauxpaw', 'lycanthrope') && S.players.som
 const regEvil = (S, q) => q.align === 'evil' || fauxPawOn(S, q);
 // Оборотень убил доброго этой ночью — Демон этой ночью не убивает (вики)
 const lycBlock = S => S.phase === 'night' && !!(S.night && S.night.data.lycKill);
+// Пиявица (вики): хозяин — игрок, отравленный ею в 1-ю ночь (жетон яда с by — кто Пиявица); пока хозяин жив, Пиявица не может
+// умереть (пьяная или отравленная — может); хозяин умер — Пиявица умирает тоже (afterDeath)
+const lleechHost = (S, l) => S.players.find(q => q.tokens.some(t => t.k === 'poisoned' && t.src === 'lleech' && t.by === l.id)) || null;
+function lleechGuard(S, p) {
+  if (p.role !== 'lleech' || abilityOff(S, p)) return null;
+  const h = lleechHost(S, p);
+  return h && h !== p && (h.alive || h.secretlyAlive) ? `Пиявица: её хозяин (${h.name}) жив` : null;
+}
 // Банши, убитая Демоном со способностью (вики): номинирует дважды в день и голосует дважды, без голоса призрака
 const bansheeVotes = (S, p) => !!p && hasTok(p, 'hasability', 'banshee') && !abilityOff(S, p);
 
@@ -184,6 +192,7 @@ function recordAbn(S, p, text, src) {
 // кто не даёт игроку умереть (без последствий) — общая проверка для attemptKill и подсказок заранее (номинация проклятого Ведьмой).
 // Травница (вики): её соседи не умирают никак — ни от Демона, ни от казни, ни от Ведьмы, ни при изгнании; исключение — Ассасин
 function deathGuard(S, p, cause) {
+  const lg = lleechGuard(S, p); if (lg) return lg;
   if (cause === 'unstoppable') return null;
   if (cause === 'demon' && hasTok(p, 'protected', 'monk')) return 'Монах';
   if (cause === 'demon' && actsAs(p) === 'soldier' && !abilityOff(S, p)) return 'Солдат';
@@ -199,6 +208,7 @@ function attemptKill(S, p, cause, src, opts) {
   opts = opts || {};
   if (!p || !p.alive) return { died: false, why: 'уже мёртв' };
   if (cause === 'demon' && lycBlock(S)) return saved(S, p, 'Оборотень убил этой ночью — Демон не убивает');
+  const lg = lleechGuard(S, p); if (lg) return saved(S, p, lg); // и Ассасин не убьёт (вики: «пока хозяин жив, Пиявица не может умереть»)
   if (cause !== 'unstoppable') {
     const guard = deathGuard(S, p, cause);
     if (guard) { if (guard.startsWith('Шут')) S.flags['foolUsed_' + p.id] = true; return saved(S, p, guard); }
@@ -339,6 +349,11 @@ function afterDeath(S, p, cause, fake, aliveBefore, opts) {
       log(S, 'Менестрель: казнён Приспешник — все остальные пьяны до заката завтрашнего дня', 'effect');
     }
   }
+  // Пиявица (вики): умер её хозяин — умирает и она (добро побеждает, даже если живых остаётся 1–2); пьяная или отравленная — нет
+  if (!fake) for (const l of S.players.filter(q => q !== p && q.role === 'lleech' && q.alive && !abilityOff(S, q) && lleechHost(S, q) === p)) {
+    log(S, `Умер хозяин Пиявицы (${p.name}) — Пиявица (${l.name}) умирает тоже`, 'effect');
+    die(S, l, 'ability', 'lleech', { reason: `умер её хозяин ${p.name}` });
+  }
   // Пукка: со смертью отравление снимается
   rmTok(p, 'poisoned', 'pukka');
   if (team === 'demon' && !fake && !opts.noScarlet) demonDied(S, p, cause, aliveBefore || aliveCount(S) + 1);
@@ -419,6 +434,9 @@ function distribution(nPlayers, roles, mods, maxOut) {
     if (r === 'vigormortis') { t += 1; o -= 1; notes.push('Вигормортис: −1 Изгой'); }
   }
   if (o < 0) { t += o; o = 0; } // убирать Изгоя некого — число Горожан не меняется
+  // Изгоев в сценарии меньше, чем нужно (Барон на 6 игроков в Teensyville: 3 Изгоя, а в сценарии 2) — на вики правила нет:
+  // недостающих заменяют Горожане (решение рассказчика), чтобы раскладка сходилась
+  if (o > maxOut) { notes.push(`В сценарии только ${maxOut} Изгоя(ев) — вместо недостающих ${o - maxOut} Горожане (на вики правила нет — решение рассказчика)`); t += o - maxOut; o = maxOut; }
   // Атеист [В игре нет злых ролей] (вики): злых убрать, добрых добавить до числа игроков; Горожан/Изгоев — на усмотрение рассказчика
   let free = false;
   if (roles.includes('atheist')) { t += m + d; m = 0; d = 0; free = true; notes.push('Атеист: злых ролей нет; сколько Горожан и Изгоев — решаете вы'); }
@@ -1218,6 +1236,11 @@ function slayerShot(S, slayerId, targetId, registersAsDemon) {
   const s = P(S, slayerId), t = P(S, targetId);
   S.flags['slayerUsed_' + slayerId] = true;
   log(S, `Истребитель ${s.name} стреляет в ${t.name}`, 'day');
+  // джинкс Пиявица + Истребитель: выстрел в хозяина Пиявицы убивает хозяина (а с ним и Пиявицу)
+  if (!abilityOff(S, s) && jinxOn(S, 'lleech', 'slayer') && S.players.some(l => l.role === 'lleech' && l !== t && lleechHost(S, l) === t)) {
+    log(S, 'Джинкс Пиявица + Истребитель: выстрел в хозяина Пиявицы — хозяин умирает', 'effect');
+    attemptKill(S, t, 'ability', 'slayer'); return;
+  }
   if (!abilityOff(S, s) && (isDemon(t) || registersAsDemon)) {
     attemptKill(S, t, 'ability', 'slayer');
   } else {
@@ -2640,6 +2663,23 @@ const LOGIC = {
         log(S, `Страшила (${p.name}) выбирает ${t.name}${fresh ? ' — объявлено: «Страшила выбрал игрока»' : ' (тот же игрок)'}`, 'action'); },
     };
   },
+  /* --- Teensyville (A Leech of Distrust; 2026-10-20) */
+  // Пиявица (вики): в 1-ю ночь выбирает любого игрока — хозяина, он отравлен до конца игры (появилась посреди игры — выбирает живого
+  // в ту же ночь). Со 2-й ночи — убивает. Пока хозяин жив, она не умирает (lleechGuard); хозяин умер — умирает и она (afterDeath)
+  lleech: (S, p, first, off, base) => {
+    if (demonExorcised(S, p, base)) return {};
+    const host = lleechHost(S, p);
+    if (first || !host) return {
+      inputs: [PL('t', 1, first ? 'Кого Пиявица выбирает хозяином (он отравлен до конца игры)' : 'У Пиявицы ещё нет хозяина (появилась посреди игры или шаг пропущен): кого она выбирает — живого', first ? null : aliveOnly)],
+      info: inp => { const t = inp.t && P(S, inp.t[0]); if (!t) return null;
+        return { show: `Хозяин Пиявицы: ${t.name}`, lines: ['Он отравлен до конца игры. Пока он жив, Пиявица не умирает; умрёт он — умрёт и Пиявица, добро побеждает',
+          'Отравленному доброму давайте ложную информацию так, чтобы она казалась правдой (вики)', off ? `Пиявица ${abilityOff(S, p)}: решите сами, получился ли выбор` : ''] }; },
+      apply: inp => { const t = P(S, inp.t[0]); addTok(S, t, 'poisoned', 'lleech', null, { perm: true, by: p.id }); log(S, `Пиявица (${p.name}) выбирает хозяина: ${t.name} — отравлен до конца игры`, 'action'); },
+    };
+    return { inputs: [PL('t', 1, 'Кого убивает Пиявица')], more: inp => mayorInput(S, inp),
+      info: () => ({ show: null, lines: [`Хозяин Пиявицы: ${host.name}${host.alive ? ' — жив, Пиявица не умирает' : ' — мёртв'}`] }),
+      apply: inp => demonKill(S, p, off, P(S, inp.t[0]), inp) };
+  },
 };
 // Аль-Адихия: что получится из ответов (без защит — их учтёт применение)
 function alhOutcome(S, ids, inp) {
@@ -2692,6 +2732,7 @@ const BOUNDS = {
   highpriestess: { all: [Y('Кого показать: живого или мёртвого, доброго или злого; можно того же, что прошлой ночью (вики)'),
     Y('Например: у игрока есть важная информация, которую он не раскрыл; злой с неубедительным блефом; добрый, которому мало верят или который идёт по ложному следу')] },
   steward: { first: [Y('Любой добрый игрок — только игрок, без роли (вики)')] },
+  lleech: { first: [I('любого игрока — хозяина: он отравлен до конца игры')], other: [I('любого игрока: он умирает'), Y('Пока хозяин жив, Пиявица не умирает (казнь — объявите, что игрок жив, не говоря почему); умер хозяин — умирает и она')] },
   kazali: { first: [I('игроков и Приспешников сценария (без повторов), пока Приспешников не станет обычное число'), Y('Каждого — «ТЕПЕРЬ ВЫ», жетон Приспешника, палец вниз. Их прежние роли можно дать Демону блефами')],
     other: [I('любого игрока: он умирает')] },
   lycanthrope: { other: [I('1 живого игрока (мёртвого — покачайте головой, пусть выберет другого)'), Y('Добрый умирает, и Демон этой ночью не убивает; злой и «Кошачья лапка» — ничего')] },

@@ -33,6 +33,7 @@ PROPS = {"poppygrower": {"prevents_evil_meeting": True}}
 TEXT_FIX = {
     ("widow", "first"): "Показывайте Вдове Гримуар столько, сколько ей нужно. Вдова выбирает игрока. :reminder: "
                         "Усыпите Вдову. Разбудите игрока с меткой *РАСКРЫТЫЙ* и покажите ему жетон Вдовы. :reminder:",
+    ("lleech", "other"): "Пиявица выбирает игрока. :reminder:",  # в переводе «The Пиявица выбирает игрока»
 }
 
 
@@ -148,6 +149,25 @@ scripts = {
         "drunk", "saint", "mutant", "damsel",
         "godfather", "poisoner", "witch", "fearmonger", "scarletwoman",
         "pukka", "imp", "fanggu"]},
+    # Teensyville — сценарии на 5–6 игроков (2026-10-20; группа «Teensyville» в приложении). A Leech of Distrust (OJ) — состав из
+    # leech_of_distrust/src/script.json: Пикси пользователь заменил Пророком — это Оракул, и в этом сценарии он так и называется
+    # (names — названия ролей только для этого сценария, как на листе пользователя). Over the River — Andrew Nathenson,
+    # No Greater Joy — Steven Medway (составы — с листов пользователя, роли коробки)
+    "leech": {"name": "A Leech of Distrust", "roles": [
+        "oracle", "undertaker", "exorcist", "fisherman", "slayer", "juggler",
+        "lunatic", "drunk",
+        "devilsadvocate", "marionette",
+        "lleech"], "names": {"oracle": "Пророк"}},
+    "overtheriver": {"name": "Over the River", "roles": [
+        "grandmother", "clockmaker", "innkeeper", "snakecharmer", "professor", "slayer",
+        "lunatic", "recluse",
+        "godfather", "spy",
+        "imp"]},
+    "nogreaterjoy": {"name": "No Greater Joy", "roles": [
+        "clockmaker", "investigator", "empath", "chambermaid", "artist", "sage",
+        "drunk", "klutz",
+        "scarletwoman", "baron",
+        "imp"]},
     # Catfishing 11.1 by Emily (botcscripts.com/script/3/11.1.0); Странники — рекомендованные сценарием
     "catfishing": {"name": "Catfishing", "roles": [
         "investigator", "chef", "grandmother", "balloonist", "dreamer", "fortuneteller", "snakecharmer",
