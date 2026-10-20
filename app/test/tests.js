@@ -396,10 +396,10 @@ try {
   const tr2 = E.addTraveller(S, 'Гость 2', 'beggar', 'good', null);
   E.attemptKill(S, byRole(S, 'drunk'), 'ability');
   ok('двое живых + живой Странник — победа зла (Странники не считаются)', S.result && S.result.winner === 'evil', S.result && S.result.reason);
-  // 25. Сказочник с ночным шагом
+  // 25. Сказочник Кукольник — без своего шага: «ночь без нападения» в шаге Демона (заметка пользователя 2026-10-20)
   S = game(['clockmaker', 'grandmother', 'fortuneteller', 'monk', 'tealady', 'imp', 'witch', 'recluse']);
   S.fabled = ['toymaker']; E.autoSetup(S, true); E.startGame(S); E.endNight(S); E.endDay(S);
-  ok('Сказочник Кукольник просыпается в последующую ночь', S.night.steps.some(s => s.fabled && s.id === 'toymaker'));
+  ok('Сказочник Кукольник: своего шага нет, выбор — в шаге Демона', !S.night.steps.some(s => s.fabled && s.id === 'toymaker') && E.stepSpec(S, S.night.steps.find(s => s.id === 'imp')).inputs[0].key === 'toy');
 
   // 26. Catfishing: Вдова, Каннибал, Аэронавт
   S = game(['investigator', 'chef', 'balloonist', 'fortuneteller', 'cannibal', 'recluse', 'widow', 'imp'], 'catfishing');
@@ -605,7 +605,7 @@ try {
   S = game(['washerwoman', 'librarian', 'chef', 'empath', 'poisoner', 'imp'], 'tb'); S.fabled = ['toymaker']; E.autoSetup(S, true); E.startGame(S);
   ok('Кукольник: при 6 игроках злые знакомятся', S.night.steps.some(s => s.id === 'minioninfo') && S.night.steps.some(s => s.id === 'demoninfo'));
   runNight(S, { poisoner: { t: ids(S, 'chef') } }); E.endDay(S);
-  runNight(S, { imp: { t: [] }, poisoner: { t: ids(S, 'chef') } });
+  runNight(S, { imp: { toy: 'skip' }, poisoner: { t: ids(S, 'chef') } });
   ok('Кукольник: Демон может не нападать', S.flags.toyNoAttack && S.players.every(p => p.alive));
   S = tbGame(); S.fabled = ['doomsayer']; E.startGame(S); runNight(S, { poisoner: { t: ids(S, 'chef') } });
   E.doomsayerKill(S, byRole(S, 'chef').id, byRole(S, 'empath').id);
@@ -1370,6 +1370,39 @@ try {
     E.addTok(G, byRole(G, 'fisherman'), 'poisoned', 'poisoner');
     adv = IDEAS.fishermanAdvice(G, byRole(G, 'fisherman').id);
     ok('Рыбак отравлен: сначала плохие советы, финального нет', /Плохой/.test(adv[0].g) && !adv.some(x => x.g === 'Финал'));
+  }
+
+  // 34. Кукольник (вики; заметка пользователя 2026-10-20): без своего шага, «Ночь без нападения» у Демона, принудительно в последнюю ночь
+  {
+    let G = game(['washerwoman', 'empath', 'chef', 'drunk', 'poisoner', 'imp'], 'tb'); G.fabled = ['toymaker'];
+    E.autoSetup(G, true); E.startGame(G);
+    ok('Кукольник: нет своего шага, злые знакомятся при 6 игроках, метка на Демоне', !G.night.steps.some(s => s.fabled) && G.night.steps.some(s => s.id === 'minioninfo') && E.hasTok(byRole(G, 'imp'), 'finalnight', 'toymaker'));
+    runNight(G, {}); E.endDay(G);
+    let st = G.night.steps.find(s => s.id === 'imp'), sp = E.stepSpec(G, st);
+    ok('Кукольник: у Демона выбор «Ночь без нападения»', sp.active && sp.inputs[0].key === 'toy' && E.missingInputs(sp, { toy: 'skip' }).length === 0 && E.missingInputs(sp, {}).length === 1);
+    runNight(G, { imp: { toy: 'skip' }, poisoner: { t: [byRole(G, 'poisoner').id] } });
+    ok('Кукольник: ночь без нападения — никто не умер, метка снята', G.players.every(p => p.alive) && G.flags.toyNoAttack && !E.hasTok(byRole(G, 'imp'), 'finalnight'));
+    // не отказывался — при 3 живых Демона не будят
+    G = game(['washerwoman', 'empath', 'chef', 'drunk', 'poisoner', 'imp'], 'tb'); G.fabled = ['toymaker']; E.autoSetup(G, true); E.startGame(G); runNight(G, {});
+    E.storytellerKill(G, byRole(G, 'washerwoman').id, null, 'тест'); E.storytellerKill(G, byRole(G, 'chef').id, null, 'тест'); E.storytellerKill(G, byRole(G, 'drunk').id, null, 'тест');
+    E.endDay(G); sp = E.stepSpec(G, G.night.steps.find(s => s.id === 'imp'));
+    ok('Кукольник: последняя ночь без отказа — Демон не просыпается', !sp.active && /Кукольник/.test(sp.reason), sp.reason);
+    G.flags.toyNoAttack = true; sp = E.stepSpec(G, G.night.steps.find(s => s.id === 'imp'));
+    ok('Кукольник: после отказа Демон нападает и в последнюю ночь', sp.active && sp.inputs[0].key === 'toy');
+  }
+  // 35. Безумец, считающий себя Пиявицей: в 1-ю ночь «выбирает хозяина», настоящий Демон узнаёт его выбор
+  {
+    const G = game(['oracle', 'undertaker', 'exorcist', 'lunatic', 'devilsadvocate', 'lleech'], 'leech'); E.autoSetup(G, true); byRole(G, 'lunatic').believes = 'lleech'; E.startGame(G);
+    const lst = E.stepSpec(G, G.night.steps.find(s => s.id === 'lunatic'));
+    ok('Безумец-«Пиявица»: в 1-ю ночь выбирает «хозяина»', lst.active && lst.inputs.some(f => f.key === 't' && f.n === 1));
+    const G2 = game(['oracle', 'undertaker', 'exorcist', 'lunatic', 'devilsadvocate', 'lleech'], 'leech'); E.autoSetup(G2, true); byRole(G2, 'lunatic').believes = 'lleech'; E.startGame(G2);
+    let dem = null, guard = 0;
+    while (G2.phase === 'night' && guard++ < 30) { const st = E.currentStep(G2), sp = E.stepSpec(G2, st);
+      if (st.id === 'demoninfo') dem = sp.info({});
+      if (!sp.active) { E.skipStep(G2); continue; }
+      const r = E.applyStep(G2, st, Object.assign({}, sp.defaults, st.id === 'lunatic' ? { t: [byRole(G2, 'oracle').id] } : st.id === 'lleech' ? { t: [byRole(G2, 'undertaker').id] } : st.id === 'devilsadvocate' ? { t: [byRole(G2, 'exorcist').id] } : {})); if (!r.ok) E.skipStep(G2); }
+    ok('Безумец-«Пиявица»: Демон узнаёт его выбор, у настоящего хозяин свой', dem && dem.tokens.some(t => /Безумец «выбрал»/.test(t.sub || '') && t.players.includes(byRole(G2, 'oracle').id))
+      && !E.hasTok(byRole(G2, 'oracle'), 'poisoned', 'lleech') && E.hasTok(byRole(G2, 'undertaker'), 'poisoned', 'lleech'));
   }
 
   for (const k of Object.keys(DATA.scripts)) ok('сценарий ' + k + ' — все роли в данных', DATA.scripts[k].roles.every(r => DATA.roles[r]));

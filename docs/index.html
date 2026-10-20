@@ -68,6 +68,9 @@ h3 { font-family: var(--f-sc); font-weight: 700; font-size: 15px; letter-spacing
 .seg { display: flex; gap: 6px; flex-wrap: wrap; }
 .seg button { min-height: 42px; padding: 6px 14px; border-radius: 9px; border: 1px solid var(--line); background: var(--paper); cursor: pointer; }
 .seg button.on { border-color: var(--gold); background: var(--goldbg); font-weight: 700; }
+/* Кукольник: «Ночь без нападения» — красная плашка (просьба пользователя 2026-10-20) */
+.seg.toyseg button:last-child { border-color: var(--evil); color: var(--evil); font-weight: 700; }
+.seg.toyseg button:last-child.on { background: var(--evil); border-color: var(--evil); color: var(--paper); } /* днём — светлый текст на тёмно-красном, ночью — чёрный на розовом */
 select, input[type=text], input[type=search], input[type=password], textarea { width: 100%; min-height: 46px; border: 1px solid var(--line); border-radius: 9px; background: var(--paper); padding: 8px 10px; }
 textarea { min-height: 96px; resize: vertical; }
 .stepper { display: flex; align-items: center; gap: 10px; } .stepper b { font-size: 24px; min-width: 2ch; text-align: center; font-variant-numeric: tabular-nums; }
@@ -1366,7 +1369,7 @@ const TOK_RU = {
   master: 'Хозяин', mad: 'Помешан', hasability: 'Сохранил способность', twin: 'Близнец', grandchild: 'Внук',
   herring: 'Ложная цель', chosen: 'Выбран', note: 'Заметка', know: 'Раскрытый', lunch: 'Обед', shown: 'Показан', guessused: 'Догадка использована', second: 'Второй (Гарпия)',
   votes3: '3 голоса', voteneg: 'Голос против', sober: 'Трезв и здоров', twice: 'Действует дважды', bad: 'Что-то плохое',
-  fauxpaw: 'Кошачья лапка', fear: 'Страх',
+  fauxpaw: 'Кошачья лапка', fear: 'Страх', finalnight: 'Последняя ночь: без атаки',
 };
 
 function expire(S, when) { // when: 'dusk' | 'dawn'
@@ -2109,6 +2112,8 @@ function startGame(S) {
   S.flags.ever = Object.fromEntries(S.players.filter(p => p.role).map(p => [p.role, true])); // роли, бывшие в игре (джинксы «есть или был»)
   for (const p of S.players) { p.alive = true; p.ghost = true; p.tokens = []; }
   S.flags.demonless = !S.players.some(isDemon);
+  // Кукольник (вики): на Демона — метка «Последняя ночь: без атаки», пока он ни разу не отказался от нападения
+  if ((S.fabled || []).includes('toymaker')) { S.flags.toyNoAttack = false; const d = S.players.find(isDemon); if (d) addTok(S, d, 'finalnight', 'toymaker'); }
   // Головоломщик: пьяный не выбран (или игрока нет) — случайный Горожанин
   if (inPlay(S, 'puzzlemaster') && !(S.flags.puzzleDrunk && P(S, S.flags.puzzleDrunk))) S.flags.puzzleDrunk = puzzleDrunkDefault(S);
   // выбор подготовки остаётся от прежней раздачи — ставим отметку, только если роль правда в игре (иначе выбор сбрасываем)
@@ -2154,7 +2159,8 @@ function buildSteps(S) {
       }
       continue;
     }
-    if (R(id) && R(id).team === 'fabled') { if ((S.fabled || []).includes(id)) steps.push({ key: 'fab:' + id, id, pid: null, fabled: true }); continue; }
+    // Кукольник отдельного шага не имеет: знакомство злых при 5–6 игроках и «ночь без нападения» — в шагах злых и Демона
+    if (R(id) && R(id).team === 'fabled') { if ((S.fabled || []).includes(id) && id !== 'toymaker') steps.push({ key: 'fab:' + id, id, pid: null, fabled: true }); continue; }
     let actors = S.players.filter(p => actsAs(p) === id);
     if (id === 'marionette') actors = S.players.filter(p => p.role === 'marionette'); // она просыпается как «своя» роль, а этот шаг — Демону
     if (id === 'scarletwoman' && S.flags.swBecame) actors = actors.concat([P(S, S.flags.swBecame)]);
@@ -2702,15 +2708,26 @@ function stepSpec(S, step) {
   // мёртвый просыпается, если способность сохранена (Вигормортис) или возвращена (Собиратель Костей)
   if (spec.active && !p.alive && !spec.deadOk && !hasTok(p, 'hasability')) { spec.active = false; spec.reason = `${p.name} мёртв`; }
   if (hasTok(p, 'twice', 'barista')) spec.warn.push('Бариста: способность срабатывает дважды — шаг повторится ещё раз.');
-  // Кукольник: Демон может не нападать (и обязан сделать это хотя бы раз за игру)
-  if (spec.active && role.team === 'demon' && (S.fabled || []).includes('toymaker') && spec.inputs.some(f => f.key === 't')) {
-    spec.inputs = spec.inputs.map(f => f.key === 't' ? Object.assign({}, f, { min: 0, label: f.label + ' (Кукольник: можно никого)' }) : f);
-    const orig = spec.apply;
-    spec.apply = inp => {
-      if (inp.t && inp.t.length) return orig(inp);
-      S.flags.toyNoAttack = true; log(S, `${rname(p.role)} (${p.name}) не нападает этой ночью (Кукольник)`, 'action');
-    };
-    if (!S.flags.toyNoAttack) spec.warn.push('Кукольник: Демон ещё ни разу не отказывался от нападения. Если его нападение может закончить игру — он этой ночью не нападает (не выбирайте никого).');
+  // Кукольник (вики): Демон может отказаться от нападения — переключатель «Ночь без нападения» (красный); обязан хотя бы раз за игру.
+  // Нападение этой ночью может закончить игру, а Демон ещё ни разу не отказывался (метка «Последняя ночь: без атаки») — Демона не будят
+  // (решение пользователя 2026-10-20: «принудительно активируется»). Отказ снимает метку; вынужденный пропуск — нет
+  if (spec.active && role.team === 'demon' && !first && !spec.noToy && (S.fabled || []).includes('toymaker') && spec.inputs.some(f => f.key === 't')) {
+    if (!S.flags.toyNoAttack && toyCouldEnd(S, p)) {
+      spec.active = false;
+      spec.reason = 'Кукольник: нападение этой ночью может закончить игру, а Демон ещё ни разу не отказывался — Демон не просыпается и не нападает (вики)';
+      spec.warn.push('Ночь без нападения — принудительно (Кукольник): Демона не будите.');
+    } else {
+      const ins = spec.inputs, more0 = spec.more, apply0 = spec.apply, info1 = spec.info;
+      spec.inputs = [Object.assign(CHOICE('toy', 'Кукольник: Демон может отказаться от нападения', [{ v: 'attack', l: 'Нападает' }, { v: 'skip', l: 'Ночь без нападения' }]), { optional: true, def: 'attack', cls: 'toyseg' })];
+      spec.more = inp => inp.toy === 'skip' ? [] : ins.concat(more0 ? more0(inp) : []);
+      spec.apply = inp => {
+        if (inp.toy !== 'skip') return apply0(inp);
+        S.flags.toyNoAttack = true; S.players.forEach(q => rmTok(q, 'finalnight', 'toymaker'));
+        log(S, `${rname(p.role)} (${p.name}) не нападает этой ночью (Кукольник)`, 'action');
+      };
+      spec.info = inp => inp.toy === 'skip' ? { show: 'Демон не нападает этой ночью', lines: ['Кукольник: отказ засчитан — теперь Демон может нападать и тогда, когда нападение закончит игру'] } : info1(inp);
+      if (!S.flags.toyNoAttack) spec.warn.push('Кукольник: Демон ещё ни разу не отказывался от нападения. Если нападение сможет закончить игру, приложение само сделает ночь без нападения.');
+    }
   }
   spec.dist = distortion(S, p); // для «ядовитой» рамки ответа: пьян/отравлен/Вортокс
   // Безумец (вики): каждую ночь, кроме первой, перед нападением Демона — разбудить настоящего Демона, указать на Безумца,
@@ -2766,8 +2783,11 @@ function specialSpec(S, step, first) {
   // Безумец (вики): в 1-ю ночь настоящему Демону — «ТЕПЕРЬ ВЫ» и его жетон, затем «ЭТОТ ИГРОК» и жетон Безумца. Показ — в блоке
   // настоящего Демона, а не на шаге Безумца (заметка пользователя 2026-10-15); при 5–6 игроках — отдельный шаг (buildSteps)
   const lun = first && step.id === 'demoninfo' ? S.players.find(p => p.role === 'lunatic') : null;
-  const lunCards = () => lun && demon ? [{ label: 'Демону', caption: CARD.youAre, role: demon.role }, { label: 'Демону', caption: CARD.thisPlayer, role: 'lunatic', players: [lun.id] }] : [];
-  const lunLine = lun ? `Безумец: ${lun.name} — считает себя Демоном (${rname(lun.believes)}). Покажите Демону, что он настоящий Демон, и кто Безумец` : '';
+  // в 1-ю ночь Безумец мог уже «выбрать» (считает себя Пиявицей или Пуккой) — Демон узнаёт и это (вики: «Демон знает, кого вы выбираете»)
+  const lunVic = lun ? (S.night.data.lunatic || []).filter(id => P(S, id)) : [];
+  const lunCards = () => lun && demon ? [{ label: 'Демону', caption: CARD.youAre, role: demon.role }, { label: 'Демону', caption: CARD.thisPlayer, role: 'lunatic', players: [lun.id] }]
+    .concat(lunVic.length ? [{ label: 'Демону', players: lunVic, sub: 'Безумец «выбрал» этих игроков' }] : []) : [];
+  const lunLine = lun ? `Безумец: ${lun.name} — считает себя Демоном (${rname(lun.believes)}). Покажите Демону, что он настоящий Демон, и кто Безумец${lunVic.length ? `, и кого он «выбрал»: ${lunVic.map(id => nm(S, id)).join(', ')}` : ''}` : '';
   if (step.lunatic) {
     spec.title = 'Демон узнаёт Безумца';
     spec.text = 'Разбудите Демона. Покажите жетон *ТЕПЕРЬ ВЫ* и его жетон Демона, затем жетон *ЭТОТ ИГРОК* и жетон Безумца — укажите на Безумца.';
@@ -2851,6 +2871,12 @@ function mayorInput(S, inp) {
   const guard = deathGuard(S, t, 'demon');
   if (guard) return [{ type: 'note', key: '_mayor', label: `Мэр под защитой (${guard}) — не умирает, рикошета нет (вики: другой умирает, только если Мэр умер бы).` }];
   return [PL('bounce', 1, 'Мэр: кто умрёт вместо него? (не выбрано — умрёт Мэр; мёртвый, Солдат или под защитой Монаха — никто не умрёт)', null, { min: 0 })];
+}
+// Кукольник: может ли нападение Демона этой ночью закончить игру — живых (без Странников) останется 2 или меньше
+// (Шабалот убивает двоих, заряженный По и Аль-Адихия — троих)
+function toyCouldEnd(S, p) {
+  const kills = p.role === 'shabaloth' ? 2 : (p.role === 'po' && S.flags.poCharged) || p.role === 'alhadikhia' ? 3 : 1;
+  return aliveCount(S) - kills <= 2;
 }
 function demonExorcised(S, p, base) {
   if (S.night.data.exorcised === p.id) { base.active = false; base.reason = 'Экзорцист выбрал Демона: он не просыпается этой ночью'; return true; }
@@ -3539,17 +3565,26 @@ const LOGIC = {
   lunatic: (S, p, first) => {
     if (first) {
       // 7+ игроков: Безумцу — любые «приспешники» (столько, сколько Приспешников в игре) и 3 любые добрые роли; Демону — кто Безумец
-      const big = coreCount(S) >= 7, k = S.players.filter(q => realTeam(q) === 'minion').length, demon = S.players.find(isDemon);
+      // при Кукольнике злые знакомятся и при 5–6 игроках — Безумцу, «Демону», тоже показывают «приспешников» и «блефы»
+      const big = coreCount(S) >= 7 || (S.fabled || []).includes('toymaker'), k = S.players.filter(q => realTeam(q) === 'minion').length, demon = S.players.find(isDemon);
       const def = stable(S, 'lunatic:' + p.id, () => ({ m: shuffle(S.players.filter(q => q.id !== p.id && !isTraveller(q))).slice(0, k).map(q => q.id),
         b: shuffle(scriptRoles(S, r => canBluff(r) && !inPlay(S, r))).slice(0, 3) }));
+      // Демон, которым он себя считает, выбирает уже в 1-ю ночь (Пиявица — хозяина, Пукка — кого отравить): Безумец выбирает так же,
+      // ничего не происходит, а настоящий Демон узнаёт его выбор (вики: «в 1-ю ночь будите Безумца, как будто он Демон»;
+      // заметка пользователя 2026-10-20: «у Безумца, получившего Пиявицу, нет шага выбора хозяина»). Казали — раздача, не выбор
+      const fp = p.believes && p.believes !== 'kazali' && DATA.order.first.includes(p.believes) && choiceCount(p.believes) ? choiceCount(p.believes) : 0;
+      const pickLabel = p.believes === 'lleech' ? 'хозяином' : p.believes === 'pukka' ? 'для «отравления»' : '';
       return {
-        inputs: big ? [PL('m', k, `Кого показать Безумцу как «Приспешников» (${k})`, notSelf(p)), ROLE('b0', '«Блеф» 1', canBluff), ROLE('b1', '«Блеф» 2', canBluff), ROLE('b2', '«Блеф» 3', canBluff)] : [],
+        inputs: (big ? [PL('m', k, `Кого показать Безумцу как «Приспешников» (${k})`, notSelf(p)), ROLE('b0', '«Блеф» 1', canBluff), ROLE('b1', '«Блеф» 2', canBluff), ROLE('b2', '«Блеф» 3', canBluff)] : [])
+          .concat(fp ? [PL('t', fp, `Кого Безумец выбирает${pickLabel ? ' ' + pickLabel : ''}, как будто он ${rname(p.believes)} (ничего не происходит)`)] : []),
         defaults: big ? { m: def.m, b0: def.b[0], b1: def.b[1], b2: def.b[2] } : {},
         // кто Безумец — настоящему Демону на его шаге («Информация Демону»), а не здесь (заметка пользователя 2026-10-15)
         info: inp => ({ show: `${p.name} считает себя Демоном (${rname(p.believes)})`, lines: [big ? 'Безумцу — «приспешники» и «блефы»' : 'Меньше 7 игроков: Безумцу ничего не показывают',
-            demon ? `Настоящему Демону (${demon.name}) покажете Безумца на шаге Демона` : ''],
+            fp ? 'Его выбор ничего не делает — Безумец не Демон' : '',
+            demon ? `Настоящему Демону (${demon.name}) покажете Безумца${fp ? ' и кого он выбрал' : ''} на шаге Демона` : ''],
           tokens: big ? [{ label: `Безумцу (${p.name})`, caption: CARD.minions, players: inp.m || [] }].concat(['b0', 'b1', 'b2'].filter(x => inp[x]).map(x => ({ label: `Безумцу (${p.name})`, caption: CARD.notInPlay, role: inp[x] }))) : [] }),
-        apply: () => log(S, `Безумец (${p.name}) узнаёт, что он «Демон»`, 'info'),
+        apply: inp => { if (fp) S.night.data.lunatic = inp.t || [];
+          log(S, `Безумец (${p.name}) узнаёт, что он «Демон»${fp && (inp.t || []).length ? `; «выбирает»: ${inp.t.map(id => nm(S, id)).join(', ')}` : ''}`, 'info'); },
       };
     }
     return { inputs: [PL('t', 3, 'Кого «атакует» Безумец', () => true, { min: 0 })],
@@ -3971,7 +4006,7 @@ const LOGIC = {
   lleech: (S, p, first, off, base) => {
     if (demonExorcised(S, p, base)) return {};
     const host = lleechHost(S, p);
-    if (first || !host) return {
+    if (first || !host) return { noToy: true, // выбор хозяина — не нападение (Кукольник не касается)
       inputs: [PL('t', 1, first ? 'Кого Пиявица выбирает хозяином (он отравлен до конца игры)' : 'У Пиявицы ещё нет хозяина (появилась посреди игры или шаг пропущен): кого она выбирает — живого', first ? null : aliveOnly)],
       info: inp => { const t = inp.t && P(S, inp.t[0]); if (!t) return null;
         return { show: `Хозяин Пиявицы: ${t.name}`, lines: ['Он отравлен до конца игры. Пока он жив, Пиявица не умирает; умрёт он — умрёт и Пиявица, добро побеждает',
@@ -5731,7 +5766,7 @@ function fieldHtml(f, inp) {
   if (f.type === 'role') return `<div class="field"><label>${esc(f.label)}</label><select data-act="pickR" data-arg="${f.key}">${f.groups ? roleGroupOptions(f.groups, v, f.optional ? '— не выбирать —' : undefined)
     : roleOptions(r => f.filter(r), v, { all: f.all, placeholder: f.optional ? '— не выбирать —' : undefined })}</select></div>`;
   if (f.type === 'note') return `<div class="warn">${esc(f.label)}</div>`; // пометка без выбора (Мэр под защитой — рикошета нет)
-  if (f.type === 'choice') return `<div class="field"><label>${esc(f.label)}</label><div class="seg">${f.options.map(o => `<button class="${(v ?? f.def) === o.v ? 'on' : ''}" data-act="pickC" data-arg="${f.key}|${o.v}">${esc(o.l)}</button>`).join('')}</div></div>`;
+  if (f.type === 'choice') return `<div class="field"><label>${esc(f.label)}</label><div class="seg ${f.cls || ''}">${f.options.map(o => `<button class="${(v ?? f.def) === o.v ? 'on' : ''}" data-act="pickC" data-arg="${f.key}|${o.v}">${esc(o.l)}</button>`).join('')}</div></div>`;
   if (f.type === 'number') { const nv = v ?? f.def ?? 0;
     return `<div class="field"><label>${esc(f.label)}</label><div class="stepper"><button class="btn" data-act="num" data-arg="${f.key}|-1|${nv}">−</button><b>${nv}</b><button class="btn" data-act="num" data-arg="${f.key}|1|${nv}">+</button></div></div>`; }
   if (f.type === 'text') return `<div class="field"><label for="tx-${f.key}">${esc(f.label)}</label><textarea id="tx-${f.key}" data-act="pickT" data-arg="${f.key}">${esc(v)}</textarea>${f.ideas ? ideaChips(f.ideas, 'pickIdea', f.key, 'Идеи') : ''}</div>`;

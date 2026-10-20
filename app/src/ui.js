@@ -517,7 +517,7 @@ function fieldHtml(f, inp) {
   if (f.type === 'role') return `<div class="field"><label>${esc(f.label)}</label><select data-act="pickR" data-arg="${f.key}">${f.groups ? roleGroupOptions(f.groups, v, f.optional ? '— не выбирать —' : undefined)
     : roleOptions(r => f.filter(r), v, { all: f.all, placeholder: f.optional ? '— не выбирать —' : undefined })}</select></div>`;
   if (f.type === 'note') return `<div class="warn">${esc(f.label)}</div>`; // пометка без выбора (Мэр под защитой — рикошета нет)
-  if (f.type === 'choice') return `<div class="field"><label>${esc(f.label)}</label><div class="seg">${f.options.map(o => `<button class="${(v ?? f.def) === o.v ? 'on' : ''}" data-act="pickC" data-arg="${f.key}|${o.v}">${esc(o.l)}</button>`).join('')}</div></div>`;
+  if (f.type === 'choice') return `<div class="field"><label>${esc(f.label)}</label><div class="seg ${f.cls || ''}">${f.options.map(o => `<button class="${(v ?? f.def) === o.v ? 'on' : ''}" data-act="pickC" data-arg="${f.key}|${o.v}">${esc(o.l)}</button>`).join('')}</div></div>`;
   if (f.type === 'number') { const nv = v ?? f.def ?? 0;
     return `<div class="field"><label>${esc(f.label)}</label><div class="stepper"><button class="btn" data-act="num" data-arg="${f.key}|-1|${nv}">−</button><b>${nv}</b><button class="btn" data-act="num" data-arg="${f.key}|1|${nv}">+</button></div></div>`; }
   if (f.type === 'text') return `<div class="field"><label for="tx-${f.key}">${esc(f.label)}</label><textarea id="tx-${f.key}" data-act="pickT" data-arg="${f.key}">${esc(v)}</textarea>${f.ideas ? ideaChips(f.ideas, 'pickIdea', f.key, 'Идеи') : ''}</div>`;
