@@ -782,13 +782,22 @@ function viewDay() {
         <div class="row"><button class="btn" data-act="savOwn" data-arg="${sv.id}|1">Правдивый</button><button class="btn" data-act="savOwn" data-arg="${sv.id}|0">Ложный</button></div>
         <div class="small muted">Свой факт заменит подобранный той же правдивости, второй подберётся сам. «Другие случайные» свой факт не трогают, убрать — ✕.</div></details>`}</div>`);
   }
-  // Рыбак: раз за игру днём — совет, что делать (ideas.js)
+  // Рыбак: раз за игру днём — совет, что делать (заготовки по группам — ideas.js; «почему» видит только рассказчик)
   for (const fm of S.players.filter(p => p.role === 'fisherman' && p.alive && !S.flags['fishUsed_' + p.id])) {
-    const list = picks['fish_' + fm.id], sel = picks['fishSel_' + fm.id], off = E.abilityOff(S, fm);
+    const list = (picks['fish_' + fm.id] || null), sel = picks['fishSel_' + fm.id], off = E.abilityOff(S, fm);
+    const items = list && list.map(x => typeof x === 'string' ? { g: 'Советы', t: x, why: '' } : x); // старые черновики — строки
+    let rows = '', last = null;
+    (items || []).forEach((x, i) => { if (x.g !== last) { rows += `<div class="igrp">${esc(x.g)}</div>`; last = x.g; }
+      rows += `<button class="idea ${sel === x.t ? 'on' : ''}" data-act="fishPick" data-arg="${fm.id}|${i}">${esc(x.t)}${x.why ? `<span class="why">${esc(x.why)}</span>` : ''}</button>`; });
     parts.push(`<div class="card"><details ${list ? 'open' : ''}><summary class="small"><b>Рыбак</b> — раз за игру совет, как победить</summary><div class="field" style="margin-top:8px">
-      ${boundsHtml([{ w: 'Вы решаете', t: off ? `Рыбак ${off}: можно дать плохой совет` : 'совет о том, что ДЕЛАТЬ, а не что ЕСТЬ; Демона прямо не называйте' }])}
-      ${list ? `<div class="idealist">${list.map((t, i) => `<button class="idea ${sel === t ? 'on' : ''}" data-act="fishPick" data-arg="${fm.id}|${i}">${esc(t)}</button>`).join('')}</div>` : ''}
-      <div class="row"><button class="btn" data-act="fishGen" data-arg="${fm.id}">${list ? 'Другие советы' : 'Подобрать советы'}</button>${sel ? `<button class="btn primary" data-act="fishUse" data-arg="${fm.id}">Совет дан</button>` : ''}</div></div></details></div>`);
+      ${boundsHtml([{ w: 'Вы решаете', t: off ? `Рыбак ${off}: можно дать плохой совет (вики)` : 'совет о том, что ДЕЛАТЬ, а не что ЕСТЬ: «казните», «берегите», «не доверяйте его сведениям», «найдите Пьяницу» (вики). Если ему последовать — он должен помогать' },
+        { w: 'Сейчас', t: IDEAS.FISH_STAGE[IDEAS.fishStage(S)] }])}
+      ${items ? `<div class="idealist">${rows}</div>` : ''}
+      <details class="savown"${picks['fishOwn_' + fm.id] ? ' open' : ''}><summary class="small">Свой совет</summary>
+        <textarea data-act="fishOwnText" data-arg="${fm.id}" placeholder="Например: «Попросите Монаха защищать вас»" aria-label="Свой совет Рыбаку">${esc(picks['fishOwn_' + fm.id] || '')}</textarea>
+        <button class="btn" data-act="fishOwn" data-arg="${fm.id}">Выбрать свой совет</button></details>
+      ${sel ? `<div class="reveal"><div class="lab">Совет Рыбаку</div><div class="ln"><b>${esc(sel)}</b></div>${showButtons([{ label: 'Рыбаку', text: sel }])}</div>` : ''}
+      <div class="row"><button class="btn" data-act="fishGen" data-arg="${fm.id}">${list ? 'Обновить советы' : 'Подобрать советы'}</button>${sel ? `<button class="btn primary" data-act="fishUse" data-arg="${fm.id}">Совет дан</button>` : ''}</div></div></details></div>`);
   }
   // Мецефель: первый добрый, произнёсший тайное слово, ночью станет злым
   const mez = S.players.find(p => p.role === 'mezepheles');
@@ -2238,7 +2247,9 @@ const A = {
   savFacts: () => { UI.savFacts = true; render(); },
   savFactsClose: () => { UI.savFacts = false; render(); },
   fishGen: id => draft(S => { S.day.picks['fish_' + id] = IDEAS.fishermanAdvice(S, id); S.day.picks['fishSel_' + id] = null; }),
-  fishPick: arg => { const [id, i] = arg.split('|'); draft(S => { S.day.picks['fishSel_' + id] = S.day.picks['fish_' + id][+i]; }); },
+  fishPick: arg => { const [id, i] = arg.split('|'); draft(S => { const x = S.day.picks['fish_' + id][+i], t = typeof x === 'string' ? x : x.t; S.day.picks['fishSel_' + id] = S.day.picks['fishSel_' + id] === t ? null : t; }); },
+  fishOwnText: (id, el) => { S.day.picks['fishOwn_' + id] = el.value; S.updated = Date.now(); persist(); },
+  fishOwn: id => { const t = (S.day.picks['fishOwn_' + id] || '').trim(); if (t) draft(S => { S.day.picks['fishSel_' + id] = t; }); },
   fishUse: id => { const t = S.day.picks['fishSel_' + id]; act(S => { S.flags['fishUsed_' + id] = true; E.log(S, `Рыбак (${E.nm(S, id)}) получает совет: «${t}»`, 'day'); }, 'совет Рыбаку'); },
   mezPick: arg => { const id = arg.split('|')[1]; act(S => { S.flags.mezTarget = id; E.log(S, `${E.nm(S, id)} произносит тайное слово Мецефеля`, 'day'); }, 'тайное слово'); },
   mezClear: () => act(S => { S.flags.mezTarget = null; }, 'отметка снята'),

@@ -1352,6 +1352,26 @@ try {
     ok('Джинкс Пиявица + Истребитель: выстрел в хозяина убивает его и Пиявицу', !h2.alive && !byRole(G, 'lleech').alive && G.result && G.result.winner === 'good');
   }
 
+  // 33. советы Рыбаку (2026-10-20): группы, «почему», плохой совет пьяному, финал — кого казнить; во всех сценариях без ошибок
+  {
+    const crash = [];
+    for (const key of Object.keys(DATA.scripts)) { try { const Q = E.newGame(key); for (let i = 0; i < 9; i++) Q.players.push(E.newPlayer('И' + i)); E.randomDeal(Q);
+      if (!Q.players.some(p => p.role === 'fisherman')) Q.players[0].role = 'fisherman'; E.finishRoles(Q); E.autoSetup(Q, true); E.startGame(Q); runNight(Q);
+      const fm = Q.players.find(p => p.role === 'fisherman'), adv = IDEAS.fishermanAdvice(Q, fm.id);
+      if (!adv.length || adv.some(x => !x.g || !x.t || /undefined|NaN|null/.test(x.t + x.why))) crash.push(key + ': ' + JSON.stringify(adv.find(x => /undefined|NaN|null/.test(x.t + x.why)) || adv.length)); } catch (e) { crash.push(key + ': ' + e.message); } }
+    ok('Рыбак: советы во всех сценариях без ошибок', !crash.length, crash.slice(0, 3).join(' | '));
+    let G = game(['fisherman', 'empath', 'saint', 'poisoner', 'imp'], 'tb'); E.autoSetup(G, true); E.startGame(G); runNight(G, { poisoner: { t: [byRole(G, 'empath').id] } });
+    let adv = IDEAS.fishermanAdvice(G, byRole(G, 'fisherman').id);
+    ok('Рыбак: финал (5 живых — ещё нет), Святого не казнить, отравленному Эмпату не доверять',
+      !adv.some(x => x.g === 'Финал') && adv.some(x => /не казните/.test(x.t) && /Святой/.test(x.why)) && adv.some(x => /Не доверяйте информации/.test(x.t) && /Эмпат/.test(x.why)));
+    E.storytellerKill(G, byRole(G, 'saint').id, null, 'проверка');
+    adv = IDEAS.fishermanAdvice(G, byRole(G, 'fisherman').id);
+    ok('Рыбак: в финале трезвому — «Казните» Демона первым', adv[0].g === 'Финал' && adv[0].t.includes(byRole(G, 'imp').name), adv[0] && adv[0].t);
+    E.addTok(G, byRole(G, 'fisherman'), 'poisoned', 'poisoner');
+    adv = IDEAS.fishermanAdvice(G, byRole(G, 'fisherman').id);
+    ok('Рыбак отравлен: сначала плохие советы, финального нет', /Плохой/.test(adv[0].g) && !adv.some(x => x.g === 'Финал'));
+  }
+
   for (const k of Object.keys(DATA.scripts)) ok('сценарий ' + k + ' — все роли в данных', DATA.scripts[k].roles.every(r => DATA.roles[r]));
 } catch (e) { results.push('ERROR ' + e.message + '\n' + e.stack); }
 

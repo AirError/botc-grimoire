@@ -768,6 +768,10 @@ img.shroud { object-fit: contain; }
 .idealist { display: flex; flex-direction: column; gap: 6px; margin-top: 6px; }
 .idea { text-align: left; border: 1px solid var(--line); border-radius: 9px; background: var(--paper); padding: 8px 10px; font-size: 14px; line-height: 1.35; cursor: pointer; }
 .idea.on { border: 2px solid var(--gold); background: var(--goldbg); font-weight: 700; }
+/* советы Рыбаку: заголовок группы и «почему» (только рассказчику) */
+.idealist .igrp { margin-top: 8px; font-size: 12px; font-weight: 700; letter-spacing: .06em; text-transform: uppercase; color: var(--muted); }
+.idealist .igrp:first-child { margin-top: 0; }
+.idea .why { display: block; margin-top: 2px; font-size: 12px; font-weight: 400; color: var(--muted); }
 /* стена: имя того, кто открывает ячейку, — крупно; роль — способность жирным, закрыть можно через 2 секунды */
 .wturn b, .wsel select { font-size: 30px; }
 .wsel select { padding: 4px 38px 4px 18px; min-height: 48px; border-width: 1.5px; }

@@ -325,33 +325,96 @@ const IDEAS = (() => {
       .filter(Boolean).sort((a, b) => GROUPS.indexOf(a.g) - GROUPS.indexOf(b.g));
   }
 
-  // Рыбак: советы, что делать, по текущей игре (вики: «что ДЕЛАТЬ, а не что ЕСТЬ»; не называть Демона напрямую)
-  function fishermanAdvice(S, fmId) {
-    const core = coreOf(S), fm = E.P(S, fmId), alive = core.filter(p => p.alive && p !== fm), out = [];
-    const add = t => { if (!out.includes(t)) out.push(t); };
-    for (const p of alive.filter(p => !evil(p) && team(p) === 'townsfolk' && E.abilityOff(S, p))) add(`Не доверяйте информации игрока ${p.name}.`);
-    const dr = core.find(p => p.role === 'drunk');
-    if (dr && dr.believes) add(`Не верьте тому, кто называет себя «${E.rname(dr.believes)}».`);
-    if (dr) add('Найдите Пьяницу: один из Горожан ошибается в своей роли.');
-    const minions = alive.filter(p => team(p) === 'minion'), goods = alive.filter(p => !evil(p));
-    if (minions.length) { const m = pickOne(minions); add(`Казните игрока ${m.name}.`); const g = pickOne(goods); if (g) add(`Казните одного из двоих: ${shuffle([m, g]).map(p => p.name).join(' или ')}.`); }
-    for (const p of goods.filter(p => ['mayor', 'slayer', 'virgin', 'ravenkeeper', 'sage', 'oracle', 'tealady', 'monk', 'fortuneteller', 'undertaker'].includes(p.role))) add(`Сохраните жизнь игроку ${p.name}.`);
-    for (const p of alive.filter(p => p.role === 'saint')) add(`Ни в коем случае не казните игрока ${p.name}.`);
-    if (core.some(p => p.role === 'vortox' && p.alive)) add('Каждый день обязательно кого-нибудь казните.');
-    if (core.some(p => p.role === 'mayor' && p.alive)) add('Если в живых останется трое — не казните никого.');
-    const trusted = goods.filter(p => team(p) === 'townsfolk' && !E.abilityOff(S, p));
-    if (trusted.length) add(`Доверяйте игроку ${pickOne(trusted).name}.`);
-    const demon = core.find(p => E.isDemon(p) && p.alive);
-    if (demon) { const nb = seatNb(S, demon).filter(p => p.alive && p !== fm); if (nb.length) add(`Присмотритесь к соседям игрока ${pickOne(nb).name}.`); }
-    if (alive.some(p => team(p) === 'outsider' && !evil(p))) add('Держите живыми тех, кто называет себя Изгоями.');
-    if (core.some(p => p.role === 'witch')) add('Не спешите номинировать первым: Ведьма могла вас проклясть.');
-    if (core.some(p => p.role === 'scarletwoman') && alive.length >= 5) add('Казнив Демона, не расслабляйтесь: его место может занять Приспешник.');
-    if (core.some(p => p.role === 'vigormortis')) add('Не тратьте казни на Приспешников — ищите Демона.');
-    add('Не обращайте внимания на Приспешников — ищите Демона.');
-    add('Прежде чем казнить, соберите сведения всех Горожан.');
-    add('Сравните, кто кого номинировал в первый день.');
-    return out;
+  // Рыбак: заготовки советов по текущей игре. Принципы — вики (страница Рыбака: совет о том, что ДЕЛАТЬ, а не что ЕСТЬ — «казните
+  // этого игрока», «сохраните ему жизнь», «найдите Пьяницу», «измените ход мыслей», «не обращайте внимания на Приспешников», «доверяйте
+  // ему»; пьяному или отравленному — можно плохой совет) и обсуждение на Reddit, присланное пользователем (2026-10-20): рано — мягкий
+  // толчок, лучше подтвердить доброго; позже — сильнее указывать на злых; в финале трезвому Рыбаку — прямо, кого казнить; совет,
+  // если ему последовать, должен помогать. У каждого совета: g — группа, t — текст для Рыбака, why — почему (только рассказчику)
+  const FISH_GROUPS = ['Плохой совет (Рыбак пьян или отравлен)', 'Финал', 'Казнить', 'Беречь', 'Доверие', 'Действия', 'Общие'];
+  const FISH_KEEP = ['mayor', 'slayer', 'virgin', 'ravenkeeper', 'sage', 'oracle', 'tealady', 'monk', 'fortuneteller', 'undertaker', 'empath', 'juggler', 'exorcist', 'innkeeper', 'professor', 'dreamer', 'cannibal'];
+  const FISH_ONCE = ['slayer', 'artist', 'professor', 'courtier', 'seamstress', 'huntsman', 'engineer', 'philosopher', 'nightwatchman'];
+  function fishStage(S) {
+    const a = coreOf(S).filter(p => p.alive).length;
+    return a <= 4 ? 'final' : S.n <= 2 && a >= 6 ? 'early' : 'mid';
   }
+  function fishermanAdvice(S, fmId) {
+    const core = coreOf(S), fm = E.P(S, fmId), alive = core.filter(p => p.alive && p !== fm), out = [], off = fm && E.abilityOff(S, fm);
+    const add = (g, t, why) => { if (t && !out.some(x => x.t === t)) out.push({ g, t, why: why || '' }); };
+    const rn = p => E.rname(p.role), goods = alive.filter(p => !evil(p)), minions = alive.filter(p => team(p) === 'minion');
+    const demon = core.find(p => E.isDemon(p) && p.alive), sober = p => !E.abilityOff(S, p);
+    const inGame = r => core.some(p => p.role === r), aliveR = r => alive.some(p => p.role === r);
+    const host = core.find(p => p.alive && p.tokens.some(t => t.k === 'poisoned' && t.src === 'lleech'));
+    const stage = fishStage(S);
+    // плохой совет пьяному или отравленному Рыбаку (вики: «рассказчик может дать плохой совет»)
+    if (off) {
+      const tf = goods.filter(p => team(p) === 'townsfolk'), ev = alive.filter(evil);
+      if (tf.length) { const p = pickOne(tf); add(FISH_GROUPS[0], `Казните игрока ${p.name}.`, `${p.name} — ${rn(p)}, добрый: плохой совет`); }
+      if (ev.length) { const p = pickOne(ev); add(FISH_GROUPS[0], `Доверяйте игроку ${p.name}.`, `${p.name} — ${rn(p)}, злой`); add(FISH_GROUPS[0], `Сохраните жизнь игроку ${p.name}.`, `${p.name} — ${rn(p)}, злой`); }
+      const tr = tf.filter(sober); if (tr.length) { const p = pickOne(tr); add(FISH_GROUPS[0], `Не доверяйте информации игрока ${p.name}.`, `${p.name} — ${rn(p)}, трезв и здоров: его сведения верны`); }
+    }
+    // финал: живых 4 и меньше — трезвому Рыбаку можно прямо сказать, кого казнить (Reddit; вики: «в последний день — казните Льюиса»)
+    if (stage === 'final' && !off) {
+      if (host) add('Финал', `Казните игрока ${host.name}.`, `${host.name} — хозяин Пиявицы: умрёт он — умрёт и Пиявица`);
+      else if (demon && demon !== fm) add('Финал', `Казните игрока ${demon.name}.`, `${demon.name} — Демон (${rn(demon)})`);
+      if (alive.some(p => p.role === 'mayor' && sober(p)) && alive.length + 1 === 3) add('Финал', 'Сегодня никого не казните.', 'Мэр жив и трезв, живых трое: день без казни — победа добрых');
+    }
+    // казнить и не казнить
+    if (host && stage !== 'final') add('Казнить', `Казните игрока ${host.name}.`, `${host.name} — хозяин Пиявицы: его смерть убьёт Пиявицу`);
+    if (minions.length) {
+      const m = pickOne(minions); add('Казнить', `Казните игрока ${m.name}.`, `${m.name} — ${rn(m)}, Приспешник`);
+      const g = pickOne(goods); if (g) add('Казнить', `Казните одного из двоих: ${shuffle([m, g]).map(p => p.name).join(' или ')}.`, `${m.name} — ${rn(m)}, ${g.name} — ${rn(g)} (добрый)`);
+    }
+    for (const p of alive.filter(p => p.role === 'saint' && sober(p))) add('Казнить', `Ни в коем случае не казните игрока ${p.name}.`, `${p.name} — Святой: его казнь — победа злых`);
+    if (core.some(p => p.role === 'vortox' && p.alive)) add('Казнить', 'Каждый день обязательно кого-нибудь казните.', 'Вортокс: день без казни — победа злых');
+    if ((aliveR('undertaker') || aliveR('cannibal')) && !aliveR('saint') && !core.some(p => p.role === 'vortox'))
+      add('Казнить', 'Казните каждый день и ничего не бойтесь.', 'Гробовщик или Каннибал жив: каждая казнь даёт сведения; Святого среди живых нет (Reddit)');
+    if (aliveR('mayor') && stage !== 'final') add('Казнить', 'Если в живых останется трое — никого не казните.', 'Мэр жив: день без казни при трёх живых — победа добрых');
+    if (core.some(p => p.role === 'scarletwoman' && p.alive) && alive.length >= 5) add('Казнить', 'Казнив Демона, не расслабляйтесь.', 'Блудница жива: при 5+ живых она станет Демоном');
+    // беречь
+    for (const p of goods.filter(p => FISH_KEEP.includes(p.role) && sober(p))) add('Беречь', `Сохраните жизнь игроку ${p.name}.`, `${p.name} — ${rn(p)}`);
+    if (alive.some(p => team(p) === 'outsider' && !evil(p))) add('Беречь', 'Держите живыми тех, кто называет себя Изгоями.', `Изгои: ${join(alive.filter(p => team(p) === 'outsider' && !evil(p)))} (пример с вики)`);
+    // доверие
+    for (const p of goods.filter(p => team(p) === 'townsfolk' && E.abilityOff(S, p))) add('Доверие', `Не доверяйте информации игрока ${p.name}.`, `${p.name} — ${rn(p)}, ${E.abilityOff(S, p)} (пример с вики)`);
+    const H = S.flags.hist, wasOff = goods.filter(p => team(p) === 'townsfolk' && H && (H.poison.includes(p.id) || H.off.includes(p.id)));
+    for (const p of wasOff) add('Доверие', `Доверяйте игроку ${p.name}, но не его сведениям.`, `${p.name} — ${rn(p)}, добрый, но ${E.abilityOff(S, p) ? E.abilityOff(S, p) + ' — сведения ложные' : 'бывал пьян или отравлен'} (Reddit)`);
+    for (const p of core.filter(p => ['mutant', 'drunk', 'lunatic', 'marionette'].includes(p.role) && p.alive && p !== fm))
+      add('Доверие', `Не слушайте игрока ${p.name}.`, `${p.name} — ${rn(p)}${p.believes ? ` (считает себя: ${E.rname(p.believes)})` : ''} (Reddit)`);
+    const dr = core.find(p => p.role === 'drunk');
+    if (dr && dr.believes) add('Доверие', `Не верьте тому, кто называет себя «${E.rname(dr.believes)}».`, `${dr.name} — Пьяница`);
+    const truthful = goods.filter(p => team(p) === 'townsfolk' && sober(p)), liar = goods.filter(p => team(p) === 'townsfolk' && !sober(p));
+    if (truthful.length) { const p = pickOne(truthful); add('Доверие', `Доверяйте игроку ${p.name}.`, `${p.name} — ${rn(p)}, трезв и здоров`);
+      add('Доверие', `Игроку ${p.name} пригодится ваша поддержка в нынешних рассуждениях.`, `${p.name} — ${rn(p)}, добрый — если эта версия верна (решите сами; Reddit)`); }
+    if (truthful.length && liar.length) { const a = pickOne(truthful), b = pickOne(liar); add('Доверие', `Внимательно сравните сведения игроков ${shuffle([a, b]).map(p => p.name).join(' и ')}.`, `${a.name} — верные сведения, ${b.name} — ${E.abilityOff(S, b)} (Reddit)`); }
+    const myNb = fm ? seatNb(S, fm).filter(p => p !== fm) : [];
+    if (myNb.length === 2 && myNb.every(p => !evil(p))) add('Доверие', 'Доверяйте своим соседям.', `Соседи: ${join(myNb)} — оба добрые (Reddit)`);
+    if (myNb.some(evil)) add('Доверие', 'Присмотритесь к своим соседям.', `Злой сосед: ${join(myNb.filter(evil))} (Reddit)`);
+    if (demon) { const nb = seatNb(S, demon).filter(p => p.alive && p !== fm && p !== demon); if (nb.length) { const x = pickOne(nb); add('Доверие', `Присмотритесь к соседям игрока ${x.name}.`, `${demon.name} — Демон, сосед игрока ${x.name}`); } }
+    if (dr) add('Доверие', 'Найдите Пьяницу.', `Пьяница — ${dr.name} (пример с вики)`);
+    // действия
+    const dam = core.find(p => p.role === 'damsel' && p.alive && !E.hasTok(p, 'guessused'));
+    if (dam && dam !== fm) {
+      add('Действия', 'Притворитесь Девицей и никому не говорите, что получили этот совет.', `Девица (${dam.name}) в игре: Приспешники могут потратить догадку на вас (Reddit: «такой совет выиграл игру»)`);
+      if (S.script.roles.includes('mayor') && !inGame('mayor') && !(S.bluffs || []).includes('mayor'))
+        add('Действия', `Посоветуйте игроку ${dam.name} блефовать Мэром. Больше никому об этом совете не говорите.`, `${dam.name} — Девица; Мэра нет в игре и среди блефов Демона (Reddit)`);
+    }
+    if (S.script.roles.some(r => DROISON.includes(r)))
+      for (const p of goods.filter(p => FISH_ONCE.includes(p.role) && sober(p) && !(ONCE_FLAG[p.role] && S.flags[ONCE_FLAG[p.role] + p.id])))
+        add('Действия', `Посоветуйте игроку ${p.name} не тянуть со способностью и скажите, что это ваш совет.`, `${p.name} — ${rn(p)}, ${ONCE_FLAG[p.role] ? 'способность не потрачена' : 'проверьте, не потратил ли он способность'} и сейчас работает; в сценарии есть яд и пьянство (Reddit)`);
+    if (fm && E.hasTok(fm, 'cursed', 'witch')) add('Действия', 'Сегодня никого не номинируйте сами.', 'Рыбак проклят Ведьмой: номинировав, умрёт');
+    // общие — мягкий толчок (вики)
+    add('Общие', 'Не обращайте внимания на Приспешников — ищите Демона.', 'пример с вики');
+    add('Общие', 'Измените ход своих мыслей.', 'пример с вики — если Рыбак идёт по ложному следу (решите сами)');
+    add('Общие', 'Прежде чем казнить, соберите сведения всех Горожан.', '');
+    add('Общие', 'Сравните, кто кого номинировал в первый день.', '');
+    // порядок групп — по стадии игры
+    const order = stage === 'final' ? ['Финал', 'Казнить', 'Доверие', 'Беречь', 'Действия', 'Общие'] : stage === 'early' ? ['Доверие', 'Беречь', 'Действия', 'Общие', 'Казнить'] : ['Казнить', 'Доверие', 'Беречь', 'Действия', 'Общие'];
+    const rank = g => g === FISH_GROUPS[0] ? -1 : order.indexOf(g);
+    return out.sort((a, b) => rank(a.g) - rank(b.g));
+  }
+  // подсказка рассказчику по стадии игры (Reddit, присланный пользователем)
+  const FISH_STAGE = { early: 'Начало игры: лучше мягкий толчок — подтвердить доброго, кому верить; не решать игру за город',
+    mid: 'Середина игры: можно сильнее указывать на злых, но лучше ослабить их, чем решить игру',
+    final: 'Финал (живых 4 и меньше): трезвому Рыбаку можно прямо сказать, кого казнить, чтобы победить' };
 
-  return { AMNESIAC, AMNESIAC_KIND, MEZ_WORDS, SAVANT_GROUPS: GROUPS, savantPair, savantList, savantTemplates, fishermanAdvice };
+  return { AMNESIAC, AMNESIAC_KIND, MEZ_WORDS, SAVANT_GROUPS: GROUPS, savantPair, savantList, savantTemplates, fishermanAdvice, fishStage, FISH_STAGE };
 })();
