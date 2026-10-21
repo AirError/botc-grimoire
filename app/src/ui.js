@@ -1391,19 +1391,23 @@ function poolCard() {
   const n = S.players.filter(p => !E.isTraveller(p)).length; if (n < 5 || n > 15) return '';
   const pool = S.pool || [], d = E.distribution(n, pool.concat(S.fabled || []), S.flags.mods, E.scriptOutsiders(S));
   const cnt = t => pool.filter(r => team(r) === t).length, good = cnt('townsfolk') + cnt('outsider');
+  // Марионетка: можно отметить ещё одного Горожанина — он ляжет в мешочек вместо её жетона (заметка пользователя 2026-10-21)
+  const mar = pool.includes('marionette'), marX = E.poolMarExtra(S) ? 1 : 0, need = mar ? `${n} или ${n + 1}` : `${n}`;
   const MOD_RU = { '-1': '−1 Изгой', 0: 'без изменений', 1: '+1 Изгой' };
   const stat = ['townsfolk', 'outsider', 'minion', 'demon'].map(t => {
-    const bad = d.free && (t === 'townsfolk' || t === 'outsider') ? good !== d.townsfolk + d.outsider : cnt(t) !== d[t];
-    return `<span class="pstat ${bad ? 'bad' : 'okc'}">${E.TEAM_RU[t]}: ${cnt(t)} из ${d[t]}</span>`; }).join('');
+    const want = d[t] + (t === 'townsfolk' ? marX : 0);
+    const bad = d.free && (t === 'townsfolk' || t === 'outsider') ? good !== d.townsfolk + d.outsider + marX : cnt(t) !== want;
+    return `<span class="pstat ${bad ? 'bad' : 'okc'}">${E.TEAM_RU[t]}: ${cnt(t)} из ${want}${t === 'townsfolk' && marX ? ' (+1 под Марионетку)' : ''}</span>`; }).join('');
   const groups = ['townsfolk', 'outsider', 'minion', 'demon'].map(t => {
     const rs = S.script.roles.filter(r => team(r) === t); if (!rs.length) return '';
     return `<div class="poolgrp"><div class="small muted">${TEAM_PL[t]}</div><div class="pooltiles">${rs.map(r => `<button class="ptok ${pool.includes(r) ? 'on' : ''}" data-act="poolToggle" data-arg="${r}" aria-pressed="${pool.includes(r)}">${ico(r, null, 'pti')}<span>${esc(E.rname(r))}</span></button>`).join('')}</div></div>`; }).join('');
   const choices = d.choices.map(c => `<div class="field ${c.value === null ? 'ask' : ''}"><label>${esc(E.rname(c.id))}: ${c.value === null ? 'выберите, сколько Изгоев' : 'Изгоев'}</label>
     <div class="seg">${c.opts.map(v => `<button class="${c.value === v ? 'on' : ''}" data-act="outMod" data-arg="${c.id}|${v}">${MOD_RU[v]}</button>`).join('')}</div></div>`).join('');
-  return `<div class="card"><details class="pooldet" ${pool.length ? 'open' : ''}><summary><b>Роли на игру</b> <span class="small muted">${pool.length ? `выбрано ${pool.length} из ${n}` : 'не выбраны — раздача случайная по раскладке'}</span></summary>
+  return `<div class="card"><details class="pooldet" ${pool.length ? 'open' : ''}><summary><b>Роли на игру</b> <span class="small muted">${pool.length ? `выбрано ${pool.length} из ${need}` : 'не выбраны — раздача случайная по раскладке'}</span></summary>
     <div class="small muted">Отметьте роли, которые будут в игре: случайная раздача и жребий возьмут только их. Блефы Демона наберутся из остальных добрых ролей.</div>
     <div class="pstats">${stat}</div>${choices}${d.notes.length ? `<div class="small muted">${d.notes.map(esc).join('<br>')}</div>` : ''}
-    ${pool.length && pool.length !== n ? `<div class="warn">Нужно ровно ${n} ролей — по числу игроков (без Странников).</div>` : ''}
+    ${mar ? `<div class="small muted">Марионетка: её жетон в мешочек не кладут — вместо него Горожанин. Можно отметить ещё одного Горожанина (всего ${n + 1} ролей) — его роль и достанется будущей Марионетке; не отмечен — Горожанин подберётся случайно. Кто из соседей Демона станет Марионеткой — выберете в «Подготовке».</div>` : ''}
+    ${pool.length && !E.validPool(S) ? `<div class="warn">Нужно ${mar ? `${n} ролей или ${n + 1} с лишним Горожанином под Марионетку` : `ровно ${n} ролей`} — по числу игроков (без Странников).</div>` : ''}
     ${pool.includes('huntsman') && !pool.includes('damsel') ? '<div class="warn">Ловчий в игре — добавьте Девицу.</div>' : ''}
     ${groups}<div class="row"><button class="btn" data-act="poolRandom">Случайный набор</button>${pool.length ? '<button class="btn" data-act="poolClear">Очистить</button>' : ''}</div></details></div>`;
 }

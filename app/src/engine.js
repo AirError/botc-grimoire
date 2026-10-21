@@ -487,8 +487,11 @@ function countTeams(S) {
 /* ---------- набор ролей на игру, назначения для жребия, случайная раздача ---------- */
 const SETUP_TF = ['balloonist', 'huntsman']; // Горожане, которые сами меняют раскладку
 const coreOf = S => S.players.filter(p => !isTraveller(p));
-// набор ролей, выбранный рассказчиком на вкладке «Гримуар» (S.pool), годится, если ролей ровно по числу игроков
-const validPool = S => !!(S.pool && S.pool.length === coreOf(S).length && S.pool.every(r => S.script.roles.includes(r)));
+// набор ролей, выбранный рассказчиком на вкладке «Гримуар» (S.pool), годится, если ролей ровно по числу игроков. С Марионеткой —
+// можно на одну больше: лишний Горожанин ляжет в мешочек вместо жетона Марионетки (заметка пользователя 2026-10-21: «не даёт выбрать
+// +1 добрую роль Горожанина под Марионетку»); не отмечен — Горожанин подберётся случайно (marionetteSwap)
+const poolMarExtra = S => !!(S.pool && S.pool.includes('marionette') && S.pool.length === coreOf(S).length + 1 && S.pool.some(r => R(r) && R(r).team === 'townsfolk'));
+const validPool = S => !!(S.pool && (S.pool.length === coreOf(S).length || poolMarExtra(S)) && S.pool.every(r => S.script.roles.includes(r)));
 
 // случайный набор ролей по раскладке; назначенные для жребия роли (S.assign) и роли, уже выданные игрокам (held),
 // обязательно входят в набор. Атеиста случайно не берём — игру без злых рассказчик выбирает сам (набором ролей)
@@ -523,7 +526,7 @@ function randomPool(S, held) {
 
 // раздать набор игрокам: сначала назначенные роли, потом назначенный тип роли, остальным — случайно
 function dealPool(S, pool) {
-  S.flags.marionetteNeed = false; pool = marionetteSwap(S, pool); // Марионетка — Горожанином, потом выбор соседа Демона
+  S.flags.marionetteNeed = false; pool = marionetteSwap(S, pool, pool === S.pool && poolMarExtra(S)); // Марионетка — Горожанином, потом выбор соседа Демона
   const core = coreOf(S), left = shuffle(pool.slice()), as = S.assign || {}, got = {};
   const take = f => { const i = left.findIndex(f); return i < 0 ? null : left.splice(i, 1)[0]; };
   for (const p of core) { const a = as[p.id]; if (a && a.role) got[p.id] = take(r => r === a.role); }
@@ -533,9 +536,11 @@ function dealPool(S, pool) {
   finishRoles(S);
 }
 // Марионетка (вики): её жетона в мешочке нет — вместо него любой Горожанин; потом рассказчик выбирает соседа Демона с доброй ролью,
-// он и становится Марионеткой (считает себя этой ролью, как Пьяница). Заметка пользователя 2026-10-14
-function marionetteSwap(S, pool) {
+// он и становится Марионеткой (считает себя этой ролью, как Пьяница). Заметка пользователя 2026-10-14.
+// own — рассказчик сам отметил лишнего Горожанина в «Ролях на игру»: жетон Марионетки просто убираем
+function marionetteSwap(S, pool, own) {
   const k = pool.indexOf('marionette'); if (k < 0) return pool;
+  if (own) { pool = pool.slice(); pool.splice(k, 1); S.flags.marionetteNeed = true; return pool; }
   const busy = new Set(pool.concat(S.players.map(p => p.role), S.players.map(p => p.believes)));
   const tf = shuffle(S.script.roles.filter(r => R(r) && R(r).team === 'townsfolk' && !busy.has(r) && !SETUP_TF.includes(r)));
   if (!tf[0]) return pool;
@@ -671,7 +676,7 @@ const RUNE_COLORS = ['green', 'violet', 'red', 'gold'];
 function drawProblem(S) {
   const n = coreOf(S).length;
   if (n < 5 || n > 15) return 'Нужно от 5 до 15 игроков (без Странников)';
-  if (S.pool && S.pool.length && !validPool(S)) return `В «Ролях на игру» отмечено ${S.pool.length}, а игроков ${n}: отметьте ровно ${n} ролей — или очистите выбор, тогда роли наберутся случайно по раскладке`;
+  if (S.pool && S.pool.length && !validPool(S)) return `В «Ролях на игру» отмечено ${S.pool.length}, а игроков ${n}: отметьте ровно ${n} ролей${S.pool.includes('marionette') ? ` (с Марионеткой можно ${n + 1}: лишний Горожанин — вместо её жетона)` : ''} — или очистите выбор, тогда роли наберутся случайно по раскладке`;
   return '';
 }
 function drawStart(S) {
@@ -681,7 +686,7 @@ function drawStart(S) {
   S.flags.marionetteNeed = false;
   let bag = validPool(S) ? S.pool.slice() : randomPool(S, core.map(p => p.role).filter(Boolean));
   for (const p of core) if (p.role) { const k = bag.indexOf(p.role); if (k >= 0) bag.splice(k, 1); }
-  bag = marionetteSwap(S, bag);
+  bag = marionetteSwap(S, bag, validPool(S) && poolMarExtra(S));
   const glyphs = shuffle([...Array(24).keys()]);
   const hid = shuffle(bag.concat(Array(Math.max(0, core.length - bag.length)).fill(null))); // роли по ячейкам; пустые — для уже выданных
   // hidden — роли на экране рассказчика закрыты «шторкой», пока он сам не нажмёт «Показать роли» (заметка пользователя 2026-10-16:
@@ -3100,7 +3105,7 @@ function klutzChoose(S, pid) {
 }
 
 
-const ENGINE = { canBluff, bansheeVotes, fauxPawOn, droisoned, nightDeaths, revive, psychopathKill, exeQuestions, roleWorks, makeMarionette, makeDrunk, setupRole, storytellerRole, gossipPending, setGossip, pithagAdvice, puzzleHit, puzzleGuess, politicianStats, politiciansPending, politicianSide, voteNeeds, ghostSpent, demonSeatNeighbours, generalGuess, choiceCount, newGame, newPlayer, P, nm, rname, realTeam, actsAs, aliveCount, aliveAll, coreCount, isTraveller, exile, exileThreshold, addTraveller, meetingBlocker, isDemon, distribution, setupDistribution, distCheck, unknownSetup, countTeams, randomDeal,
+const ENGINE = { canBluff, poolMarExtra, bansheeVotes, fauxPawOn, droisoned, nightDeaths, revive, psychopathKill, exeQuestions, roleWorks, makeMarionette, makeDrunk, setupRole, storytellerRole, gossipPending, setGossip, pithagAdvice, puzzleHit, puzzleGuess, politicianStats, politiciansPending, politicianSide, voteNeeds, ghostSpent, demonSeatNeighbours, generalGuess, choiceCount, newGame, newPlayer, P, nm, rname, realTeam, actsAs, aliveCount, aliveAll, coreCount, isTraveller, exile, exileThreshold, addTraveller, meetingBlocker, isDemon, distribution, setupDistribution, distCheck, unknownSetup, countTeams, randomDeal,
   amnesiacGuess, AMNESIAC_ANSWERS, storytellerKill, voteCount, voteWeight, voudonActive, bishopActive, travellerWorks, executeNow,
   judgeRuling, gunslingerShot, tinkerDies, doomsayerKill, fiddlerEnd, swapSeats, goonWarn, damselGuess, changeRole, madnessExecute, harpyKill,
   finishRoles, autoSetup, setupProblems, drawStart, drawOpen, drawClose, drawCancel, drawShown, drawLocked, drawProblem, distortion,

@@ -1405,6 +1405,23 @@ try {
       && !E.hasTok(byRole(G2, 'oracle'), 'poisoned', 'lleech') && E.hasTok(byRole(G2, 'undertaker'), 'poisoned', 'lleech'));
   }
 
+  // 36. Марионетка: в «Ролях на игру» можно на одну больше — лишний Горожанин вместо её жетона (заметка пользователя 2026-10-21)
+  {
+    const mk = () => { const Q = E.newGame('leech'); for (let i = 0; i < 6; i++) Q.players.push(E.newPlayer('И' + i));
+      Q.pool = ['oracle', 'undertaker', 'exorcist', 'juggler', 'drunk', 'marionette', 'lleech']; return Q; };
+    let Q = mk();
+    ok('Марионетка: 7 ролей на 6 игроков — набор годится', E.validPool(Q) && E.poolMarExtra(Q) && !E.drawProblem(Q));
+    E.randomDeal(Q);
+    const roles = Q.players.map(p => p.role).sort().join(',');
+    ok('Марионетка: розданы ровно отмеченные роли без её жетона', roles === ['oracle', 'undertaker', 'exorcist', 'juggler', 'drunk', 'lleech'].sort().join(',') && Q.flags.marionetteNeed, roles);
+    const nb = E.demonSeatNeighbours(Q).find(p => DATA.roles[p.role].team === 'townsfolk'); if (nb) E.makeMarionette(Q, nb.id);
+    ok('Марионетка: после выбора соседа подготовка без проблем', nb && !E.setupProblems(Q).length, E.setupProblems(Q).join('; '));
+    Q = mk(); Q.pool = Q.pool.filter(r => r !== 'juggler');
+    ok('Марионетка: 6 ролей тоже годится — Горожанин подберётся сам', E.validPool(Q) && !E.poolMarExtra(Q));
+    Q = mk(); Q.pool = Q.pool.filter(r => r !== 'marionette').concat('slayer');
+    ok('Без Марионетки 7 ролей на 6 игроков — нельзя', !E.validPool(Q) && !!E.drawProblem(Q));
+  }
+
   for (const k of Object.keys(DATA.scripts)) ok('сценарий ' + k + ' — все роли в данных', DATA.scripts[k].roles.every(r => DATA.roles[r]));
 } catch (e) { results.push('ERROR ' + e.message + '\n' + e.stack); }
 
