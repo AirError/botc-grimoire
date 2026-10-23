@@ -213,25 +213,66 @@ def vitrage():
         Image.open(SRC / "d_nave.png").convert("RGB").save(OUT / "d_nave.jpg", quality=88)
     if (SRC / "d_reveal.png").exists():
         Image.open(SRC / "d_reveal.png").convert("RGB").save(OUT / "d_reveal.jpg", quality=88)
+    # рама: белое снаружи и в проёме — прозрачное (white_alpha вырезает и белые «дыры» внутри). Разбитая — правка целой и стоит
+    # на том же месте кадра, поэтому обе обрезаются по рамке целой; проём целой — место стекла (out["glass"])
+    box = None
+    for k in ("d_arch", "d_arch_broken"):
+        if not (SRC / f"{k}.png").exists(): continue
+        a = white_alpha(SRC / f"{k}.png", edge_thr=235, inner_thr=245, min_area=400)
+        if box is None:
+            ys, xs = np.where(np.asarray(a)[..., 3] > 10); box = (xs.min(), ys.min(), xs.max() + 1, ys.max() + 1)
+        a = a.crop(box); a.save(OUT / f"{k}.png"); out[k] = list(a.size)
+        if k == "d_arch":
+            g = arch_glass(a)
+            if g: out["glass"] = g
+    # окна стекла тянутся под форму проёма: все — одного размера, ширина/высота как у стекла в раме
+    asp = out["glass"]["w"] * out["glass"]["fa"] / out["glass"]["h"] if "glass" in out else None
     n = 0
-    for sheet in ("d_panes1", "d_panes2"):  # по 10 окон: 5 столбцов × 2 ряда; каждое — своя клетка, фон от края клетки — прозрачный
+    # по 10 окон: 5 столбцов × 2 ряда. Не по клеткам сетки: окна заходят за середину листа (верхушки нижнего ряда — в верхнюю половину).
+    # Силуэт окна: стёкла (ярче 40) склеиваются через тонкий свинец (замыкание 9 px), дыры заливаются; между окнами — ≥ 28 px чёрного.
+    # Окна — по рядам и слева направо
+    for sheet in ("d_panes1", "d_panes2"):
         if not (SRC / f"{sheet}.png").exists(): continue
-        im = Image.open(SRC / f"{sheet}.png").convert("RGB"); W, H = im.size
-        for r in range(2):
-            for c in range(5):
-                cell = np.asarray(im.crop((round(c * W / 5), round(r * H / 2), round((c + 1) * W / 5), round((r + 1) * H / 2)))).astype(float)
-                m = cell.max(axis=2); lab, _ = ndimage.label(m < 40)
-                edge = set(lab[0, :]) | set(lab[-1, :]) | set(lab[:, 0]) | set(lab[:, -1]); edge.discard(0)
-                al = np.where(np.isin(lab, list(edge)), np.clip((m - 8) / 32, 0, 1) * 255, 255)
-                alpha_bbox(Image.fromarray(np.dstack([cell, al]).round().astype(np.uint8), "RGBA"), thr=40).save(OUT / f"d_pane{n}.png"); n += 1
+        a = np.asarray(Image.open(SRC / f"{sheet}.png").convert("RGB")).astype(float); H = a.shape[0]
+        sil = ndimage.binary_fill_holes(ndimage.binary_closing(a.max(axis=2) >= 40, structure=np.ones((9, 9))))
+        win, k = ndimage.label(sil)
+        size = ndimage.sum(np.ones_like(win), win, range(1, k + 1))
+        boxes = ndimage.find_objects(win)
+        big = sorted(np.argsort(size)[::-1][:10], key=lambda i: ((boxes[i][0].start + boxes[i][0].stop) / 2 > H / 2, boxes[i][1].start))
+        for i in big:
+            sy, sx = boxes[i]
+            al = np.where(win[sy, sx] == i + 1, 255, 0)  # вне силуэта и чужие окна — прозрачные
+            p = Image.fromarray(np.dstack([a[sy, sx], al]).round().astype(np.uint8), "RGBA")
+            if asp:  # есть рама — окно режет clip-path проёма, прозрачность не нужна: на чёрном, без неё в странице втрое легче
+                p = p.resize((210, round(210 / asp)), Image.LANCZOS)
+                blk = Image.new("RGBA", p.size, (0, 0, 0, 255)); blk.alpha_composite(p); p = blk.convert("RGB")
+            p.save(OUT / f"d_pane{n}.png"); n += 1
     out["panes"] = n
-    for k in ("d_arch", "d_arch_broken"):  # рама: белое снаружи и в проёме — прозрачное (white_alpha вырезает и белые «дыры» внутри)
-        if (SRC / f"{k}.png").exists():
-            a = alpha_bbox(white_alpha(SRC / f"{k}.png", edge_thr=235, inner_thr=245, min_area=400)); a.save(OUT / f"{k}.png"); out[k] = list(a.size)
     if (SRC / "d_cracks.png").exists():
         light_mask(SRC / "d_cracks.png", lift=20).save(OUT / "d_cracks.png")
-    if n: print("витраж: окон", n)
+    if n: print("витраж: окон", n, "стекло", out.get("glass"))
     return out
+
+
+def arch_glass(im, mx=.03, mt=.012, mb=.01):
+    """Проём рамы (самая большая прозрачная область внутри камня) → где стекло, в % рамы: l, t, w, h — проём с запасом под камень
+    (mx — с боков, mt/mb — сверху/снизу, доли проёма: край рисованного окна уходит под камень); fa — ширина/высота рамы;
+    arch — доля высоты стекла под стрельчатый верх (до строки, где проём набирает полную ширину)."""
+    al = np.asarray(im)[..., 3] > 128
+    H, W = al.shape
+    lab, k = ndimage.label(~al)
+    edge = set(lab[0]) | set(lab[-1]) | set(lab[:, 0]) | set(lab[:, -1])
+    inner = [i for i in range(1, k + 1) if i not in edge]
+    if not inner: return None
+    hole = lab == max(inner, key=lambda i: (lab == i).sum())
+    ys, xs = np.where(hole)
+    x0, x1, y0, y1 = xs.min(), xs.max() + 1, ys.min(), ys.max() + 1
+    wid = hole.sum(axis=1)
+    spring = int(np.argmax(wid >= .995 * wid.max()))  # дуга входит в бок по касательной — порог почти полный
+    ow, oh = x1 - x0, y1 - y0
+    gx0, gx1, gy0, gy1 = x0 - mx * ow, x1 + mx * ow, y0 - mt * oh, y1 + mb * oh
+    return {"l": round(float(gx0 / W * 100), 2), "t": round(float(gy0 / H * 100), 2), "w": round(float((gx1 - gx0) / W * 100), 2),
+            "h": round(float((gy1 - gy0) / H * 100), 2), "fa": round(W / H, 4), "arch": round(float((spring - gy0) / (gy1 - gy0)), 3)}
 
 
 def light_rgba(src, lift=10):

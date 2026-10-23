@@ -1626,10 +1626,13 @@ function splashFly() {
    рисунок. Нажали — по стеклу бегут трещины, витраж разлетается осколками в экран, свет из окна заливает весь экран, из света
    появляется роль на приглушённом витраже (d_reveal, пока — роза d_rose). Окно остаётся пустой разбитой рамой, свет за ним гаснет */
 const vitrOn = () => UI.skin === 'glass';
-// окно-ланцет 3:5: стрельчатый верх из двух дуг радиусом 0,75 ширины (вершина — сверху посередине), прямые бока. Точки контура — в % рамки
-const VW = 100, VH = 500 / 3;
+// где в раме стекло (% рамы: l, t, w, h), fa — ширина/высота рамы, arch — доля высоты стекла под стрельчатый верх.
+// Рисованная рама (d_arch) — по замеру её проёма (prep_art → meta.vitr.glass), иначе запасная рама 3:5
+const VG = (HAS_ART('d_arch') && typeof ART_META !== 'undefined' && ART_META.vitr && ART_META.vitr.glass) || { l: 10, t: 7, w: 80, h: 86, fa: .6, arch: .42 };
+// стекло-ланцет: стрельчатый верх из двух дуг (вершина — сверху посередине, высота арки — VG.arch), прямые бока. Точки контура — в % стекла
+const VW = 100, VH = 100 * VG.h / (VG.w * VG.fa);
 const LANCET_PTS = (() => {
-  const r = 75, ys = Math.sqrt(r * r - (r - VW / 2) ** 2), ta = Math.acos((VW / 2 - r) / r), pts = [];
+  const ys = VG.arch * VH, r = (ys * ys + (VW / 2) ** 2) / VW, ta = Math.acos((VW / 2 - r) / r), pts = [];
   const side = (x, n) => { for (let k = 1; k < n; k++) pts.push([x, x ? ys + (VH - ys) * k / n : VH - (VH - ys) * k / n]); };
   pts.push([0, VH]); side(0, 4);
   for (let k = 0; k <= 8; k++) { const t = Math.PI - (Math.PI - ta) * k / 8; pts.push([r + r * Math.cos(t), ys - r * Math.sin(t)]); }
@@ -1644,13 +1647,19 @@ const VCRACK = (() => { const c = [50, 40], out = [];
     out.push(`M${c[0]},${c[1] * VH / 100} L${(c[0] + Math.cos(a) * L * .45).toFixed(1)},${(c[1] * VH / 100 + Math.sin(a) * L * .55).toFixed(1)} L${(c[0] + Math.cos(a + .12) * L).toFixed(1)},${(c[1] * VH / 100 + Math.sin(a + .12) * L * 1.1).toFixed(1)}`); }
   for (const R of [14, 28]) out.push(`M${c[0] + R},${c[1] * VH / 100} A${R},${R * 1.1} 0 1 1 ${c[0] + R - .1},${c[1] * VH / 100 - 1}`);
   return out.join(' '); })();
-// сколько картинок окон есть; номер окна у ячейки — по месту её руны среди всех ячеек (все окна разные)
+// сколько картинок окон есть; номер окна у ячейки — по месту её руны среди всех ячеек (все окна разные). Все 20 — через одно:
+// персона или святой (d_pane0–9), демон или чудовище (d_pane10–19), чтобы на любой стене были и те и другие
 const vitrPanes = () => [...Array(20).keys()].filter(i => HAS_ART('d_pane' + i)).length;
-const vitrPane = (d, c) => { const n = vitrPanes(); if (!n) return -1; return d.cells.filter(x => x.glyph < c.glyph).length % n; };
-// сетка: 3 столбца до 9 окон, дальше 4; ширина — чтобы все ряды окон 3:5 влезли по высоте (сверху шапка, снизу подсказка — ~200 px)
+const vitrPane = (d, c) => { const n = vitrPanes(); if (!n) return -1; const r = d.cells.filter(x => x.glyph < c.glyph).length % n; return n === 20 ? (r % 2) * 10 + (r >> 1) : r; };
+// сетка: столбцов — сколько дают самые крупные окна на этом экране (по ширине — стена на весь экран, по высоте: сверху шапка, снизу
+// подсказка — ~200 px); ширина — чтобы все ряды влезли по высоте. Там же — форма рамы и место стекла для CSS
 function vitrGrid(n) {
-  const cols = n <= 9 ? 3 : 4, rows = Math.ceil(n / cols);
-  return `--vc:${cols};--vmax:calc((100dvh - ${200 + (rows - 1) * 14}px) / ${rows} * .6 * ${cols} + ${(cols - 1) * 12}px)`;
+  const W = (window.innerWidth || 375) - 28, H = (window.innerHeight || 700) - 200;
+  const fit = c => { const r = Math.ceil(n / c); return Math.min((W - (c - 1) * 12) / c, (H - (r - 1) * 14) / r * VG.fa); };
+  let cols = 3; for (const c of [2, 4, 5, 6, 8]) if (fit(c) > fit(cols)) cols = c;
+  const rows = Math.ceil(n / cols);
+  return `--vc:${cols};--vmax:calc((100dvh - ${200 + (rows - 1) * 14}px) / ${rows} * ${VG.fa} * ${cols} + ${(cols - 1) * 12}px);`
+    + `--fa:${VG.fa};--gl:${VG.l}%;--gt:${VG.t}%;--gw:${VG.w}%;--gh:${VG.h}%`;
 }
 // стекло окна: рисованное (d_pane*) или запасное — цветная мозаика со свинцом и руной вместо фигуры
 function vitrGlass(d, c) {
@@ -1689,7 +1698,7 @@ function vitrShards(w, h) {
 // вспышка света из окна, свет заливает экран
 function vitrFx(d, i) {
   const c = d.cells[i], R = UI.openRect || { x: 120, y: 200, w: 100, h: 166 };
-  const g = { x: R.x + R.w * .1, y: R.y + R.h * .07, w: R.w * .8, h: R.h * .86 }; // стекло — внутри каменной рамы
+  const g = { x: R.x + R.w * VG.l / 100, y: R.y + R.h * VG.t / 100, w: R.w * VG.w / 100, h: R.h * VG.h / 100 }; // стекло — в проёме рамы
   const glass = vitrGlass(d, c), k = vitrPane(d, c);
   const sh = vitrShards(g.w, g.h).map(s => `<i class="vsh" style="clip-path:polygon(${s.poly});transform-origin:${s.o};--tx:${s.tx}px;--ty:${s.ty}px;--r:${s.r}deg;--s:${s.s};animation-delay:${280 + s.dl}ms">${k >= 0 ? `<i class="vgl art" style="--pi:var(--a-d-pane${k})"></i>` : '<i class="vgl"></i>'}</i>`).join('');
   // за ролью — приглушённый витраж (d_reveal; пока его нет — роза d_rose на мозаике)
@@ -2550,7 +2559,11 @@ document.addEventListener('input', ev => {
 document.addEventListener('keydown', ev => { if (ev.key === 'Enter' && ev.target.id === 'newName') A.addP(); if (ev.key === 'Enter' && ev.target.id === 'pinIn') A.pinOk(); });
 // круг Гримуара для Шпиона подстраивается под экран (поворот телефона, размер окна)
 let resizeTimer = null;
-window.addEventListener('resize', () => { if (!UI.grimShow) return; clearTimeout(resizeTimer); resizeTimer = setTimeout(render, 150); });
+// перестроить при повороте экрана: Гримуар кругом; витраж — столбцы окон под новый экран (не посреди разбития)
+window.addEventListener('resize', () => {
+  if (!UI.grimShow && !(UI.wall && S.draw && S.draw.open === null && vitrOn())) return;
+  clearTimeout(resizeTimer); resizeTimer = setTimeout(render, 150);
+});
 
 // порядок мест: зажать ручку ⠿ и тянуть (пальцем или мышью); строки раздвигаются, на отпускании — новое место
 let dragS = null;

@@ -1304,13 +1304,14 @@ html[data-skin="hallow"] .crypt .wrfor { font-family: var(--f-wet); font-weight:
     repeating-linear-gradient(0deg, transparent 0 38px, rgba(0, 0, 0, .32) 38px 40px),
     linear-gradient(#0C0F1A, #06070C); }
 .wallov.vitr .wall.nave { background: var(--a-d-nave) center 30% / cover no-repeat, #05060B; }
+.wallov.vitr .wall { max-width: none; } /* собор — на весь экран (iPad, компьютер); окна укладывает vitrGrid */
 .wallov.vitr .wall::after { display: none; }
 .wallov.vitr .wall.roll { animation: vNaveIn 1.2s ease-out both; }
 @keyframes vNaveIn { from { opacity: 0; filter: brightness(.1); } to { opacity: 1; filter: none; } }
 .wallov.vitr .wgrid { grid-template-columns: repeat(var(--vc, 3), minmax(0, 1fr)); width: min(100%, var(--vmax, 100%)); margin: auto; flex: 0 0 auto; row-gap: 14px; column-gap: 12px; align-content: center; }
 .wallov.vitr .whint { color: #B9C0D8; text-shadow: 0 1px 4px #000; }
 /* окно */
-.wallov.vitr .wcell.vw { aspect-ratio: 3 / 5; background: none; border: 0; border-radius: 0; box-shadow: none; overflow: visible; animation: none; filter: none; padding: 0; }
+.wallov.vitr .wcell.vw { aspect-ratio: var(--fa, .6); background: none; border: 0; border-radius: 0; box-shadow: none; overflow: visible; animation: none; filter: none; padding: 0; }
 .wallov.vitr .wcell.vw::before, .wallov.vitr .wcell.vw::after { display: none; }
 .wallov.vitr .wcell.vw:focus-visible { outline: 2px solid var(--glow); outline-offset: 3px; }
 .vw > i, .vw > span, .vw > svg { position: absolute; display: block; pointer-events: none; }
@@ -1318,7 +1319,9 @@ html[data-skin="hallow"] .crypt .wrfor { font-family: var(--f-wet); font-weight:
 @keyframes vGlow { 0%, 100% { opacity: .36; transform: scale(.96); } 50% { opacity: .78; transform: scale(1.05); } }
 .vw .vframe { inset: 0; clip-path: var(--lan); background: linear-gradient(90deg, #26282F, #4C4E58 30%, #3A3C45 70%, #212329); }
 .vw.artf .vframe { clip-path: none; z-index: 2; background: var(--a-d-arch) center / 100% 100% no-repeat; }
-.vw .vglass { left: 10%; top: 7%; width: 80%; height: 86%; clip-path: var(--lan); overflow: hidden; background: #050505; }
+/* стекло — в проёме рамы (место и форма рамы — переменные из vitrGrid: по замеру рисованной рамы или запасные) */
+.vw .vglass, .vw .vbroken { left: var(--gl, 10%); top: var(--gt, 7%); width: var(--gw, 80%); height: var(--gh, 86%); }
+.vw .vglass { clip-path: var(--lan); overflow: hidden; background: #050505; }
 /* стекло: рисованное окно или мозаика (цвета — по руне ячейки), свинец — тёмные переплёты */
 .vgl { position: absolute; inset: 0; display: block; }
 .vgl:not(.art), .vrbg { background:
@@ -1326,7 +1329,7 @@ html[data-skin="hallow"] .crypt .wrfor { font-family: var(--f-wet); font-weight:
     repeating-linear-gradient(-60deg, transparent 0 13px, rgba(8, 6, 6, .9) 13px 15px),
     repeating-linear-gradient(0deg, transparent 0 22px, rgba(8, 6, 6, .9) 22px 24px),
     conic-gradient(from 30deg at 50% 45%, var(--g1), var(--g2), var(--g3), var(--g1), var(--g4), var(--g2), var(--g1)); }
-.vgl.art { background: var(--pi) center / cover no-repeat; }
+.vgl.art { background: var(--pi) center / 100% 100% no-repeat; }
 .vw.c-green, .vfx.c-green { --g1: #1D8B4B; --g2: #17478F; --g3: #C9962B; --g4: #35B56F; }
 .vw.c-violet, .vfx.c-violet { --g1: #6A2FA8; --g2: #A3243A; --g3: #1E5AA8; --g4: #8E5AD8; }
 .vw.c-red, .vfx.c-red { --g1: #A51E2E; --g2: #1C4A96; --g3: #D19A2A; --g4: #C9364A; }
@@ -1335,7 +1338,7 @@ html[data-skin="hallow"] .crypt .wrfor { font-family: var(--f-wet); font-weight:
 .vfig i { position: absolute; inset: 0; background: #FFE9B0; -webkit-mask: var(--rm) center / contain no-repeat; mask: var(--rm) center / contain no-repeat; }
 .vw .vshine { position: absolute; inset: 0; background: radial-gradient(ellipse 70% 55% at 50% 40%, rgba(255, 248, 225, .5), transparent 72%); opacity: .3; animation: vShine 2.8s ease-in-out infinite; animation-delay: calc(var(--d) * -1); }
 @keyframes vShine { 0%, 100% { opacity: .12; } 50% { opacity: .42; } }
-.vw .vbroken { left: 10%; top: 7%; width: 80%; height: 86%; display: none; clip-path: var(--lan); }
+.vw .vbroken { display: none; clip-path: var(--lan); }
 .vw .vbroken path { fill: #2B2C3A; stroke: #000; stroke-width: .8; opacity: .85; }
 /* разбитое окно: стекла нет, свет погас — пустая тёмная рама с осколками по краям */
 .wallov.vitr .wcell.vw.done { cursor: default; }
