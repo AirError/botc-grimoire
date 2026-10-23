@@ -78,6 +78,10 @@ _H.update({f"h_cflame{i}.png": 60 for i in range(1, 5)})
 _H.update({f"h_candle{i}.png": 160 for i in range(1, 5)})
 _H.update({f"h_pumpkin{i}.png": 160 for i in range(1, 5)})
 ART.update({f.rsplit(".", 1)[0]: (CUT / f, w) for f, w in _H.items()})
+# «Витраж во тьме»: выдача ролей витражом (prep_art.vitrage, prompts_vitrage.md) — пока картинок нет, окна рисует CSS
+ART.update({"d_nave": (CUT / "d_nave.jpg", 720), "d_reveal": (CUT / "d_reveal.jpg", 720), "d_arch": (CUT / "d_arch.png", 300),
+            "d_arch_broken": (CUT / "d_arch_broken.png", 300), "d_cracks": (CUT / "d_cracks.png", 300)})
+ART.update({f"d_pane{i}": (CUT / f"d_pane{i}.png", 300) for i in range(20)})
 ART.update({f"c_em_{k}": (CUT / f"c_em_{k}.png", 220) for k in ("demon", "minions", "notinplay", "youare", "selected", "thisplayer", "yourrole",
                                                                "yes", "no", "good", "evil", "general_good", "general_evil", "general_neither", "moon")})
 
@@ -100,7 +104,7 @@ art = {k: webp_uri(p, w, 70 if lossy(k) else 100) for k, (p, w) in ART.items() i
 meta = json.loads((CUT / "meta.json").read_text(encoding="utf-8")) if (CUT / "meta.json").exists() else {}
 art_js = ("const ART = " + json.dumps(art, separators=(",", ":")) + ";\n"
           + "const ART_META = " + json.dumps(meta) + ";\n")
-missing = [k for k, (p, _) in ART.items() if not p.exists()]
+missing = [k for k, (p, _) in ART.items() if not p.exists() and not k.startswith(("d_pane", "d_nave", "d_reveal", "d_arch", "d_cracks"))]  # витраж — по желанию
 if missing:
     print("нет графики:", ", ".join(missing))
 

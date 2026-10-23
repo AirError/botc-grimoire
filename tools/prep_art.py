@@ -200,7 +200,38 @@ def beauty():
     meta["digits"] = digits()
     meta["skins"] = skins()
     meta["hallow"] = halloween()
+    meta["vitr"] = vitrage()
     (OUT / "meta.json").write_text(json.dumps(meta), encoding="utf-8")
+
+
+def vitrage():
+    """«Витраж во тьме»: выдача ролей витражом (prompts_vitrage.md, просьба пользователя 2026-10-23) → art/cut, сведения — в meta.vitr.
+    Окна-ланцеты на двух листах 5×2 (чёрный фон между окнами — прозрачный), каменная рама с пустым проёмом и она же разбитая
+    (белый фон — прозрачный, и в проёме тоже), неф собора (фон), витраж за ролью, трещины (белым по чёрному → маска)."""
+    out = {}
+    if (SRC / "d_nave.png").exists():
+        Image.open(SRC / "d_nave.png").convert("RGB").save(OUT / "d_nave.jpg", quality=88)
+    if (SRC / "d_reveal.png").exists():
+        Image.open(SRC / "d_reveal.png").convert("RGB").save(OUT / "d_reveal.jpg", quality=88)
+    n = 0
+    for sheet in ("d_panes1", "d_panes2"):  # по 10 окон: 5 столбцов × 2 ряда; каждое — своя клетка, фон от края клетки — прозрачный
+        if not (SRC / f"{sheet}.png").exists(): continue
+        im = Image.open(SRC / f"{sheet}.png").convert("RGB"); W, H = im.size
+        for r in range(2):
+            for c in range(5):
+                cell = np.asarray(im.crop((round(c * W / 5), round(r * H / 2), round((c + 1) * W / 5), round((r + 1) * H / 2)))).astype(float)
+                m = cell.max(axis=2); lab, _ = ndimage.label(m < 40)
+                edge = set(lab[0, :]) | set(lab[-1, :]) | set(lab[:, 0]) | set(lab[:, -1]); edge.discard(0)
+                al = np.where(np.isin(lab, list(edge)), np.clip((m - 8) / 32, 0, 1) * 255, 255)
+                alpha_bbox(Image.fromarray(np.dstack([cell, al]).round().astype(np.uint8), "RGBA"), thr=40).save(OUT / f"d_pane{n}.png"); n += 1
+    out["panes"] = n
+    for k in ("d_arch", "d_arch_broken"):  # рама: белое снаружи и в проёме — прозрачное (white_alpha вырезает и белые «дыры» внутри)
+        if (SRC / f"{k}.png").exists():
+            a = alpha_bbox(white_alpha(SRC / f"{k}.png", edge_thr=235, inner_thr=245, min_area=400)); a.save(OUT / f"{k}.png"); out[k] = list(a.size)
+    if (SRC / "d_cracks.png").exists():
+        light_mask(SRC / "d_cracks.png", lift=20).save(OUT / "d_cracks.png")
+    if n: print("витраж: окон", n)
+    return out
 
 
 def light_rgba(src, lift=10):

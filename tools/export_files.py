@@ -17,6 +17,7 @@ FILES = [
     (ROOT / "four_demons_script.json", "Everyone Can Be Evil.json"),
     (ROOT / "prompts_app.md", "Промпты — приложение.md"),
     (ROOT / "prompts_halloween.md", "Промпты — Хэллоуин.md"),
+    (ROOT / "prompts_vitrage.md", "Промпты — Витраж (выдача ролей).md"),
     (ROOT / "prompts_sheets.md", "Промпты — листы сценария.md"),
     (ROOT / "prompts_badges.md", "Промпты — бейджи.md"),
     (OUT / "badges.pdf", "Бейджи — Горгульи (A4).pdf"),

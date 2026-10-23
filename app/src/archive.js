@@ -47,7 +47,8 @@ function gameRecord(s) {
   }));
 }
 // в архив — только начатые игры (подготовку без ночей не храним)
-const gameStarted = s => !!(s && s.id && s.phase && s.phase !== 'setup' && s.players && s.players.length);
+// тестовая игра со всеми ролями сценария (кнопка «Тест», flags.test) в историю не попадает
+const gameStarted = s => !!(s && s.id && s.phase && s.phase !== 'setup' && s.players && s.players.length && !(s.flags && s.flags.test));
 async function gameArchive(s) {
   if (!gameStarted(s)) return false;
   const rec = gameRecord(s);

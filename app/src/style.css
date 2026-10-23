@@ -771,6 +771,8 @@ img.shroud { object-fit: contain; }
 .idealist { display: flex; flex-direction: column; gap: 6px; margin-top: 6px; }
 .idea { text-align: left; border: 1px solid var(--line); border-radius: 9px; background: var(--paper); padding: 8px 10px; font-size: 14px; line-height: 1.35; cursor: pointer; }
 .idea.on { border: 2px solid var(--gold); background: var(--goldbg); font-weight: 700; }
+/* кнопка «Тест» (игра со всеми ролями сценария) — маленькая и невзрачная (просьба пользователя 2026-10-23) */
+.testbtn { display: block; margin: 4px 0 0 auto; padding: 2px 6px; border: 0; background: none; color: var(--muted); font-size: 12px; opacity: .55; text-decoration: underline dotted; cursor: pointer; }
 /* советы Рыбаку: заголовок группы и «почему» (только рассказчику) */
 .idealist .igrp { margin-top: 8px; font-size: 12px; font-weight: 700; letter-spacing: .06em; text-transform: uppercase; color: var(--muted); }
 .idealist .igrp:first-child { margin-top: 0; }
@@ -1288,4 +1290,103 @@ html[data-skin="hallow"] .crypt .wrfor { font-family: var(--f-wet); font-weight:
   .showov:not(.land) .shroles { width: auto; flex: 0 1 auto; max-width: 44vw; }
   .showov:not(.land) .shic { width: min(38dvh, 320px); height: min(38dvh, 320px); }
   .showov:not(.land) .shhint { flex-basis: 100%; }
+}
+
+/* ---------- «Витраж во тьме»: выдача ролей витражом (заметка пользователя 2026-10-23; prompts_vitrage.md) ----------
+   Стена собора, окна-ланцеты (clip-path --lan из ui.js). Невыбранное окно светится: ореол цвета руны за ним «дышит», свет
+   подсвечивает стекло. Нажатие: трещины → осколки летят в экран → вспышка из окна → свет заливает экран → роль на приглушённом
+   витраже. Разбитое окно — пустая рама, свет за ним гаснет. Без картинок стекло — цветная мозаика со свинцом и руной */
+.wallov.vitr { background: #030408; }
+.wallov.vitr .wall { box-shadow: none; background:
+    radial-gradient(ellipse 70% 32% at 50% 0%, rgba(120, 140, 210, .16), transparent 70%),
+    radial-gradient(ellipse 80% 26% at 50% 100%, rgba(170, 90, 160, .12), transparent 70%),
+    linear-gradient(90deg, #05060B 0, #141826 7%, #070910 13%, transparent 13% 87%, #070910 87%, #141826 93%, #05060B 100%),
+    repeating-linear-gradient(0deg, transparent 0 38px, rgba(0, 0, 0, .32) 38px 40px),
+    linear-gradient(#0C0F1A, #06070C); }
+.wallov.vitr .wall.nave { background: var(--a-d-nave) center 30% / cover no-repeat, #05060B; }
+.wallov.vitr .wall::after { display: none; }
+.wallov.vitr .wall.roll { animation: vNaveIn 1.2s ease-out both; }
+@keyframes vNaveIn { from { opacity: 0; filter: brightness(.1); } to { opacity: 1; filter: none; } }
+.wallov.vitr .wgrid { grid-template-columns: repeat(var(--vc, 3), minmax(0, 1fr)); width: min(100%, var(--vmax, 100%)); margin: auto; flex: 0 0 auto; row-gap: 14px; column-gap: 12px; align-content: center; }
+.wallov.vitr .whint { color: #B9C0D8; text-shadow: 0 1px 4px #000; }
+/* окно */
+.wallov.vitr .wcell.vw { aspect-ratio: 3 / 5; background: none; border: 0; border-radius: 0; box-shadow: none; overflow: visible; animation: none; filter: none; padding: 0; }
+.wallov.vitr .wcell.vw::before, .wallov.vitr .wcell.vw::after { display: none; }
+.wallov.vitr .wcell.vw:focus-visible { outline: 2px solid var(--glow); outline-offset: 3px; }
+.vw > i, .vw > span, .vw > svg { position: absolute; display: block; pointer-events: none; }
+.vw .vlight { inset: -16% -24%; background: radial-gradient(closest-side, var(--glow), transparent); opacity: .5; animation: vGlow 2.8s ease-in-out infinite; animation-delay: calc(var(--d) * -1); }
+@keyframes vGlow { 0%, 100% { opacity: .36; transform: scale(.96); } 50% { opacity: .78; transform: scale(1.05); } }
+.vw .vframe { inset: 0; clip-path: var(--lan); background: linear-gradient(90deg, #26282F, #4C4E58 30%, #3A3C45 70%, #212329); }
+.vw.artf .vframe { clip-path: none; z-index: 2; background: var(--a-d-arch) center / 100% 100% no-repeat; }
+.vw .vglass { left: 10%; top: 7%; width: 80%; height: 86%; clip-path: var(--lan); overflow: hidden; background: #050505; }
+/* стекло: рисованное окно или мозаика (цвета — по руне ячейки), свинец — тёмные переплёты */
+.vgl { position: absolute; inset: 0; display: block; }
+.vgl:not(.art), .vrbg { background:
+    repeating-linear-gradient(60deg, transparent 0 13px, rgba(8, 6, 6, .9) 13px 15px),
+    repeating-linear-gradient(-60deg, transparent 0 13px, rgba(8, 6, 6, .9) 13px 15px),
+    repeating-linear-gradient(0deg, transparent 0 22px, rgba(8, 6, 6, .9) 22px 24px),
+    conic-gradient(from 30deg at 50% 45%, var(--g1), var(--g2), var(--g3), var(--g1), var(--g4), var(--g2), var(--g1)); }
+.vgl.art { background: var(--pi) center / cover no-repeat; }
+.vw.c-green, .vfx.c-green { --g1: #1D8B4B; --g2: #17478F; --g3: #C9962B; --g4: #35B56F; }
+.vw.c-violet, .vfx.c-violet { --g1: #6A2FA8; --g2: #A3243A; --g3: #1E5AA8; --g4: #8E5AD8; }
+.vw.c-red, .vfx.c-red { --g1: #A51E2E; --g2: #1C4A96; --g3: #D19A2A; --g4: #C9364A; }
+.vw.c-gold, .vfx.c-gold { --g1: #C8912A; --g2: #8E2234; --g3: #1D7A4E; --g4: #E2B64A; }
+.vfig { position: absolute; left: 22%; width: 56%; top: 33%; aspect-ratio: 1; filter: drop-shadow(0 0 1px #000) drop-shadow(0 0 2px #000); }
+.vfig i { position: absolute; inset: 0; background: #FFE9B0; -webkit-mask: var(--rm) center / contain no-repeat; mask: var(--rm) center / contain no-repeat; }
+.vw .vshine { position: absolute; inset: 0; background: radial-gradient(ellipse 70% 55% at 50% 40%, rgba(255, 248, 225, .5), transparent 72%); opacity: .3; animation: vShine 2.8s ease-in-out infinite; animation-delay: calc(var(--d) * -1); }
+@keyframes vShine { 0%, 100% { opacity: .12; } 50% { opacity: .42; } }
+.vw .vbroken { left: 10%; top: 7%; width: 80%; height: 86%; display: none; clip-path: var(--lan); }
+.vw .vbroken path { fill: #2B2C3A; stroke: #000; stroke-width: .8; opacity: .85; }
+/* разбитое окно: стекла нет, свет погас — пустая тёмная рама с осколками по краям */
+.wallov.vitr .wcell.vw.done { cursor: default; }
+.vw.done .vlight, .vw.done .vgl, .vw.done .vfig, .vw.done .vshine { display: none; }
+.vw.done .vglass { background: radial-gradient(ellipse at 50% 40%, #0B0D14, #020203); }
+.vw.done .vbroken { display: block; }
+.vw.done .vframe { filter: brightness(.62); }
+.vw.done.artf .vframe { background-image: var(--a-d-arch-broken, var(--a-d-arch)); }
+.vw.done.artb .vbroken { display: none; }
+/* только что закрыли роль: свет за пустым окном гаснет */
+.vw.cracking .vlight { display: block; animation: vLightOut 1.1s ease-out forwards; }
+@keyframes vLightOut { from { opacity: .9; transform: scale(1.12); } to { opacity: 0; transform: scale(.8); } }
+/* удар: окно вздрагивает, стекло исчезает (его место занимают осколки слоя разбития), сквозь пустую раму бьёт свет */
+.wallov.vitr .wcell.vw.opened { animation: vHit .26s ease-in-out 1; }
+@keyframes vHit { 25% { transform: translate(-2px, 1px) rotate(-.8deg); } 60% { transform: translate(2px, -1px) rotate(.8deg); } }
+.vw.opened .vgl, .vw.opened .vfig { animation: vGone .01s .28s forwards; }
+@keyframes vGone { to { opacity: 0; } }
+.vw.opened .vglass { background: radial-gradient(ellipse at 50% 40%, #FFF6DC, var(--glow) 45%, #000 92%); }
+.vw.opened .vlight { animation: vFlare 1.4s ease-out forwards; }
+@keyframes vFlare { 0% { opacity: .7; } 30% { opacity: 1; transform: scale(1.7); } 100% { opacity: .2; transform: scale(1.2); } }
+.wallov.vitr.busy .wcell.vw:not(.opened) .vlight, .wallov.vitr.busy .wcell.vw:not(.opened) .vshine { animation-play-state: paused; }
+/* роль: поверх стены — слой разбития, потом из света поднимается карточка на приглушённом витраже */
+.vitr .wreveal { background: none; animation: none; }
+.vitr .wreveal > * { position: relative; z-index: 1; }
+.vitr .wreveal > .vrbg { position: absolute; inset: 0; z-index: 0; pointer-events: none; opacity: 0; animation: vRevealBg .7s .85s ease-out forwards; filter: saturate(.62) brightness(.45); }
+.vrbg.rose { background: var(--a-d-rose) center 42% / min(125vw, 120vh) no-repeat, conic-gradient(from 0deg at 50% 42%, #5E1A24, #18325F, #1B5338, #6B521C, #3E1D5E, #5E1A24); }
+.vrbg.art { background: var(--a-d-reveal) center / cover no-repeat; }
+.vrbg:not(.art):not(.rose) { --g1: #7A1E2A; --g2: #1B3F7A; --g3: #8A6A1E; --g4: #1E6E46; }
+.vrbg::after { content: ''; position: absolute; inset: 0; background: radial-gradient(ellipse 62% 46% at 50% 46%, rgba(3, 3, 6, .72), rgba(3, 3, 6, .25) 82%); }
+@keyframes vRevealBg { to { opacity: 1; } }
+.vitr .wreveal > :not(.vfx):not(.vrbg):not(.wrlater) { opacity: 0; animation: vCardIn .55s 1.15s ease-out forwards; }
+@keyframes vCardIn { from { opacity: 0; transform: translateY(16px) scale(.97); } to { opacity: 1; transform: none; } }
+.vitr .wrart .fxc, .vitr .wrart .fxo { display: none; }
+.vitr .wrart::before { content: ''; position: absolute; inset: -20%; background: radial-gradient(closest-side, var(--glow), transparent); opacity: .4; }
+.vitr .wreveal > .vfx { position: absolute; inset: 0; z-index: 3; pointer-events: none; overflow: hidden; }
+.vfx .vflood { position: absolute; inset: 0; opacity: 0; background: radial-gradient(circle at var(--fx, 50%) var(--fy, 40%), #FFFCF2, #FFF0CC 38%, var(--glow) 110%); animation: vFlood 1.6s .3s ease-in-out forwards; }
+@keyframes vFlood { 0% { opacity: 0; } 35%, 55% { opacity: .95; } 100% { opacity: 0; } }
+.vbox { position: absolute; }
+.vbox > * { position: absolute; inset: 0; display: block; }
+.vwhole { clip-path: var(--lan); overflow: hidden; animation: vGone .01s .28s forwards; }
+.vcrk path { fill: none; stroke: #FFF8E6; stroke-width: 1.2; stroke-linecap: round; stroke-dasharray: 220; stroke-dashoffset: 220; animation: vCrack .26s ease-out forwards; }
+.vcrk { width: 100%; height: 100%; }
+.vcrk.art { background: #FFF8E6; -webkit-mask: var(--a-d-cracks) center / 100% 100% no-repeat; mask: var(--a-d-cracks) center / 100% 100% no-repeat; opacity: 0; animation: vGlowIn .22s ease-out forwards; }
+@keyframes vCrack { to { stroke-dashoffset: 0; } }
+@keyframes vGlowIn { to { opacity: 1; } }
+.vburst { inset: -20% !important; border-radius: 50%; opacity: 0; background: radial-gradient(closest-side, #FFFDF5, #FFE9B0 35%, var(--glow) 62%, transparent); animation: vBurst 1s .22s ease-out forwards; }
+@keyframes vBurst { 0% { opacity: 0; transform: scale(.5); } 25% { opacity: 1; transform: scale(1.4); } 100% { opacity: 0; transform: scale(9); } }
+.vsh { opacity: 0; animation: vShard 1s cubic-bezier(.15, .6, .35, 1) forwards; }
+@keyframes vShard { 0% { opacity: 1; transform: none; } 70% { opacity: 1; } 100% { opacity: 0; transform: translate(var(--tx), var(--ty)) rotate(var(--r)) scale(var(--s)); } }
+@media (prefers-reduced-motion: reduce) {
+  .vw .vlight, .vw .vshine, .wallov.vitr .wcell.vw.opened, .wallov.vitr .wall.roll, .vrbg, .vitr .wreveal > * { animation: none !important; }
+  .vitr .wreveal > .vfx { display: none; }
+  .vitr .wreveal > .vrbg, .vitr .wreveal > :not(.vfx):not(.wrlater) { opacity: 1 !important; }
 }

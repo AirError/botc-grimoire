@@ -318,7 +318,9 @@ function artVars() {
     // «Хэллоуин»: склеп, сундук, нечисть, свет и дым, украшения
     .concat(['h_crypt', 'h_ring', 'h_frame', 'h_chest_box', 'h_chest_lid', 'h_chest_open', 'h_bat_strip', 'h_skull_fire', 'h_wreath', 'h_spider', 'h_batline',
       'h_flame', 'h_burst', 'h_fog', 'h_web_tl', 'h_web_tr', 'h_candle3', 'h_pumpkin1', 'h_pumpkin3'],
-      [1, 2, 3, 4, 5, 6].map(i => 'h_wisp' + i), [1, 2, 3, 4, 5, 6].map(i => 'h_soul' + i), [1, 2, 3, 4].map(i => 'h_smoke' + i), [1, 2, 3, 4].map(i => 'h_cflame' + i));
+      [1, 2, 3, 4, 5, 6].map(i => 'h_wisp' + i), [1, 2, 3, 4, 5, 6].map(i => 'h_soul' + i), [1, 2, 3, 4].map(i => 'h_smoke' + i), [1, 2, 3, 4].map(i => 'h_cflame' + i))
+    // «Витраж во тьме»: выдача ролей витражом (prompts_vitrage.md)
+    .concat(['d_nave', 'd_reveal', 'd_arch', 'd_arch_broken', 'd_cracks'], [...Array(20).keys()].map(i => 'd_pane' + i));
   const el = document.createElement('style'); el.id = 'artvars';
   el.textContent = `:root{${keys.filter(HAS_ART).map(k => `--a-${k.replace(/_/g, '-')}:url("${ART[k]}");`).join('')}--frame-slice:${(typeof ART_META !== 'undefined' && ART_META.frame_slice) || 0};--drunk-slice:${(typeof ART_META !== 'undefined' && ART_META.drunk_slice) || 0};}`;
   document.head.appendChild(el);
@@ -600,7 +602,7 @@ function dealButtons() {
   if (d && d.finished) return '<div class="note-ok">Роли выданы жребием (стена). Заново не раздаются; роль можно сменить только на роль сценария, которой нет в игре.</div>';
   if (d) return '<div class="small muted">Идёт жребий (карточка «Выдача ролей» выше): роли закреплены за игроками — случайная раздача недоступна.</div>';
   const prob = E.drawProblem(S);
-  return `<div class="row"><button class="btn" data-act="deal">${E.validPool(S) ? 'Раздать выбранные роли случайно' : 'Раздать роли случайно'}</button><button class="btn" data-act="drawStart" ${prob ? 'disabled' : ''}>Жребий: ${cryptOn() ? 'склеп' : 'каменная стена'}</button></div>
+  return `<div class="row"><button class="btn" data-act="deal">${E.validPool(S) ? 'Раздать выбранные роли случайно' : 'Раздать роли случайно'}</button><button class="btn" data-act="drawStart" ${prob ? 'disabled' : ''}>Жребий: ${cryptOn() ? 'склеп' : vitrOn() ? 'витраж' : 'каменная стена'}</button></div>
     ${prob && S.pool && S.pool.length ? `<div class="small muted">${esc(prob)}</div>` : ''}`;
 }
 // подсказки (ideas.js): нажатие подставляет текст в поле
@@ -673,7 +675,10 @@ function viewSetup() {
     <div class="card"><div class="row ghead"><h3>Игроки по кругу (${dirName()})</h3>${S.players.length > 1 ? '<button class="btn ringbtn" data-act="ringSeat">◯ Кругом</button>' : ''}</div>${players || '<div class="muted small">Добавьте игроков в порядке, в котором они сидят.</div>'}
       <div class="row" style="flex-wrap:nowrap"><input type="text" id="newName" placeholder="Имя игрока" aria-label="Имя нового игрока"><button class="btn" data-act="addP">Добавить</button></div>
       <details><summary class="small">Вставить список имён</summary><div class="field" style="margin-top:8px"><textarea id="bulkNames" placeholder="Аня, Борис, Вика…"></textarea><button class="btn" data-act="bulk">Заменить список</button></div></details>
-      ${travellerForm()}</div>
+      ${travellerForm()}
+      ${UI.confirm === 'test' ? `<div class="warn">Тестовая игра: по игроку на каждую роль сценария (${S.script.roles.length}), сразу первая ночь. Текущая подготовка будет заменена; в историю игр тест не попадёт, «Новая игра» вернёт прежние имена.</div>
+        <div class="row"><button class="btn" data-act="testGame">Начать тест</button><button class="btn" data-act="cancelConfirm">Отмена</button></div>`
+        : '<button class="testbtn" data-act="testAsk" title="Игра со всеми ролями сценария — проверить способности">Тест</button>'}</div>
     ${(n >= 5 && n <= 15) || S.draw ? drawCard() : ''}
     ${rolesHidden() ? rolesCurtain() : roles + prep}${fabledZone()}
     ${jinx.length ? `<div class="card"><h3>Джинксы</h3>${jinx.map(j => `<div class="small"><b>${esc(E.rname(j.a))} и ${esc(E.rname(j.b))}:</b> ${esc(j.text)}</div>`).join('')}</div>` : ''}
@@ -1370,18 +1375,20 @@ function drawCard() {
   const waiting = d && !d.finished ? core.filter(p => !p.role) : [], hid = rolesHidden();
   // роли открыты — можно снова закрыть «шторкой» (например, перед тем как снова выкатить стену)
   const hideBtn = d && !hid ? '<button class="btn" data-act="rolesHide">Скрыть роли</button>' : '';
-  const cr = cryptOn(); // «Хэллоуин»: вместо стены — склеп с сундуками
-  return `<div class="card drawcard"><h3>Выдача ролей · ${cr ? 'склеп' : 'каменная стена'}</h3>
-    <div class="small muted">${cr
-      ? `Игроки по кругу открывают сундуки со светящимися рунами — как тянут жетон из мешочка: роли разложены по сундукам в случайном порядке, и какой сундук игрок выберет, ту роль и получит. Где какая роль, не видит никто, и вы тоже. ${src} Пока игрок не открыл сундук, в его карточке можно назначить роль или тип роли — назначенное выпадет ему из любого сундука. Пьяница увидит роль, которой себя считает. Свернуть склеп — невидимой кнопкой в <b>левом нижнем углу</b> экрана; после него роли на экране закрыты, пока вы не нажмёте «Показать роли».`
+  const cr = cryptOn(), vt = !cr && vitrOn(); // «Хэллоуин»: вместо стены — склеп с сундуками; «Витраж во тьме» — витраж
+  return `<div class="card drawcard"><h3>Выдача ролей · ${cr ? 'склеп' : vt ? 'витраж' : 'каменная стена'}</h3>
+    <div class="small muted">${vt
+      ? `Игроки по кругу разбивают светящиеся окна витража — как тянут жетон из мешочка: роли разложены по окнам в случайном порядке, и какое окно игрок разобьёт, ту роль и получит. Где какая роль, не видит никто, и вы тоже. ${src} Пока игрок не разбил окно, в его карточке можно назначить роль или тип роли — назначенное выпадет ему из любого окна. Пьяница увидит роль, которой себя считает. Свернуть витраж — невидимой кнопкой в <b>левом нижнем углу</b> экрана; после него роли на экране закрыты, пока вы не нажмёте «Показать роли».`
+      : cr
+      ?`Игроки по кругу открывают сундуки со светящимися рунами — как тянут жетон из мешочка: роли разложены по сундукам в случайном порядке, и какой сундук игрок выберет, ту роль и получит. Где какая роль, не видит никто, и вы тоже. ${src} Пока игрок не открыл сундук, в его карточке можно назначить роль или тип роли — назначенное выпадет ему из любого сундука. Пьяница увидит роль, которой себя считает. Свернуть склеп — невидимой кнопкой в <b>левом нижнем углу</b> экрана; после него роли на экране закрыты, пока вы не нажмёте «Показать роли».`
       : `Игроки по кругу открывают светящиеся ячейки — как тянут жетон из мешочка: роли разложены по ячейкам в случайном порядке, и какую ячейку игрок выберет, ту роль и получит. Где какая роль, не видит никто, и вы тоже. ${src} Пока игрок не открыл ячейку, в его карточке можно назначить роль или тип роли — назначенное выпадет ему из любой ячейки. Пьяница увидит роль, которой себя считает. Свернуть стену — невидимой кнопкой в <b>левом нижнем углу</b> экрана; после неё роли на экране закрыты, пока вы не нажмёте «Показать роли».`}</div>
     ${!ok ? '<div class="warn">Нужно от 5 до 15 игроков (без Странников).</div>'
       : d && d.finished ? `<div class="note-ok">Роли выданы жребием. Заново их не раздать; роль можно сменить только на роль сценария, которой нет в игре.</div>${hideBtn}`
-      : d ? `<div class="note-ok">Жребий идёт: осталось ${cr ? 'сундуков' : 'ячеек'} — ${left}. Очередь: ${esc(E.nm(S, d.turn))}</div>
+      : d ? `<div class="note-ok">Жребий идёт: осталось ${cr ? 'сундуков' : vt ? 'окон' : 'ячеек'} — ${left}. Очередь: ${esc(E.nm(S, d.turn))}</div>
         ${waiting.length ? `<div class="flabel"><span>Ещё не открыли — нажмите, чтобы назначить роль или тип</span></div><div class="seg">${waiting.map(p => `<button data-act="openP" data-arg="${p.id}">${esc(p.name)}${!hid && (S.assign || {})[p.id] ? ' → ' + esc(assignLabel(S.assign[p.id])) : ''}</button>`).join('')}</div>` : ''}
         <div class="row"><button class="btn primary" data-act="wallShow">Продолжить жребий</button><button class="btn danger" data-act="drawCancel">Отменить жребий</button>${hideBtn}</div>`
       : prob ? `<div class="warn">${esc(prob)}</div>`
-      : `<button class="btn primary wide" data-act="drawStart">${cr ? 'Открыть склеп' : 'Выкатить стену'}</button>`}</div>`;
+      : `<button class="btn primary wide" data-act="drawStart">${cr ? 'Открыть склеп' : vt ? 'Зажечь витраж' : 'Выкатить стену'}</button>`}</div>`;
 }
 
 // «Роли на игру»: рассказчик отмечает роли сценария; раздача и жребий берут только их (по числу игроков)
@@ -1426,7 +1433,7 @@ function assignHtml(p) {
     <select data-act="assign" data-arg="${p.id}">${opt('', 'Случайно (по умолчанию)')}
       ${teams.length ? `<optgroup label="Тип роли">${teams.map(t => opt('t:' + t, 'Любой: ' + E.TEAM_RU[t])).join('')}</optgroup>` : ''}
       ${['townsfolk', 'outsider', 'minion', 'demon'].map(t => { const rs = roles.filter(r => team(r) === t); return rs.length ? `<optgroup label="${TEAM_PL[t]}">${rs.map(r => opt('r:' + r, E.rname(r))).join('')}</optgroup>` : ''; }).join('')}
-    </select></div><div class="small muted">${cryptOn() ? 'Какой сундук склепа' : 'Какую ячейку стены'} игрок ни откроет — выпадет назначенное. Только из ролей на игру; роли, выданные или назначенные другим, здесь не предлагаются.</div></div>`;
+    </select></div><div class="small muted">${cryptOn() ? 'Какой сундук склепа игрок ни откроет' : vitrOn() ? 'Какое окно витража игрок ни разобьёт' : 'Какую ячейку стены игрок ни откроет'} — выпадет назначенное. Только из ролей на игру; роли, выданные или назначенные другим, здесь не предлагаются.</div></div>`;
 }
 /* «Хэллоуин»: склеп вместо стены (просьба пользователя 2026-10-18). Ячейка — сундук: короб и крышка отдельными картинками (крышка
    распахивается), руна — на замке; после выдачи — открытый пустой сундук с паутиной. При открытии из сундука вылетает случайная нечисть */
@@ -1614,6 +1621,89 @@ function splashFly() {
   });
 }
 // после перерисовки: запустить полёты; экран перерисовался посреди полёта — всё в раскрытии продолжается с того же места
+/* «Витраж во тьме»: выдача ролей витражом (заметка пользователя 2026-10-23): стена собора с витражными окнами — персоны, святые,
+   демоны, чудовища (d_pane*, пока картинок нет — цветная мозаика с руной). Невыбранное окно светится: свет за ним подсвечивает
+   рисунок. Нажали — по стеклу бегут трещины, витраж разлетается осколками в экран, свет из окна заливает весь экран, из света
+   появляется роль на приглушённом витраже (d_reveal, пока — роза d_rose). Окно остаётся пустой разбитой рамой, свет за ним гаснет */
+const vitrOn = () => UI.skin === 'glass';
+// окно-ланцет 3:5: стрельчатый верх из двух дуг радиусом 0,75 ширины (вершина — сверху посередине), прямые бока. Точки контура — в % рамки
+const VW = 100, VH = 500 / 3;
+const LANCET_PTS = (() => {
+  const r = 75, ys = Math.sqrt(r * r - (r - VW / 2) ** 2), ta = Math.acos((VW / 2 - r) / r), pts = [];
+  const side = (x, n) => { for (let k = 1; k < n; k++) pts.push([x, x ? ys + (VH - ys) * k / n : VH - (VH - ys) * k / n]); };
+  pts.push([0, VH]); side(0, 4);
+  for (let k = 0; k <= 8; k++) { const t = Math.PI - (Math.PI - ta) * k / 8; pts.push([r + r * Math.cos(t), ys - r * Math.sin(t)]); }
+  for (let k = 1; k <= 8; k++) { const t = (Math.PI - ta) * (1 - k / 8); pts.push([VW - r + r * Math.cos(t), ys - r * Math.sin(t)]); }
+  side(VW, 4); pts.push([VW, VH], [VW * 2 / 3, VH], [VW / 3, VH]);
+  return pts.map(([x, y]) => [x, y / VH * 100]);
+})();
+const LANCET = `polygon(${LANCET_PTS.map(([x, y]) => `${x.toFixed(1)}% ${y.toFixed(1)}%`).join(',')})`;
+// трещины от точки удара (для запасной отрисовки; рисованные — d_cracks)
+const VCRACK = (() => { const c = [50, 40], out = [];
+  for (let k = 0; k < 11; k++) { const a = k / 11 * Math.PI * 2 + .3 * Math.sin(k * 7), L = 70 + 25 * Math.sin(k * 3.1);
+    out.push(`M${c[0]},${c[1] * VH / 100} L${(c[0] + Math.cos(a) * L * .45).toFixed(1)},${(c[1] * VH / 100 + Math.sin(a) * L * .55).toFixed(1)} L${(c[0] + Math.cos(a + .12) * L).toFixed(1)},${(c[1] * VH / 100 + Math.sin(a + .12) * L * 1.1).toFixed(1)}`); }
+  for (const R of [14, 28]) out.push(`M${c[0] + R},${c[1] * VH / 100} A${R},${R * 1.1} 0 1 1 ${c[0] + R - .1},${c[1] * VH / 100 - 1}`);
+  return out.join(' '); })();
+// сколько картинок окон есть; номер окна у ячейки — по месту её руны среди всех ячеек (все окна разные)
+const vitrPanes = () => [...Array(20).keys()].filter(i => HAS_ART('d_pane' + i)).length;
+const vitrPane = (d, c) => { const n = vitrPanes(); if (!n) return -1; return d.cells.filter(x => x.glyph < c.glyph).length % n; };
+// сетка: 3 столбца до 9 окон, дальше 4; ширина — чтобы все ряды окон 3:5 влезли по высоте (сверху шапка, снизу подсказка — ~200 px)
+function vitrGrid(n) {
+  const cols = n <= 9 ? 3 : 4, rows = Math.ceil(n / cols);
+  return `--vc:${cols};--vmax:calc((100dvh - ${200 + (rows - 1) * 14}px) / ${rows} * .6 * ${cols} + ${(cols - 1) * 12}px)`;
+}
+// стекло окна: рисованное (d_pane*) или запасное — цветная мозаика со свинцом и руной вместо фигуры
+function vitrGlass(d, c) {
+  const k = vitrPane(d, c);
+  return k >= 0 ? `<i class="vgl art" style="--pi:var(--a-d-pane${k})"></i>`
+    : `<i class="vgl"></i>${HAS_ART('rune0') ? `<span class="vfig"><i style="--rm:var(--a-rune${c.glyph % 24})"></i></span>` : ''}`;
+}
+function vitrCell(d, c, i, turn) {
+  const used = !!c.pid;
+  return `<button class="wcell vw c-${c.color} ${c.done ? 'done' : ''} ${UI.cracking === i ? 'cracking' : ''} ${d.open === i ? 'opened' : ''} ${HAS_ART('d_arch') ? 'artf' : ''} ${HAS_ART('d_arch_broken') ? 'artb' : ''}"
+    data-act="drawOpen" data-arg="${i}" ${used || !turn ? 'disabled' : ''} aria-label="${used ? 'Разбитое окно' : 'Окно ' + (i + 1)}" style="--d:${(i * 0.37) % 2.4}s;--lan:${LANCET}">
+    <i class="vlight"></i><i class="vframe"></i><span class="vglass">${vitrGlass(d, c)}<i class="vshine"></i></span>
+    <svg class="vbroken" viewBox="0 0 ${VW} ${VH.toFixed(1)}" preserveAspectRatio="none" aria-hidden="true"><path d="${VBROKEN}"/></svg></button>`;
+}
+// осколки по краю пустой рамы (запасная отрисовка разбитого окна)
+const VBROKEN = (() => { const P = LANCET_PTS.map(([x, y]) => [x, y * VH / 100]), out = [];
+  P.forEach(([x, y], i) => { if (i % 2) return; const [x2, y2] = P[(i + 1) % P.length], mx = (x + x2) / 2, my = (y + y2) / 2, cx = 50 - mx, cy = VH * .45 - my, L = Math.hypot(cx, cy) || 1, h = 7 + (i * 37 % 9);
+    out.push(`M${x.toFixed(1)},${y.toFixed(1)} L${(mx + cx / L * h).toFixed(1)},${(my + cy / L * h).toFixed(1)} L${x2.toFixed(1)},${y2.toFixed(1)}Z`); });
+  return out.join(' '); })();
+// осколки при разбитии: клинья от точки удара к краю окна, каждый ещё надломлен поперёк. Лететь — от центра и в экран (растут),
+// с вращением; разброс — от времени открытия (одинаковый при перерисовке)
+function vitrShards(w, h) {
+  const P = LANCET_PTS.filter((_, i) => i % 2 === 0), C = [50, 40], rnd = hRand((UI.openAt || 11) + 5), out = [];
+  for (let i = 0; i < P.length; i++) {
+    const a = P[i], b = P[(i + 1) % P.length], t = .35 + rnd() * .3, ai = [C[0] + (a[0] - C[0]) * t, C[1] + (a[1] - C[1]) * t], bi = [C[0] + (b[0] - C[0]) * (t + .08), C[1] + (b[1] - C[1]) * (t + .08)];
+    for (const poly of [[C, ai, bi], [ai, a, b, bi]]) {
+      const cx = poly.reduce((s, p) => s + p[0], 0) / poly.length, cy = poly.reduce((s, p) => s + p[1], 0) / poly.length;
+      const dx = (cx - C[0]) / 100 * w, dy = (cy - C[1]) / 100 * h, L = Math.hypot(dx, dy) || 1, far = 140 + rnd() * 260;
+      out.push({ poly: poly.map(([x, y]) => `${x.toFixed(1)}% ${y.toFixed(1)}%`).join(','), o: `${cx.toFixed(1)}% ${cy.toFixed(1)}%`,
+        tx: Math.round(dx / L * far), ty: Math.round(dy / L * far + 60 + rnd() * 140), r: Math.round((rnd() - .5) * 320), s: (1.5 + rnd() * 1.8).toFixed(2), dl: Math.round(rnd() * 70) });
+    }
+  }
+  return out;
+}
+// слой разбития поверх стены (внутри карточки роли, пока она прозрачна): копия стекла на месте окна → трещины → осколки,
+// вспышка света из окна, свет заливает экран
+function vitrFx(d, i) {
+  const c = d.cells[i], R = UI.openRect || { x: 120, y: 200, w: 100, h: 166 };
+  const g = { x: R.x + R.w * .1, y: R.y + R.h * .07, w: R.w * .8, h: R.h * .86 }; // стекло — внутри каменной рамы
+  const glass = vitrGlass(d, c), k = vitrPane(d, c);
+  const sh = vitrShards(g.w, g.h).map(s => `<i class="vsh" style="clip-path:polygon(${s.poly});transform-origin:${s.o};--tx:${s.tx}px;--ty:${s.ty}px;--r:${s.r}deg;--s:${s.s};animation-delay:${280 + s.dl}ms">${k >= 0 ? `<i class="vgl art" style="--pi:var(--a-d-pane${k})"></i>` : '<i class="vgl"></i>'}</i>`).join('');
+  // за ролью — приглушённый витраж (d_reveal; пока его нет — роза d_rose на мозаике)
+  return `<i class="vrbg ${HAS_ART('d_reveal') ? 'art' : HAS_ART('d_rose') ? 'rose' : ''}" aria-hidden="true"></i>
+    <div class="vfx c-${c.color}" aria-hidden="true" style="--fx:${(g.x + g.w / 2).toFixed(0)}px;--fy:${(g.y + g.h * .4).toFixed(0)}px"><i class="vflood"></i>
+    <div class="vbox" style="left:${g.x.toFixed(0)}px;top:${g.y.toFixed(0)}px;width:${g.w.toFixed(0)}px;height:${g.h.toFixed(0)}px;--lan:${LANCET}">
+      <i class="vburst"></i><span class="vwhole">${glass}${HAS_ART('d_cracks') ? '<i class="vcrk art"></i>' : `<svg class="vcrk" viewBox="0 0 ${VW} ${VH.toFixed(1)}" preserveAspectRatio="none"><path d="${VCRACK}"/></svg>`}</span>${sh}</div></div>`;
+}
+// перерисовка посреди разбития: анимации слоя роли и открытого окна продолжаются с того же места
+function vitrAfter() {
+  if (!vitrOn() || !UI.openAt) return;
+  const el = Date.now() - UI.openAt; if (el < 60) return;
+  document.querySelectorAll('.vitr .wreveal, .vitr .wcell.opened').forEach(n => n.getAnimations && n.getAnimations({ subtree: true }).forEach(a => { try { a.currentTime = el; } catch (e) { /* без времени */ } }));
+}
 function hallowAfter() {
   if (UI.skin !== 'hallow') return;
   if (UI.splash) splashFly();
@@ -1624,8 +1714,9 @@ function hallowAfter() {
 }
 function wallOverlay() {
   const d = S.draw; if (!UI.wall || !d) return '';
-  const turn = d.turn && E.P(S, d.turn), open = d.open !== null ? d.cells[d.open] : null, crypt = cryptOn();
+  const turn = d.turn && E.P(S, d.turn), open = d.open !== null ? d.cells[d.open] : null, crypt = cryptOn(), vt = !crypt && vitrOn();
   const cells = d.cells.map((c, i) => {
+    if (vt) return vitrCell(d, c, i, turn); // «Витраж во тьме»: окна витража вместо табличек
     const used = !!c.pid, crack = c.done && !HAS_ART('tablet_cracked') ? `<svg class="crack" viewBox="0 0 48 48" aria-hidden="true" style="transform:rotate(${(i * 67) % 360}deg)"><path d="${CRACKS[i % 3]}"/></svg>` : '';
     // руна: рисованная маска (24 знака из runes.png) или запасной SVG
     const rune = HAS_ART('rune0') ? `<span class="runeg" aria-hidden="true"><i class="runei" style="--rm:var(--a-rune${c.glyph % 24})"></i></span>`
@@ -1634,30 +1725,30 @@ function wallOverlay() {
       ${crypt ? hChest() : ''}${rune}${crack}</button>`;
   }).join('');
   const others = d.order.filter(id => (id === d.turn || !d.cells.some(c => c.pid === id)) && E.P(S, id)); // кто ещё не открывал (и тот, чья ячейка открыта сейчас)
-  const who = crypt ? 'Сундук открывает' : 'Ячейку открывает';
+  const who = crypt ? 'Сундук открывает' : vt ? 'Окно разбивает' : 'Ячейку открывает';
   // свернуть стену — невидимой кнопкой в левом нижнем углу (.grimx, как у Гримуара Шпиона): игроки не закроют её случайно
   // и не увидят чужих ролей на экране рассказчика (заметка пользователя 2026-10-16)
-  return `<div class="ov wallov ${crypt ? 'crypt' : ''} ${crypt && open ? 'busy' : ''}" role="dialog" aria-label="${crypt ? 'Склеп' : 'Каменная стена'}: выдача ролей">
-    <div class="wall ${UI.wallAnim ? 'roll' : ''}" ${crypt ? `style="${hChestVars()}"` : ''}>${crypt ? cryptDecor() : ''}<div class="wscroll">
+  return `<div class="ov wallov ${crypt ? 'crypt' : ''} ${vt ? 'vitr' : ''} ${(crypt || vt) && open ? 'busy' : ''}" role="dialog" aria-label="${crypt ? 'Склеп' : vt ? 'Витраж' : 'Каменная стена'}: выдача ролей">
+    <div class="wall ${UI.wallAnim ? 'roll' : ''} ${vt && HAS_ART('d_nave') ? 'nave' : ''}" ${crypt ? `style="${hChestVars()}"` : ''}>${crypt ? cryptDecor() : ''}<div class="wscroll">
       <div class="wtop"><span aria-hidden="true"></span>
         <div class="wturn">${!turn ? '<b>Все роли выданы</b>' : others.length > 1
           // очередь по кругу; другой игрок — выбором из списка (компактно, не занимает экран)
-          ? `<label for="wsel">${who}</label><span class="wsel"><select id="wsel" data-act="drawTurn" aria-label="${crypt ? 'Кто открывает сундук' : 'Кто открывает ячейку'}" ${d.open !== null ? 'disabled' : ''}>${others.map(id => `<option value="${id}" ${id === d.turn ? 'selected' : ''}>${esc(E.nm(S, id))}</option>`).join('')}</select><span aria-hidden="true">▾</span></span>`
+          ? `<label for="wsel">${who}</label><span class="wsel"><select id="wsel" data-act="drawTurn" aria-label="${crypt ? 'Кто открывает сундук' : vt ? 'Кто разбивает окно' : 'Кто открывает ячейку'}" ${d.open !== null ? 'disabled' : ''}>${others.map(id => `<option value="${id}" ${id === d.turn ? 'selected' : ''}>${esc(E.nm(S, id))}</option>`).join('')}</select><span aria-hidden="true">▾</span></span>`
           : `<span>${who}</span><b>${esc(turn.name)}</b>`}</div>
         <button class="wbtn" data-act="undo" ${HISTORY.length ? '' : 'disabled'} aria-label="Отменить последнее">↶</button></div>
-      <div class="wgrid" ${crypt ? `style="${cryptGrid(d.cells.length)}"` : ''}>${cells}</div>
-      <div class="whint">${turn ? (crypt ? 'Нажмите на сундук со светящейся руной' : 'Нажмите на светящуюся ячейку') : 'Все роли выданы. Верните телефон рассказчику'}</div>
+      <div class="wgrid" ${crypt ? `style="${cryptGrid(d.cells.length)}"` : vt ? `style="${vitrGrid(d.cells.length)}"` : ''}>${cells}</div>
+      <div class="whint">${turn ? (crypt ? 'Нажмите на сундук со светящейся руной' : vt ? 'Разбейте светящееся окно' : 'Нажмите на светящуюся ячейку') : 'Все роли выданы. Верните телефон рассказчику'}</div>
     </div></div>
-    <button class="grimx" data-act="wallHide" aria-label="${crypt ? 'Свернуть склеп' : 'Свернуть стену'}"></button>
+    <button class="grimx" data-act="wallHide" aria-label="${crypt ? 'Свернуть склеп' : vt ? 'Свернуть витраж' : 'Свернуть стену'}"></button>
     ${open ? (() => { const op = E.P(S, open.pid), r = (op && seenRole(op)) || E.drawShown(open), al = isGoodRole(r) ? 'good' : 'evil';
       // ячейка «распахивается»: роль вырастает из её места на стене; за иконкой — вспышка и магический круг цвета её рун.
       // Имени нет — только «Ваша роль»; закрыть можно через 2 секунды (подсказка появляется тогда же)
       const col = d.open % 3, row = Math.floor(d.open / 3);
       return `<div class="wreveal side-${al} c-${open.color}" data-act="drawClose" role="dialog" aria-label="Ваша роль" style="transform-origin:${Math.round((col + 0.5) / 3 * 100)}% ${170 + row * 122}px">
-        ${crypt ? cryptFx() : ''}<div class="wrfor">Ваша роль</div>
+        ${crypt ? cryptFx() : vt ? vitrFx(d, d.open) : ''}<div class="wrfor">Ваша роль</div>
         <div class="wrart">${HAS_ART('fx_circle') ? '<i class="fxc"></i>' : ''}${HAS_ART('fx_open') ? '<i class="fxo"></i>' : ''}${ico(r, al, 'wric')}</div><div class="wrname">${esc(E.rname(r))}</div>
         <div class="wrteam">${esc(E.TEAM_RU[team(r)] || '')} · ${al === 'good' ? 'добро' : 'зло'}</div><div class="wrab">${esc(DATA.roles[r].ability)}</div>
-        <div class="shhint wrlater">${crypt ? 'Запомните роль и нажмите — сундук закроется' : 'Запомните роль и нажмите — ячейка закроется'}</div></div>`; })() : ''}</div>`;
+        <div class="shhint wrlater">${crypt ? 'Запомните роль и нажмите — сундук закроется' : vt ? 'Запомните роль и нажмите — окно погаснет' : 'Запомните роль и нажмите — ячейка закроется'}</div></div>`; })() : ''}</div>`;
 }
 
 function editorHtml(p) {
@@ -1978,7 +2069,7 @@ function render() {
   if (UI.tab === 'roles') filterRefs();
   paintSave();
   window.scrollTo(0, scrollY);
-  hallowAfter();
+  hallowAfter(); vitrAfter();
 }
 
 /* ------------------------------------------------------------ обработчики */
@@ -2288,7 +2379,9 @@ const A = {
     // столбцов 3 на телефоне, 4–5 на широком экране)
     const cell = document.querySelector(`.wcell[data-arg="${i}"]`), wall = document.querySelector('.wall');
     if (cell && wall) { const a = cell.getBoundingClientRect(), b = wall.getBoundingClientRect(), fx = (a.left + a.width / 2 - b.left) / b.width;
-      UI.openPos = { x: Math.round(a.left + a.width / 2 - b.left), y: Math.round(a.top + a.height * .35 - b.top), dir: fx > .62 ? -1 : fx < .38 ? 1 : (Math.random() < .5 ? -1 : 1) }; }
+      UI.openPos = { x: Math.round(a.left + a.width / 2 - b.left), y: Math.round(a.top + a.height * .35 - b.top), dir: fx > .62 ? -1 : fx < .38 ? 1 : (Math.random() < .5 ? -1 : 1) };
+      // витраж: где на экране окно (слой разбития лежит поверх всего слоя стены)
+      const ov = document.querySelector('.wallov').getBoundingClientRect(); UI.openRect = { x: a.left - ov.left, y: a.top - ov.top, w: a.width, h: a.height }; }
     UI.openFx = HFX[Math.floor(Math.random() * HFX.length)];
     act(S => E.drawOpen(S, +i), 'жребий: ячейка открыта'); },
   // закрыть роль можно не раньше чем через 2 секунды — чтобы игрок успел прочитать и не закрыл случайно (было 3 с; просьба пользователя 2026-10-18)
@@ -2320,9 +2413,26 @@ const A = {
   pgDelAsk: id => { UI.confirm = 'pg:' + id; render(); },
   pgDel: id => { UI.confirm = null; gameDelete(id).then(render); render(); },
   cancelConfirm: () => { UI.confirm = null; render(); },
+  // тестовая игра (заметка пользователя 2026-10-23: «кнопка тест — игра со всеми ролями выбранного сценария, проверить способности»):
+  // по игроку на каждую роль (имя — название роли), Пьянице и Марионетке — Горожанин сценария (свободных ролей нет), сразу ночь.
+  // В историю прошлых игр не попадает (flags.test), «Новая игра» вернёт прежние имена (flags.testNames)
+  testAsk: () => { UI.confirm = 'test'; render(); },
+  testGame: () => {
+    const script = JSON.parse(JSON.stringify(S.script)), fabled = (S.fabled || []).slice(), dir = S.flags.seatDir;
+    const prev = S.flags.test ? S.flags.testNames : S.players.filter(p => !E.isTraveller(p)).map(p => p.name);
+    HISTORY = []; S = E.newGame(DATA.scripts[script.key] ? script.key : 'ecbe'); S.script = script; S.fabled = fabled; if (dir) S.flags.seatDir = dir;
+    S.players = script.roles.filter(r => DATA.roles[r]).map(r => { const p = E.newPlayer(E.rname(r)); p.role = r; return p; });
+    E.finishRoles(S); E.autoSetup(S, true);
+    const tf = script.roles.filter(r => team(r) === 'townsfolk');
+    for (const p of S.players) if ((p.role === 'drunk' || p.role === 'marionette') && !p.believes) { const c = tf.filter(r => r !== p.role); p.believes = c[Math.floor(Math.random() * c.length)] || null; }
+    S.flags.test = true; S.flags.testNames = prev;
+    E.log(S, `Тестовая игра: все роли сценария «${script.name}» (${S.players.length} игроков)`, 'phase');
+    E.startGame(S); UI.confirm = null; UI.tab = 'game'; persist(); render(); window.scrollTo(0, 0);
+  },
   newGame: () => {
     gameArchive(S); // прошлая игра — в историю (archive.js); подготовку без ночей не храним
-    const key = S.script.key === 'custom' ? 'ecbe' : S.script.key, names = S.players.filter(p => !E.isTraveller(p)).map(p => p.name), dir = S.flags.seatDir;
+    const key = S.script.key === 'custom' ? 'ecbe' : S.script.key, dir = S.flags.seatDir;
+    const names = S.flags.test && S.flags.testNames ? S.flags.testNames : S.players.filter(p => !E.isTraveller(p)).map(p => p.name); // после теста — прежние имена
     HISTORY = []; S = E.newGame(key); S.players = names.map(n => E.newPlayer(n)); if (dir) S.flags.seatDir = dir; // направление мест — как в прошлой игре
     UI.confirm = null; UI.tab = 'game'; persist(); render();
   },
