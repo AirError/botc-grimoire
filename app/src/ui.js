@@ -649,29 +649,7 @@ function viewSetup() {
         ${p.role === 'lunatic' ? `<select data-act="setBelieves" data-arg="${p.id}">${roleOptions(r => team(r) === 'demon', p.believes, { placeholder: '— каким Демоном себя считает —' })}</select>` : ''}
       </div>`; }).join('')}</div>`;
   } else if (n > 15) roles = '<div class="warn">Больше 15 игроков: лишние должны быть Странниками.</div>';
-  const notIn = r => E.canBluff(r) && !S.players.some(p => p.role === r || p.believes === r); // без Пьяницы и Безумца
-  const goodPl = core.filter(p => p.role && isGoodRole(p.role));
-  const pickSel = (act, label, cur, list) => `<div class="field"><label>${label}</label><select data-act="${act}"><option value="">—</option>${list.map(p => `<option value="${p.id}" ${p.id === cur ? 'selected' : ''}>${esc(p.name)} (${esc(E.rname(p.role))})</option>`).join('')}</select></div>`;
-  const prep = n >= 5 && S.players.every(p => p.role) ? `<div class="card"><h3>Подготовка</h3>
-      <div class="field"><label>Блефы Демона: 3 добрые роли, которых нет в игре</label>
-      ${[0, 1, 2].map(i => `<select data-act="bluff" data-arg="${i}">${roleOptions(r => r === S.bluffs[i] || (notIn(r) && !S.bluffs.some((b, j) => j !== i && b === r)), S.bluffs[i])}</select>`).join('')}</div>
-      ${S.players.some(p => p.role === 'drunk') || (S.pool || []).includes('drunk') ? (() => { // Пьяница — кто из Горожан (заметки 2026-10-15); не в игре — блока нет (2026-10-16)
-        const cur = S.players.find(p => p.role === 'drunk'), cand = core.filter(p => p === cur || E.realTeam(p) === 'townsfolk');
-        return `<div class="field"><label>Пьяница — кто из Горожан на самом деле Пьяница (будет считать себя своей ролью)</label>
-          <select data-act="setDrunk"><option value="">— Пьяницы нет —</option>${cand.map(p => `<option value="${p.id}" ${p === cur ? 'selected' : ''}>${esc(p.name)} (${esc(E.rname(p === cur ? p.believes : p.role))})</option>`).join('')}</select>
-          <div class="small muted">${cur ? 'Выберите другого — прежний Пьяница получит роль, которой себя считал: раскладка не изменится.' : 'Пьяница — Изгой: Горожан станет на 1 меньше, Изгоев на 1 больше.'}</div></div>`; })() : ''}
-      ${S.players.some(p => p.role === 'grandmother') ? pickSel('setFlag-grandchild', 'Внук Бабушки', S.flags.grandchild, goodPl.filter(p => p.role !== 'grandmother')) : ''}
-      ${S.players.some(p => p.role === 'fortuneteller') ? pickSel('setFlag-ftHerring', 'Ложная цель Гадалки (добрый игрок)', S.flags.ftHerring, goodPl) : ''}
-      ${S.players.some(p => p.role === 'eviltwin') ? pickSel('setFlag-goodTwin', 'Добрый близнец', S.flags.goodTwin, goodPl) : ''}
-      ${S.players.some(p => p.role === 'puzzlemaster') ? pickSel('setFlag-puzzleDrunk', 'Головоломщик: кто пьян всю игру (вики: почти всегда лучше Горожанин; сам игрок не знает)', S.flags.puzzleDrunk, core.filter(p => p.role && p.role !== 'puzzlemaster')) : ''}
-      ${S.players.some(p => p.role === 'lycanthrope') ? pickSel('setFlag-fauxPaw', 'Оборотень: «Кошачья лапка» — добрый игрок, который определяется злым, пока Оборотень жив (Оборотень его не убьёт)', S.flags.fauxPaw, goodPl.filter(p => p.role !== 'lycanthrope')) : ''}
-      ${S.flags.marionetteNeed || S.players.some(p => p.role === 'marionette') ? (() => { // Марионетка: сосед Демона с доброй ролью (вики)
-        const cur = S.players.find(p => p.role === 'marionette'), cand = E.demonSeatNeighbours(S).filter(p => p.role && (isGoodRole(p.role) || p === cur));
-        return `<div class="field ${cur ? '' : 'ask'}"><label>Марионетка — кто из соседей Демона ею станет (он будет считать себя своей ролью, как Пьяница)</label>
-          <select data-act="setMarionette"><option value="">— выберите —</option>${cand.map(p => `<option value="${p.id}" ${cur && p.id === cur.id ? 'selected' : ''}>${esc(p.name)} (${esc(E.rname(p === cur ? p.believes : p.role))})</option>`).join('')}</select>
-          ${cand.length ? '' : '<div class="small muted">У Демона нет соседей с доброй ролью — пересадите игроков или назначьте роли.</div>'}</div>`; })() : ''}
-      ${S.players.filter(p => p.role === 'amnesiac').map(p => `<div class="field"><label for="amn-${p.id}">Способность Амнезиака (${esc(p.name)}) — придумайте сами, игрок её не узнает</label>
-        <textarea id="amn-${p.id}" data-act="amnText" data-arg="${p.id}" placeholder="Например: каждую ночь узнаёт, сколько живых Горожан среди его соседей">${esc(S.flags['amnesiac_' + p.id] || '')}</textarea>${amnIdeas(p.id)}</div>`).join('')}
+  const prep = n >= 5 && S.players.every(p => p.role) ? `<div class="card"><h3>Подготовка</h3>${prepFields(false)}
       <button class="btn" data-act="autoPrep">Заполнить случайно</button></div>` : '';
   const probs = E.setupProblems(S), jinx = E.jinxesInPlay(S);
   const exp = sc.roles.filter(r => DATA.roles[r] && !DATA.roles[r].box);
@@ -694,6 +672,50 @@ function viewSetup() {
     ${probs.length ? `<div class="warn">${rolesHidden() ? 'Подготовка не закончена — покажите роли, чтобы увидеть, что осталось.' : probs.map(esc).join('<br>')}</div>` : ''}
     <button class="btn primary wide" data-act="start" ${probs.length ? 'disabled' : ''}>Начать игру: первая ночь</button>`;
 }
+
+// выбор подготовки: блефы Демона, Пьяница, внук Бабушки, ложная цель Гадалки, добрый близнец, пьяный Головоломщика, «Кошачья лапка»,
+// Марионетка, способность Амнезиака. В карточке «Подготовка» и в окне «Блефы и ложные цели» (перед 1-й ночью и посреди игры — заметка
+// пользователя 2026-10-24). mid — посреди игры: без Пьяницы и Марионетки (роли уже розданы), роли — какими действуют сейчас
+function prepFields(mid) {
+  const core = S.players.filter(p => !E.isTraveller(p));
+  const has = r => S.players.some(p => (mid ? E.actsAs(p) : p.role) === r);
+  const notIn = r => E.canBluff(r) && !S.players.some(p => p.role === r || p.believes === r); // без Пьяницы и Безумца
+  const goodPl = core.filter(p => p.role && (mid ? p.align === 'good' : isGoodRole(p.role)));
+  const pickSel = (act, label, cur, list) => `<div class="field"><label>${label}</label><select data-act="${act}"><option value="">—</option>${list.map(p => `<option value="${p.id}" ${p.id === cur ? 'selected' : ''}>${esc(p.name)} (${esc(E.rname(p.role))})${!p.alive ? ' — мёртв' : ''}</option>`).join('')}</select></div>`;
+  return `<div class="field"><label>Блефы Демона: 3 добрые роли, которых нет в игре</label>
+      ${[0, 1, 2].map(i => `<select data-act="bluff" data-arg="${i}">${roleOptions(r => r === S.bluffs[i] || (notIn(r) && !S.bluffs.some((b, j) => j !== i && b === r)), S.bluffs[i])}</select>`).join('')}</div>
+      ${!mid && (S.players.some(p => p.role === 'drunk') || (S.pool || []).includes('drunk')) ? (() => { // Пьяница — кто из Горожан (заметки 2026-10-15); не в игре — блока нет (2026-10-16)
+        const cur = S.players.find(p => p.role === 'drunk'), cand = core.filter(p => p === cur || E.realTeam(p) === 'townsfolk');
+        return `<div class="field"><label>Пьяница — кто из Горожан на самом деле Пьяница (будет считать себя своей ролью)</label>
+          <select data-act="setDrunk"><option value="">— Пьяницы нет —</option>${cand.map(p => `<option value="${p.id}" ${p === cur ? 'selected' : ''}>${esc(p.name)} (${esc(E.rname(p === cur ? p.believes : p.role))})</option>`).join('')}</select>
+          <div class="small muted">${cur ? 'Выберите другого — прежний Пьяница получит роль, которой себя считал: раскладка не изменится.' : 'Пьяница — Изгой: Горожан станет на 1 меньше, Изгоев на 1 больше.'}</div></div>`; })() : ''}
+      ${has('grandmother') ? pickSel('setFlag-grandchild', 'Внук Бабушки', S.flags.grandchild, goodPl.filter(p => p.role !== 'grandmother')) : ''}
+      ${has('fortuneteller') ? pickSel('setFlag-ftHerring', 'Ложная цель Гадалки (добрый игрок): для Гадалки он «Демон»', S.flags.ftHerring, goodPl) : ''}
+      ${has('eviltwin') ? pickSel('setFlag-goodTwin', 'Добрый близнец', S.flags.goodTwin, goodPl) : ''}
+      ${has('puzzlemaster') ? pickSel('setFlag-puzzleDrunk', 'Головоломщик: кто пьян всю игру (вики: почти всегда лучше Горожанин; сам игрок не знает)', S.flags.puzzleDrunk, core.filter(p => p.role && p.role !== 'puzzlemaster')) : ''}
+      ${has('lycanthrope') ? pickSel('setFlag-fauxPaw', 'Оборотень: «Кошачья лапка» — добрый игрок, который определяется злым, пока Оборотень жив (Оборотень его не убьёт)', S.flags.fauxPaw, goodPl.filter(p => p.role !== 'lycanthrope')) : ''}
+      ${!mid && (S.flags.marionetteNeed || S.players.some(p => p.role === 'marionette')) ? (() => { // Марионетка: сосед Демона с доброй ролью (вики)
+        const cur = S.players.find(p => p.role === 'marionette'), cand = E.demonSeatNeighbours(S).filter(p => p.role && (isGoodRole(p.role) || p === cur));
+        return `<div class="field ${cur ? '' : 'ask'}"><label>Марионетка — кто из соседей Демона ею станет (он будет считать себя своей ролью, как Пьяница)</label>
+          <select data-act="setMarionette"><option value="">— выберите —</option>${cand.map(p => `<option value="${p.id}" ${cur && p.id === cur.id ? 'selected' : ''}>${esc(p.name)} (${esc(E.rname(p === cur ? p.believes : p.role))})</option>`).join('')}</select>
+          ${cand.length ? '' : '<div class="small muted">У Демона нет соседей с доброй ролью — пересадите игроков или назначьте роли.</div>'}</div>`; })() : ''}
+      ${S.players.filter(p => p.role === 'amnesiac').map(p => `<div class="field"><label for="amn-${p.id}">Способность Амнезиака (${esc(p.name)}) — придумайте сами, игрок её не узнает</label>
+        <textarea id="amn-${p.id}" data-act="amnText" data-arg="${p.id}" placeholder="Например: каждую ночь узнаёт, сколько живых Горожан среди его соседей">${esc(S.flags['amnesiac_' + p.id] || '')}</textarea>${amnIdeas(p.id)}</div>`).join('')}`;
+}
+// окно «Блефы и ложные цели»: перед 1-й ночью (нажали «Начать игру») — проверить и начать; ночью и днём — поменять
+function prepOverlay() {
+  if (!UI.prep || (UI.prep === 'start' ? S.phase !== 'setup' : S.phase === 'setup')) return '';
+  const start = UI.prep === 'start', probs = start ? E.setupProblems(S) : [];
+  return `<div class="ov editres" role="dialog" aria-label="Блефы и ложные цели"><div class="statbg" data-act="prepClose"></div><div class="erbox statbox">
+    <h3>${start ? 'Назначьте блефы и ложные цели' : 'Блефы и ложные цели'}</h3>
+    <div class="small muted">${start ? 'Перед первой ночью: всё уже выбрано случайно — проверьте и, если нужно, поменяйте. Поменять можно и потом: ночью и днём — кнопка «Блефы и ложные цели».'
+      : 'Можно поменять посреди игры: отметки в Гримуаре переедут к выбранным игрокам. Внука и близнеца лучше не менять после того, как их показали.'}</div>
+    ${prepFields(!start)}
+    ${probs.length ? `<div class="warn">${probs.map(esc).join('<br>')}</div>` : ''}
+    ${start ? `<div class="row"><button class="btn primary" data-act="startGo" ${probs.length ? 'disabled' : ''}>Начать первую ночь</button><button class="btn" data-act="autoPrep">Заполнить случайно</button></div><button class="btn wide" data-act="prepClose">Назад к подготовке</button>`
+      : '<button class="btn primary wide" data-act="prepClose">Готово</button>'}</div></div>`;
+}
+const prepBtn = () => '<div class="card"><button class="btn wide" data-act="prepOpen">Блефы и ложные цели</button></div>';
 
 function stepDraft(st, spec) {
   const key = S.n + ':' + S.night.i + ':' + st.key;
@@ -749,11 +771,12 @@ function viewNight() {
       ${info && (info.show || (info.lines || []).filter(Boolean).length) ? revealHtml(info, spec.dist) : ''}
       ${st.id === 'dawn' ? morningHtml(true) : ''}
       ${missing.length ? `<div class="small muted">Осталось выбрать: ${missing.map(esc).join('; ')}</div>` : ''}
+      ${spec.active && (st.id === 'demoninfo' || st.id === 'fortuneteller') ? `<button class="btn" data-act="prepOpen">${st.id === 'demoninfo' ? 'Изменить блефы' : 'Изменить ложную цель'}</button>` : ''}
       <div class="actions"><button class="btn primary" data-act="stepDone" ${missing.length ? 'disabled' : ''}>${spec.active ? 'Готово' : 'Дальше'}</button>
         <button class="btn" data-act="stepSkip">Пропустить</button></div>
     </div>
     ${next ? `<div class="card"><h3>Дальше этой ночью</h3><div class="upnext">${next}</div></div>` : ''}
-    ${killFormHtml()}`;
+    ${killFormHtml()}${prepBtn()}`;
 }
 
 function viewDay() {
@@ -976,7 +999,7 @@ function viewDay() {
     <button class="btn danger" data-act="manualExe" ${(picks.manualExe || []).length ? '' : 'disabled'}>Казнить и завершить день</button>`}
     ${dead.length ? `<div class="flabel"><span>Воскресить (например, если ошибся рассказчик)</span></div>${chipsPlayers('revive', 1, p => !p.alive, picks.revive || [], { act: 'dayPick', noRole: true, ghost: true })}
     <button class="btn" data-act="revive" ${(picks.revive || []).length ? '' : 'disabled'}>Воскресить</button>` : '<div class="small muted">Мёртвых нет — воскрешать некого.</div>'}</div></details></div>`);
-  parts.push(killFormHtml());
+  parts.push(killFormHtml(), prepBtn());
   parts.push(exileHtml(picks)); // изгнание Странников — в самом низу
   return parts.join('');
 }
@@ -2189,7 +2212,7 @@ function render() {
       <button class="hundo" data-act="undo" ${last ? '' : 'disabled'} aria-label="${last ? esc('Отменить: ' + last.label) : 'Нечего отменять'}" title="${last ? esc('Отменить: ' + last.label) : ''}">↶</button><span class="save"></span></header>
     <main>${body}</main>
     <nav class="tabs">${[['game', S.phase === 'night' ? 'Ночь' : S.phase === 'day' ? 'День' : 'Игра', S.phase === 'night' ? 'night' : S.phase === 'day' ? 'day' : 'setup'], ['table', 'Гримуар'], ['log', 'Журнал'], ['roles', 'Роли'], ['menu', 'Ещё']].map(([k, l, ic]) => `<button class="${UI.tab === k ? 'on' : ''}" data-act="tab" data-arg="${k}">${tabIco(ic || k)}<span class="tl">${l}</span></button>`).join('')}</nav>
-    ${legendOverlay()}${wallOverlay()}${grimOverlay()}${ringOverlay()}${sheetOverlay()}${editOverlay()}${fateOverlay()}${statOverlay()}${tipHtml()}${savFactsHtml()}${ghostLostHtml()}${pinAskHtml()}${polOverlay()}${gossipAskHtml()}${exeAskHtml()}${exeResHtml()}${showOverlay()}${noteViewOverlay()}${testWelcomeHtml()}${splashHtml()}`;
+    ${legendOverlay()}${wallOverlay()}${grimOverlay()}${ringOverlay()}${sheetOverlay()}${editOverlay()}${fateOverlay()}${statOverlay()}${tipHtml()}${savFactsHtml()}${ghostLostHtml()}${pinAskHtml()}${polOverlay()}${gossipAskHtml()}${prepOverlay()}${exeAskHtml()}${exeResHtml()}${showOverlay()}${noteViewOverlay()}${testWelcomeHtml()}${splashHtml()}`;
   // круг рассадки — только на подготовке, круг номинации — только днём, Гримуар кругом — во время игры (после смены фазы закрываются сами)
   if ((UI.ring === 'seat' && S.phase !== 'setup') || ((UI.ring === 'nom' || UI.ring === 'pick') && S.phase !== 'day') || UI.ring === 'grim') UI.ring = null;
   // под полноэкранными слоями страница не прокручивается
@@ -2247,13 +2270,18 @@ const A = {
   setBelieves: (id, el) => act(S => { E.P(S, id).believes = el.value || null; }, 'роль-обманка'),
   setMarionette: (a, el) => { if (el.value) act(S => E.makeMarionette(S, el.value), 'Марионетка'); },
   bluff: (i, el) => act(S => { S.bluffs[+i] = el.value || null; }, 'блеф Демона'),
-  'setFlag-grandchild': (a, el) => act(S => { S.flags.grandchild = el.value || null; }, 'внук Бабушки'),
-  'setFlag-ftHerring': (a, el) => act(S => { S.flags.ftHerring = el.value || null; }, 'ложная цель Гадалки'),
-  'setFlag-goodTwin': (a, el) => act(S => { S.flags.goodTwin = el.value || null; }, 'добрый близнец'),
-  'setFlag-puzzleDrunk': (a, el) => act(S => { S.flags.puzzleDrunk = el.value || null; }, 'пьяный Головоломщика'),
-  'setFlag-fauxPaw': (a, el) => act(S => { S.flags.fauxPaw = el.value || null; }, '«Кошачья лапка» Оборотня'),
+  // выбор подготовки — и посреди игры (отметка в Гримуаре переезжает: setPrepFlag)
+  'setFlag-grandchild': (a, el) => act(S => E.setPrepFlag(S, 'grandchild', el.value), 'внук Бабушки'),
+  'setFlag-ftHerring': (a, el) => act(S => E.setPrepFlag(S, 'ftHerring', el.value), 'ложная цель Гадалки'),
+  'setFlag-goodTwin': (a, el) => act(S => E.setPrepFlag(S, 'goodTwin', el.value), 'добрый близнец'),
+  'setFlag-puzzleDrunk': (a, el) => act(S => E.setPrepFlag(S, 'puzzleDrunk', el.value), 'пьяный Головоломщика'),
+  'setFlag-fauxPaw': (a, el) => act(S => E.setPrepFlag(S, 'fauxPaw', el.value), '«Кошачья лапка» Оборотня'),
+  // «Начать игру» — сначала окно «Назначьте блефы и ложные цели» (заметка пользователя 2026-10-24), из него — первая ночь
+  prepOpen: () => { UI.prep = S.phase === 'setup' ? 'start' : 'edit'; render(); },
+  prepClose: () => { UI.prep = null; render(); },
+  startGo: () => { UI.prep = null; UI.notes = []; act(S => E.startGame(S), 'начало игры'); window.scrollTo(0, 0); },
   autoPrep: () => act(S => E.autoSetup(S, true), 'подготовка случайно'),
-  start: () => { UI.notes = []; act(S => E.startGame(S), 'начало игры'); window.scrollTo(0, 0); },
+  start: () => { UI.prep = 'start'; render(); },
   // Странники и Сказочники
   trAlign: v => draft(S => { S.flags._trAlign = v; }),
   trAdd: () => {
@@ -2480,7 +2508,15 @@ const A = {
   mezPick: arg => { const id = arg.split('|')[1]; act(S => { S.flags.mezTarget = id; E.log(S, `${E.nm(S, id)} произносит тайное слово Мецефеля`, 'day'); }, 'тайное слово'); },
   mezClear: () => act(S => { S.flags.mezTarget = null; }, 'отметка снята'),
   // «Роли на игру» и назначения для жребия
-  poolToggle: r => draft(S => { const p = S.pool || []; S.pool = p.includes(r) ? p.filter(x => x !== r) : p.concat(r); if (!S.pool.length) S.pool = null; }),
+  // Ловчий без Девицы не бывает (вики: «если в игре Ловчий, а Девицы нет, Девицу добавляют»; Девица без Ловчего — можно): отметили
+  // Ловчего — отмечается и Девица (если она есть в сценарии), сняли Девицу — снимается и Ловчий (заметка пользователя 2026-10-24)
+  poolToggle: r => draft(S => {
+    const p = S.pool || [], on = !p.includes(r), dam = S.script.roles.includes('damsel');
+    let np = on ? p.concat(r) : p.filter(x => x !== r);
+    if (on && r === 'huntsman' && dam && !np.includes('damsel')) np = np.concat('damsel');
+    if (!on && r === 'damsel') np = np.filter(x => x !== 'huntsman');
+    S.pool = np.length ? np : null;
+  }),
   poolRandom: () => draft(S => { S.pool = E.randomPool(S); }),
   poolClear: () => draft(S => { S.pool = null; }),
   assign: (pid, el) => act(S => { S.assign = Object.assign({}, S.assign); const v = el.value;

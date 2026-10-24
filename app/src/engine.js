@@ -282,6 +282,7 @@ function changeRole(S, p, role, opts) {
   // (Пьяница — как роль, которой себя считает)
   if (S.phase !== 'setup') addFresh(S, p.id, actsAs(p), S.phase === 'night' ? S.n : S.n + 1);
   if (!opts.keep) endOrphanEffects(S); // keep — обмен двух ролей: эффекты проверяем после второй замены
+  if (actsAs(p) === 'fortuneteller') ensureHerring(S);
   return old;
 }
 
@@ -646,6 +647,29 @@ function autoSetup(S, force) {
   const pawOk = goodPlayers.filter(p => p.role !== 'lycanthrope' && !isTraveller(p));
   if (inPlay(S, 'lycanthrope') && (force || !S.flags.fauxPaw)) S.flags.fauxPaw = pawOk.length ? pick(pawOk).id : null;
 }
+// выбор подготовки: флаг → [жетон, роль-источник]. Менять можно и посреди игры (заметка пользователя 2026-10-24: «назначать блефы и
+// ложные цели в ночной фазе») — тогда отметка в Гримуаре переезжает к новому игроку
+const PREP_FLAGS = { grandchild: ['grandchild', 'grandmother'], ftHerring: ['herring', 'fortuneteller'], goodTwin: ['twin', 'eviltwin'], puzzleDrunk: ['drunk', 'puzzlemaster'], fauxPaw: ['fauxpaw', 'lycanthrope'] };
+function setPrepFlag(S, flag, pid) {
+  const f = PREP_FLAGS[flag]; if (!f) return false;
+  S.flags[flag] = pid || null;
+  if (S.phase === 'setup') return true; // отметки ставит startGame
+  S.players.forEach(q => rmTok(q, f[0], f[1]));
+  const q = pid && P(S, pid); if (q) addTok(S, q, f[0], f[1]);
+  return true;
+}
+// Гадалка появилась посреди игры (Ловчий превратил Девицу, Яга, Философ…): вики велит класть ложную цель при подготовке 1-й ночи, а про
+// позднее появление молчит; без ложной цели способность неполная — назначаем сразу случайного доброго (не саму Гадалку), рассказчик
+// может сменить в «Блефах и ложных целях» (заметка пользователя 2026-10-24: «Гадалка из Девицы — где ложный демон?»)
+function ensureHerring(S) {
+  if (S.phase === 'setup' || !S.players.some(q => actsAs(q) === 'fortuneteller')) return null;
+  if (S.flags.ftHerring && P(S, S.flags.ftHerring)) return null;
+  const good = S.players.filter(q => q.align === 'good' && !isTraveller(q)), ok = good.filter(q => actsAs(q) !== 'fortuneteller');
+  const t = (ok.length ? ok : good).length ? pick(ok.length ? ok : good) : null; if (!t) return null;
+  setPrepFlag(S, 'ftHerring', t.id);
+  log(S, `Гадалка в игре — ложная цель: ${t.name} (на вики про позднее появление Гадалки нет — решение рассказчика; сменить — «Блефы и ложные цели»)`, 'info');
+  return t;
+}
 // Головоломщик (вики): при подготовке 1-й ночи один игрок пьян до конца игры, даже если Головоломщик умрёт; почти всегда лучше
 // Горожанин (Приспешника или Демона — только с очень веской причиной). Раз за игру он угадывает, кто это: угадал — рассказчик
 // приватно называет Демона, нет — любого игрока, который не Демон; угадал ли — не говорить. Мёртвый не угадывает
@@ -677,6 +701,8 @@ function drawProblem(S) {
   const n = coreOf(S).length;
   if (n < 5 || n > 15) return 'Нужно от 5 до 15 игроков (без Странников)';
   if (S.pool && S.pool.length && !validPool(S)) return `В «Ролях на игру» отмечено ${S.pool.length}, а игроков ${n}: отметьте ровно ${n} ролей${S.pool.includes('marionette') ? ` (с Марионеткой можно ${n + 1}: лишний Горожанин — вместо её жетона)` : ''} — или очистите выбор, тогда роли наберутся случайно по раскладке`;
+  // Ловчий без Девицы (вики: Девицу добавляют) — иначе после жребия игру не начать (заметка пользователя 2026-10-24)
+  if (S.pool && S.pool.includes('huntsman') && !S.pool.includes('damsel')) return 'В «Ролях на игру» есть Ловчий, а Девицы нет: с Ловчим Девица в игре обязательно (вики) — отметьте её';
   return '';
 }
 function drawStart(S) {
@@ -841,6 +867,7 @@ function startNight(S) {
   const deadEvil = () => S.players.filter(p => !p.alive && p.align === 'evil' && !isTraveller(p)).length;
   S.night = { i: 0, deaths: [], woke: [], steps: [], data: { picks: [], pv: 2,
     start: { roles: Object.fromEntries(S.players.map(p => [p.id, p.role])), deadEvil: deadEvil() } } };
+  ensureHerring(S); // Гадалка (или Философ с её способностью) появилась днём — ложная цель к ночи
   S.night.steps = buildSteps(S);
   log(S, `Наступила ночь ${S.n}`, 'phase');
   rpStart(S);
@@ -861,6 +888,9 @@ function buildSteps(S) {
     }
     // Кукольник отдельного шага не имеет: знакомство злых при 5–6 игроках и «ночь без нападения» — в шагах злых и Демона
     if (R(id) && R(id).team === 'fabled') { if ((S.fabled || []).includes(id) && id !== 'toymaker') steps.push({ key: 'fab:' + id, id, pid: null, fabled: true }); continue; }
+    // Девица в последующие ночи — только если Приспешники о ней ещё не знают (заметка пользователя 2026-10-24: «почему шаг Девицы
+    // на 2-ю ночь?» — раньше шаг стоял в каждой ночи карточкой «Не просыпается»)
+    if (id === 'damsel' && !first && S.flags.damselShown) continue;
     let actors = S.players.filter(p => actsAs(p) === id);
     if (id === 'marionette') actors = S.players.filter(p => p.role === 'marionette'); // она просыпается как «своя» роль, а этот шаг — Демону
     if (id === 'scarletwoman' && S.flags.swBecame) actors = actors.concat([P(S, S.flags.swBecame)]);
@@ -1120,7 +1150,7 @@ function cannibalEats(S, ex) {
     const evil = ex.align === 'evil';
     S.flags['cannibal_' + c.id] = { pid: ex.id, role: ex.role, evil, night: S.n + 1 };
     if (evil) { c.gained = null; if (!hasTok(c, 'poisoned', 'cannibal')) addTok(S, c, 'poisoned', 'cannibal'); }
-    else { c.gained = ex.role; rmTok(c, 'poisoned', 'cannibal'); }
+    else { c.gained = ex.role; rmTok(c, 'poisoned', 'cannibal'); if (ex.role === 'fortuneteller') ensureHerring(S); }
     log(S, `Обед Каннибала (${c.name}): ${ex.name} — ${evil ? 'злой игрок, Каннибал отравлен, пока не казнят доброго' : `способность «${rname(ex.role)}» теперь у Каннибала`}`, 'effect');
   }
 }
@@ -1798,7 +1828,9 @@ const LOGIC = {
       },
       defaults: (() => { const h = S.players.find(q => q.alive && q.role === 'scarletwoman') || S.players.find(q => q.alive && realTeam(q) === 'minion'); return { heir: h ? [h.id] : [] }; })(),
       info: inp => {
-        const t = inp.t && P(S, inp.t[0]);
+        const t = inp.t && P(S, inp.t[0]), g = t && t.id === p.id && !off && deathGuard(S, p, 'demon');
+        // вики (Монах): «Монах защитил Чёрта, Чёрт убивает себя — ничего не происходит, нового Чёрта нет»
+        if (g) return { secret: true, show: `Чёрт под защитой (${g}) — ничего не происходит, нового Чёрта нет`, lines: ['Вики, страница Монаха: Чёрт остаётся жив, Приспешник Чёртом не становится'] };
         if (t && t.id === p.id && !off) return { show: 'Чёрт убивает себя', lines: ['Выбранный Приспешник станет Чёртом: разбудите его, покажите «ТЕПЕРЬ ВЫ» и жетон Чёрта'],
           tokens: inp.heir && inp.heir[0] ? [{ label: nm(S, inp.heir[0]), caption: 'ТЕПЕРЬ ВЫ', role: 'imp' }] : undefined };
         return null;
@@ -2113,7 +2145,7 @@ const LOGIC = {
   philosopher: (S, p, first, off) => {
     if (once(S, p, 'philosopher')) return { active: false, reason: 'Способность уже использована' };
     return { inputs: [ROLE('r', 'Философ выбирает добрую роль из сценария (можно пропустить)', r => isGoodTeam(R(r).team), { optional: true })],
-      apply: inp => { if (!inp.r) return; markOnce(S, p, 'philosopher'); if (off) { log(S, `Философ (${p.name}) выбирает ${rname(inp.r)} — не работает`, 'action'); return; } p.gained = inp.r; holders(S, inp.r).forEach(q => addTok(S, q, 'drunk', 'philosopher')); log(S, `Философ (${p.name}) получает способность: ${rname(inp.r)}`, 'effect'); rebuildRest(S); } };
+      apply: inp => { if (!inp.r) return; markOnce(S, p, 'philosopher'); if (off) { log(S, `Философ (${p.name}) выбирает ${rname(inp.r)} — не работает`, 'action'); return; } p.gained = inp.r; holders(S, inp.r).forEach(q => addTok(S, q, 'drunk', 'philosopher')); log(S, `Философ (${p.name}) получает способность: ${rname(inp.r)}`, 'effect'); if (inp.r === 'fortuneteller') ensureHerring(S); rebuildRest(S); } };
   },
   juggler: (S, p) => {
     if (S.n !== 2) return { active: false, reason: 'Жонглёр узнаёт результат только после 1-го дня' };
@@ -2224,14 +2256,27 @@ const LOGIC = {
     // прыжок — только если Изгой правда умер бы (вики: «если выбранный Изгой не умирает, он не становится Фань Гу»)
     const shield = t => hasTok(t, 'protected', 'monk') ? 'Монах' : hasTok(t, 'protected', 'innkeeper') ? 'Трактирщик' : teaLadyProtects(S, t) ? 'Травница' : '';
     const jumps = t => t && t.alive && realTeam(t) === 'outsider' && !S.flags.fangguJumped && !off && !shield(t) && !lycBlock(S); // после Оборотня Демон не убивает — и не прыгает
+    // сам Фань Гу под защитой (Монах, Трактирщик), а прыгает в Изгоя — «вы умираете вместо него» не может случиться. Вики прямо не
+    // разбирает (заметка пользователя 2026-10-24); ближайший случай на вики (Монах): «Монах защитил Чёрта, Чёрт убивает себя — ничего
+    // не происходит, нового Чёрта нет». Решает рассказчик, по умолчанию — как там
+    const selfShield = hasTok(p, 'protected', 'monk') ? 'Монах' : hasTok(p, 'protected', 'innkeeper') ? 'Трактирщик' : '';
+    const FGS = { none: 'Ничего не происходит: Изгой жив, прыжка нет', kill: 'Изгой умирает, прыжка нет', jump: 'Прыжок: защита Фань Гу не спасает' };
     return {
-      inputs: [PL('t', 1, 'Кого убивает Фань Гу')], more: inp => mayorInput(S, inp),
+      inputs: [PL('t', 1, 'Кого убивает Фань Гу')],
+      more: inp => { const t = inp.t && P(S, inp.t[0]);
+        return jumps(t) && selfShield ? [Object.assign(CHOICE('fgs', `Фань Гу сам под защитой (${selfShield}) — что происходит (решение рассказчика)`, Object.entries(FGS).map(([v, l]) => ({ v, l }))), { optional: true, def: 'none' })] : mayorInput(S, inp); },
       info: inp => { const t = inp.t && P(S, inp.t[0]);
         if (t && realTeam(t) === 'outsider' && !S.flags.fangguJumped && !off && shield(t)) return { secret: true, show: `Изгой под защитой (${shield(t)}) — не умирает и не становится Фань Гу`, lines: [] };
+        if (jumps(t) && selfShield && (inp.fgs || 'none') !== 'jump') return { secret: true, show: FGS[inp.fgs || 'none'], lines: [
+          `На вики этот случай прямо не разобран. Похожий (страница Монаха): Монах защитил Чёрта, Чёрт убивает себя — ничего не происходит и нового Чёрта нет. Поэтому по умолчанию — «ничего».`,
+          inp.fgs === 'kill' ? 'Изгой умирает как обычно; первый убитый Изгой уже был — Фань Гу больше не прыгнет' : 'Способность прыжка остаётся — следующий убитый Изгой ещё может стать Фань Гу'] };
         return jumps(t) ? { show: 'Изгой: прыжок!', lines: [`${t.name} становится злым Фань Гу, старый Фань Гу (${p.name}) умирает. Разбудите ${t.name}: «ТЕПЕРЬ ВЫ», жетон Фань Гу, «ТЕПЕРЬ ВЫ», большой палец вниз. Приспешников он не узнаёт.`],
           tokens: [{ label: t.name, caption: 'ТЕПЕРЬ ВЫ', role: 'fanggu', thumb: 'down' }] } : null; },
       apply: inp => {
         const t = P(S, inp.t[0]);
+        const how = jumps(t) && selfShield ? inp.fgs || 'none' : 'jump';
+        if (jumps(t) && how === 'none') { log(S, `Фань Гу (${p.name}) выбирает Изгоя ${t.name}, но сам под защитой (${selfShield}): ничего не происходит (решение рассказчика)`, 'action'); return; }
+        if (jumps(t) && how === 'kill') { S.flags.fangguJumped = true; log(S, `Фань Гу (${p.name}) под защитой (${selfShield}) — прыжка нет, Изгой ${t.name} умирает (решение рассказчика)`, 'action'); demonKill(S, p, off, t, inp); return; }
         if (jumps(t)) {
           S.flags.fangguJumped = true;
           log(S, `Фань Гу (${p.name}) выбирает Изгоя ${t.name}: прыжок`, 'action');
@@ -2338,13 +2383,17 @@ const LOGIC = {
   damsel: (S, p, first) => {
     if (S.flags.damselShown && !first) return { active: false, reason: 'Приспешники уже знают, что Девица в игре', deadOk: true };
     const ms = S.players.filter(q => realTeam(q) === 'minion' && q.role !== 'marionette'); // Марионетку не будят (вики)
+    // не 1-я ночь: почему шаг здесь — Девица была с начала, но в 1-ю ночь шаг пропустили, или она появилась позже (вики: «сделайте сейчас»)
+    const why = S.n > 1 ? (((S.flags.startRoles || {})[p.id] || {}).role === 'damsel'
+      ? 'В 1-ю ночь этот шаг пропущен — Приспешники ещё не знают, что Девица в игре. Покажите им жетон сейчас или пропустите: тогда шаг больше не появится.'
+      : 'Девица появилась в игре позже — Приспешники о ней ещё не знают (вики: покажите им жетон в ближайшую ночь). Пропустите — шаг больше не появится.') : '';
     // Дурманщик (злые не знакомятся): будить вместе нельзя — каждому Приспешнику по очереди (вики: «wake each Minion»)
     const apart = meetingBlocker(S);
-    if (apart) return { deadOk: true, text: `Злые не знакомятся (${rname(apart.role)}): будите Приспешников по одному и каждому покажите жетон Девицы.`,
+    if (apart) return { deadOk: true, text: `${why ? why + ' ' : ''}Злые не знакомятся (${rname(apart.role)}): будите Приспешников по одному и каждому покажите жетон Девицы.`,
       info: () => ({ show: 'Каждому Приспешнику по очереди — жетон Девицы', lines: [ms.length ? `Приспешники: ${ms.map(q => q.name).join(', ')}` : 'Приспешников нет'],
         tokens: ms.map(q => ({ label: q.name, role: 'damsel', sub: 'Эта роль в игре' })) }),
       apply: () => { S.flags.damselShown = true; log(S, `Приспешники по одному узнают, что Девица в игре (${rname(apart.role)})`, 'info'); } };
-    return { deadOk: true, info: () => ({ show: 'Разбудите Приспешников и покажите жетон Девицы', lines: [ms.length ? `Приспешники: ${ms.map(q => q.name).join(', ')}` : 'Приспешников нет'],
+    return { deadOk: true, text: why || undefined, info: () => ({ show: 'Разбудите Приспешников и покажите жетон Девицы', lines: [ms.length ? `Приспешники: ${ms.map(q => q.name).join(', ')}` : 'Приспешников нет'],
         tokens: [{ label: 'Приспешникам', role: 'damsel', sub: 'Эта роль в игре' }] }),
       apply: () => { S.flags.damselShown = true; log(S, 'Приспешники узнают, что Девица в игре', 'info'); } };
   },
@@ -2444,7 +2493,7 @@ const LOGIC = {
       info: inp => inp.r ? { show: `Покажите «ТЕПЕРЬ ВЫ» и жетон: ${rname(inp.r)}`, lines: [], tokens: [{ caption: CARD.youAre, role: inp.r, align: p.align }] } : null,
       apply: inp => {
         markOnce(S, p, 'apprentice'); p.gained = inp.r; addFresh(S, p.id, inp.r);
-        log(S, `Ученик (${p.name}) получает способность: ${rname(inp.r)}`, 'effect'); rebuildRest(S);
+        log(S, `Ученик (${p.name}) получает способность: ${rname(inp.r)}`, 'effect'); if (inp.r === 'fortuneteller') ensureHerring(S); rebuildRest(S);
       },
     };
   },
@@ -2893,6 +2942,8 @@ function skipStep(S, how) {
     log(S, `Пропущен шаг: ${spec.title}${spec.who ? ` (${spec.who})` : ''}`, 'skip');
     // По (вики): «покачал головой» — следующей ночью атакует троих; пропуск шага По = никого не выбрал (заметка пользователя 2026-10-14)
     if (st.id === 'po' && !S.flags.poCharged && !abilityOff(S, P(S, st.pid))) { S.flags.poCharged = true; log(S, 'По никого не выбрал — следующей ночью атакует троих', 'action'); }
+    // Девица: пропуск в последующую ночь — рассказчик решил не показывать, больше не напоминаем (в 1-ю ночь — напомним в следующую)
+    if (st.id === 'damsel' && S.n > 1) S.flags.damselShown = true;
     rpTag(S, l0, k);
   }
   S.night.i += 1; if (S.night.i >= S.night.steps.length) endNight(S);
@@ -3105,7 +3156,7 @@ function klutzChoose(S, pid) {
 }
 
 
-const ENGINE = { canBluff, poolMarExtra, bansheeVotes, fauxPawOn, droisoned, nightDeaths, revive, psychopathKill, exeQuestions, roleWorks, makeMarionette, makeDrunk, setupRole, storytellerRole, gossipPending, setGossip, pithagAdvice, puzzleHit, puzzleGuess, politicianStats, politiciansPending, politicianSide, voteNeeds, ghostSpent, demonSeatNeighbours, generalGuess, choiceCount, newGame, newPlayer, P, nm, rname, realTeam, actsAs, aliveCount, aliveAll, coreCount, isTraveller, exile, exileThreshold, addTraveller, meetingBlocker, isDemon, distribution, setupDistribution, distCheck, unknownSetup, countTeams, randomDeal,
+const ENGINE = { canBluff, setPrepFlag, ensureHerring, PREP_FLAGS, poolMarExtra, bansheeVotes, fauxPawOn, droisoned, nightDeaths, revive, psychopathKill, exeQuestions, roleWorks, makeMarionette, makeDrunk, setupRole, storytellerRole, gossipPending, setGossip, pithagAdvice, puzzleHit, puzzleGuess, politicianStats, politiciansPending, politicianSide, voteNeeds, ghostSpent, demonSeatNeighbours, generalGuess, choiceCount, newGame, newPlayer, P, nm, rname, realTeam, actsAs, aliveCount, aliveAll, coreCount, isTraveller, exile, exileThreshold, addTraveller, meetingBlocker, isDemon, distribution, setupDistribution, distCheck, unknownSetup, countTeams, randomDeal,
   amnesiacGuess, AMNESIAC_ANSWERS, storytellerKill, voteCount, voteWeight, voudonActive, bishopActive, travellerWorks, executeNow,
   judgeRuling, gunslingerShot, tinkerDies, doomsayerKill, fiddlerEnd, swapSeats, goonWarn, damselGuess, changeRole, madnessExecute, harpyKill,
   finishRoles, autoSetup, setupProblems, drawStart, drawOpen, drawClose, drawCancel, drawShown, drawLocked, drawProblem, distortion,

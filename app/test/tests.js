@@ -1422,6 +1422,49 @@ try {
     ok('Без Марионетки 7 ролей на 6 игроков — нельзя', !E.validPool(Q) && !!E.drawProblem(Q));
   }
 
+  // 37. заметки пользователя 2026-10-24: Девица во 2-ю ночь, Ловчий без Девицы, ложная цель Гадалки из Девицы, выбор подготовки
+  // посреди игры, Фань Гу и Чёрт под защитой Монаха
+  {
+    const roles = ['huntsman', 'damsel', 'chef', 'empath', 'monk', 'poisoner', 'imp', 'soldier'];
+    const nightSkipDamsel = G => { let g = 0; while (G.phase === 'night' && g++ < 60) { const st = E.currentStep(G), sp = E.stepSpec(G, st);
+      if (st.id === 'damsel' && sp.active) { E.skipStep(G, 'manual'); continue; } if (!sp.active) { E.skipStep(G); continue; }
+      const r = E.applyStep(G, st, Object.assign({}, sp.defaults)); if (!r.ok) E.skipStep(G); } };
+    let G = game(roles, 'bonappetit'); E.autoSetup(G, true); E.startGame(G); runNight(G); E.endDay(G);
+    ok('Девица: показана в 1-ю ночь — во 2-ю шага нет', G.phase === 'night' && !G.night.steps.some(s => s.id === 'damsel'));
+    G = game(roles, 'bonappetit'); E.autoSetup(G, true); E.startGame(G); nightSkipDamsel(G); E.endDay(G);
+    const ds = G.night.steps.find(s => s.id === 'damsel'), dsp = ds && E.stepSpec(G, ds);
+    ok('Девица: пропущена в 1-ю ночь — во 2-ю напомнит и объяснит', dsp && dsp.active && /пропущен/.test(dsp.text || ''), dsp && dsp.text);
+    nightSkipDamsel(G); E.endDay(G);
+    ok('Девица: пропущена и во 2-ю — дальше шага нет', G.phase === 'night' && !G.night.steps.some(s => s.id === 'damsel'));
+
+    const Q = E.newGame('bonappetit'); for (let i = 0; i < 8; i++) Q.players.push(E.newPlayer('Х' + i));
+    Q.pool = ['huntsman', 'chef', 'empath', 'monk', 'soldier', 'saint', 'poisoner', 'imp'];
+    ok('Ловчий без Девицы в «Ролях на игру» — жребий не начать', /Девиц/.test(E.drawProblem(Q)) && !E.drawStart(Q), E.drawProblem(Q));
+
+    G = game(roles, 'bonappetit'); E.autoSetup(G, true); E.startGame(G); runNight(G); E.endDay(G);
+    const dam = byRole(G, 'damsel');
+    runNight(G, { huntsman: { t: [dam.id], r: 'fortuneteller' } });
+    const rh = G.players.find(p => p.id === G.flags.ftHerring);
+    ok('Гадалка из Девицы: ложная цель назначена сама — добрый игрок, не она, с отметкой', dam.role === 'fortuneteller' && rh && rh !== dam && rh.align === 'good' && E.hasTok(rh, 'herring', 'fortuneteller'), rh && rh.name);
+    const other = G.players.find(p => p.align === 'good' && p !== rh && p !== dam);
+    E.setPrepFlag(G, 'ftHerring', other.id);
+    ok('Ложную цель можно сменить посреди игры — отметка переезжает', G.flags.ftHerring === other.id && E.hasTok(other, 'herring', 'fortuneteller') && G.players.filter(p => E.hasTok(p, 'herring')).length === 1);
+
+    const fg = how => { const H = game(['chef', 'empath', 'monk', 'poisoner', 'fanggu', 'soldier', 'saint', 'mutant'], 'bonappetit'); E.autoSetup(H, true); E.startGame(H); runNight(H); E.endDay(H);
+      const f = byRole(H, 'fanggu'), sa = byRole(H, 'saint'); runNight(H, { monk: { t: [f.id] }, fanggu: { t: [sa.id], fgs: how } }); return { H, f, sa }; };
+    let r = fg(undefined);
+    ok('Фань Гу под защитой Монаха прыгает в Изгоя — по умолчанию ничего (как Чёрт на вики)', r.f.alive && r.f.role === 'fanggu' && r.sa.alive && r.sa.role === 'saint' && !r.H.flags.fangguJumped);
+    r = fg('kill');
+    ok('Фань Гу под защитой: «Изгой умирает» — прыжка нет и больше не будет', r.f.alive && !r.sa.alive && r.sa.role === 'saint' && r.H.flags.fangguJumped);
+    r = fg('jump');
+    ok('Фань Гу под защитой: «прыжок» — как обычно', !r.f.alive && r.sa.role === 'fanggu' && r.sa.align === 'evil');
+
+    const I2 = game(['chef', 'empath', 'monk', 'poisoner', 'imp', 'soldier', 'saint', 'mutant'], 'bonappetit'); E.autoSetup(I2, true); E.startGame(I2); runNight(I2); E.endDay(I2);
+    const imp = byRole(I2, 'imp'), po = byRole(I2, 'poisoner');
+    runNight(I2, { monk: { t: [imp.id] }, imp: { t: [imp.id], heir: [po.id] } });
+    ok('Чёрт под защитой Монаха убивает себя — ничего, нового Чёрта нет (вики)', imp.alive && imp.role === 'imp' && po.role === 'poisoner');
+  }
+
   for (const k of Object.keys(DATA.scripts)) ok('сценарий ' + k + ' — все роли в данных', DATA.scripts[k].roles.every(r => DATA.roles[r]));
 } catch (e) { results.push('ERROR ' + e.message + '\n' + e.stack); }
 
