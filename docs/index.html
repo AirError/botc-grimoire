@@ -3736,27 +3736,20 @@ const LOGIC = {
     // прыжок — только если Изгой правда умер бы (вики: «если выбранный Изгой не умирает, он не становится Фань Гу»)
     const shield = t => hasTok(t, 'protected', 'monk') ? 'Монах' : hasTok(t, 'protected', 'innkeeper') ? 'Трактирщик' : teaLadyProtects(S, t) ? 'Травница' : '';
     const jumps = t => t && t.alive && realTeam(t) === 'outsider' && !S.flags.fangguJumped && !off && !shield(t) && !lycBlock(S); // после Оборотня Демон не убивает — и не прыгает
-    // сам Фань Гу под защитой (Монах, Трактирщик), а прыгает в Изгоя — «вы умираете вместо него» не может случиться. Вики прямо не
-    // разбирает (заметка пользователя 2026-10-24); ближайший случай на вики (Монах): «Монах защитил Чёрта, Чёрт убивает себя — ничего
-    // не происходит, нового Чёрта нет». Решает рассказчик, по умолчанию — как там
+    // сам Фань Гу под защитой (Монах, Трактирщик), а выбрал Изгоя — «вы умираете вместо него» не может случиться. Вики прямо не разбирает;
+    // решение пользователя (2026-10-25): Изгой умирает, прыжка нет, способность прыжка использована
     const selfShield = hasTok(p, 'protected', 'monk') ? 'Монах' : hasTok(p, 'protected', 'innkeeper') ? 'Трактирщик' : '';
-    const FGS = { none: 'Ничего не происходит: Изгой жив, прыжка нет', kill: 'Изгой умирает, прыжка нет', jump: 'Прыжок: защита Фань Гу не спасает' };
     return {
-      inputs: [PL('t', 1, 'Кого убивает Фань Гу')],
-      more: inp => { const t = inp.t && P(S, inp.t[0]);
-        return jumps(t) && selfShield ? [Object.assign(CHOICE('fgs', `Фань Гу сам под защитой (${selfShield}) — что происходит (решение рассказчика)`, Object.entries(FGS).map(([v, l]) => ({ v, l }))), { optional: true, def: 'none' })] : mayorInput(S, inp); },
+      inputs: [PL('t', 1, 'Кого убивает Фань Гу')], more: inp => mayorInput(S, inp),
       info: inp => { const t = inp.t && P(S, inp.t[0]);
         if (t && realTeam(t) === 'outsider' && !S.flags.fangguJumped && !off && shield(t)) return { secret: true, show: `Изгой под защитой (${shield(t)}) — не умирает и не становится Фань Гу`, lines: [] };
-        if (jumps(t) && selfShield && (inp.fgs || 'none') !== 'jump') return { secret: true, show: FGS[inp.fgs || 'none'], lines: [
-          `На вики этот случай прямо не разобран. Похожий (страница Монаха): Монах защитил Чёрта, Чёрт убивает себя — ничего не происходит и нового Чёрта нет. Поэтому по умолчанию — «ничего».`,
-          inp.fgs === 'kill' ? 'Изгой умирает как обычно; первый убитый Изгой уже был — Фань Гу больше не прыгнет' : 'Способность прыжка остаётся — следующий убитый Изгой ещё может стать Фань Гу'] };
+        if (jumps(t) && selfShield) return { secret: true, show: `Фань Гу под защитой (${selfShield}) — прыжка нет: ${t.name} умирает`,
+          lines: ['Способность прыжка использована — Фань Гу больше не прыгнет (вики этот случай не разбирает; так решил рассказчик)'] };
         return jumps(t) ? { show: 'Изгой: прыжок!', lines: [`${t.name} становится злым Фань Гу, старый Фань Гу (${p.name}) умирает. Разбудите ${t.name}: «ТЕПЕРЬ ВЫ», жетон Фань Гу, «ТЕПЕРЬ ВЫ», большой палец вниз. Приспешников он не узнаёт.`],
           tokens: [{ label: t.name, caption: 'ТЕПЕРЬ ВЫ', role: 'fanggu', thumb: 'down' }] } : null; },
       apply: inp => {
         const t = P(S, inp.t[0]);
-        const how = jumps(t) && selfShield ? inp.fgs || 'none' : 'jump';
-        if (jumps(t) && how === 'none') { log(S, `Фань Гу (${p.name}) выбирает Изгоя ${t.name}, но сам под защитой (${selfShield}): ничего не происходит (решение рассказчика)`, 'action'); return; }
-        if (jumps(t) && how === 'kill') { S.flags.fangguJumped = true; log(S, `Фань Гу (${p.name}) под защитой (${selfShield}) — прыжка нет, Изгой ${t.name} умирает (решение рассказчика)`, 'action'); demonKill(S, p, off, t, inp); return; }
+        if (jumps(t) && selfShield) { S.flags.fangguJumped = true; log(S, `Фань Гу (${p.name}) под защитой (${selfShield}) — прыжка нет, Изгой ${t.name} умирает; способность прыжка использована`, 'action'); demonKill(S, p, off, t, inp); return; }
         if (jumps(t)) {
           S.flags.fangguJumped = true;
           log(S, `Фань Гу (${p.name}) выбирает Изгоя ${t.name}: прыжок`, 'action');

@@ -1450,14 +1450,13 @@ try {
     E.setPrepFlag(G, 'ftHerring', other.id);
     ok('Ложную цель можно сменить посреди игры — отметка переезжает', G.flags.ftHerring === other.id && E.hasTok(other, 'herring', 'fortuneteller') && G.players.filter(p => E.hasTok(p, 'herring')).length === 1);
 
-    const fg = how => { const H = game(['chef', 'empath', 'monk', 'poisoner', 'fanggu', 'soldier', 'saint', 'mutant'], 'bonappetit'); E.autoSetup(H, true); E.startGame(H); runNight(H); E.endDay(H);
-      const f = byRole(H, 'fanggu'), sa = byRole(H, 'saint'); runNight(H, { monk: { t: [f.id] }, fanggu: { t: [sa.id], fgs: how } }); return { H, f, sa }; };
-    let r = fg(undefined);
-    ok('Фань Гу под защитой Монаха прыгает в Изгоя — по умолчанию ничего (как Чёрт на вики)', r.f.alive && r.f.role === 'fanggu' && r.sa.alive && r.sa.role === 'saint' && !r.H.flags.fangguJumped);
-    r = fg('kill');
-    ok('Фань Гу под защитой: «Изгой умирает» — прыжка нет и больше не будет', r.f.alive && !r.sa.alive && r.sa.role === 'saint' && r.H.flags.fangguJumped);
-    r = fg('jump');
-    ok('Фань Гу под защитой: «прыжок» — как обычно', !r.f.alive && r.sa.role === 'fanggu' && r.sa.align === 'evil');
+    // решение пользователя (2026-10-25): Фань Гу под защитой выбрал Изгоя — Изгой умирает, прыжка нет, способность прыжка использована
+    const H = game(['chef', 'empath', 'monk', 'poisoner', 'fanggu', 'soldier', 'saint', 'mutant'], 'bonappetit'); E.autoSetup(H, true); E.startGame(H); runNight(H); E.endDay(H);
+    const f = byRole(H, 'fanggu'), sa = byRole(H, 'saint'), mu = byRole(H, 'mutant');
+    runNight(H, { monk: { t: [f.id] }, fanggu: { t: [sa.id] } });
+    ok('Фань Гу под защитой Монаха выбрал Изгоя — Изгой умирает, прыжка нет', f.alive && f.role === 'fanggu' && !sa.alive && sa.role === 'saint' && H.flags.fangguJumped);
+    E.endDay(H); runNight(H, { fanggu: { t: [mu.id] } });
+    ok('Фань Гу под защитой: способность прыжка использована — следующий Изгой просто умирает', f.alive && !mu.alive && mu.role === 'mutant');
 
     const I2 = game(['chef', 'empath', 'monk', 'poisoner', 'imp', 'soldier', 'saint', 'mutant'], 'bonappetit'); E.autoSetup(I2, true); E.startGame(I2); runNight(I2); E.endDay(I2);
     const imp = byRole(I2, 'imp'), po = byRole(I2, 'poisoner');
