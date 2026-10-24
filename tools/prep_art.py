@@ -207,7 +207,7 @@ def beauty():
 def vitrage():
     """«Витраж во тьме»: выдача ролей витражом (prompts_vitrage.md, просьба пользователя 2026-10-23) → art/cut, сведения — в meta.vitr.
     Окна-ланцеты на двух листах 5×2 (чёрный фон между окнами — прозрачный), каменная рама с пустым проёмом и она же разбитая
-    (белый фон — прозрачный, и в проёме тоже), неф собора (фон), витраж за ролью, трещины (белым по чёрному → маска)."""
+    (белый фон — прозрачный, и в проёме тоже), неф собора (фон), витраж за ролью. Трещины рисует приложение — от точки удара, по краям осколков."""
     out = {}
     if (SRC / "d_nave.png").exists():
         Image.open(SRC / "d_nave.png").convert("RGB").save(OUT / "d_nave.jpg", quality=88)
@@ -248,8 +248,6 @@ def vitrage():
                 blk = Image.new("RGBA", p.size, (0, 0, 0, 255)); blk.alpha_composite(p); p = blk.convert("RGB")
             p.save(OUT / f"d_pane{n}.png"); n += 1
     out["panes"] = n
-    if (SRC / "d_cracks.png").exists():
-        light_mask(SRC / "d_cracks.png", lift=20).save(OUT / "d_cracks.png")
     if n: print("витраж: окон", n, "стекло", out.get("glass"))
     return out
 

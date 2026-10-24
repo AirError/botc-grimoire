@@ -279,6 +279,15 @@ function legendOverlay() {
 const SKINS = [['basic', 'Basic'], ['engr', 'Лунная гравюра'], ['glass', 'Витраж во тьме'], ['hallow', 'Хэллоуин']];
 const SKIN_KEY = 'botc-grimoire-skin';
 function skinLoad() { try { const v = localStorage.getItem(SKIN_KEY); return SKINS.some(s => s[0] === v) ? v : 'basic'; } catch (e) { return 'basic'; } }
+// вид выдачи ролей (просьба пользователя 2026-10-24): каменная стена, склеп или витраж — в любом оформлении, у каждого устройства свой.
+// Не выбран (или сменили оформление) — как в оформлении: «Хэллоуин» — склеп, «Витраж во тьме» — витраж, остальные — стена
+const DRAW_KINDS = [['wall', 'Каменная стена'], ['crypt', 'Склеп'], ['vitr', 'Витраж']], DRAW_KEY = 'botc-grimoire-drawkind';
+function drawKindLoad() { try { const v = localStorage.getItem(DRAW_KEY); return DRAW_KINDS.some(s => s[0] === v) ? v : null; } catch (e) { return null; } }
+function drawKind() {
+  const crypt = HAS_ART('h_chest_box') && HAS_ART('h_crypt'), k = UI.drawKind;
+  if (k === 'wall' || k === 'vitr' || (k === 'crypt' && crypt)) return k;
+  return UI.skin === 'hallow' && crypt ? 'crypt' : UI.skin === 'glass' ? 'vitr' : 'wall';
+}
 // значки вкладок (в Basic скрыты): контур, у .f — заливка выбранной вкладки в «Витраже», .k — детали поверх заливки
 const TAB_ICO = {
   setup: '<path d="M7 3.5h10M7 20.5h10M8 3.5c0 4.6 4 5.4 4 8.5s-4 3.9-4 8.5M16 3.5c0 4.6-4 5.4-4 8.5s4 3.9 4 8.5"/>',
@@ -320,7 +329,7 @@ function artVars() {
       'h_flame', 'h_burst', 'h_fog', 'h_web_tl', 'h_web_tr', 'h_candle3', 'h_pumpkin1', 'h_pumpkin3'],
       [1, 2, 3, 4, 5, 6].map(i => 'h_wisp' + i), [1, 2, 3, 4, 5, 6].map(i => 'h_soul' + i), [1, 2, 3, 4].map(i => 'h_smoke' + i), [1, 2, 3, 4].map(i => 'h_cflame' + i))
     // «Витраж во тьме»: выдача ролей витражом (prompts_vitrage.md)
-    .concat(['d_nave', 'd_reveal', 'd_arch', 'd_arch_broken', 'd_cracks'], [...Array(20).keys()].map(i => 'd_pane' + i));
+    .concat(['d_nave', 'd_reveal', 'd_arch', 'd_arch_broken'], [...Array(20).keys()].map(i => 'd_pane' + i));
   const el = document.createElement('style'); el.id = 'artvars';
   el.textContent = `:root{${keys.filter(HAS_ART).map(k => `--a-${k.replace(/_/g, '-')}:url("${ART[k]}");`).join('')}--frame-slice:${(typeof ART_META !== 'undefined' && ART_META.frame_slice) || 0};--drunk-slice:${(typeof ART_META !== 'undefined' && ART_META.drunk_slice) || 0};}`;
   document.head.appendChild(el);
@@ -1375,8 +1384,11 @@ function drawCard() {
   const waiting = d && !d.finished ? core.filter(p => !p.role) : [], hid = rolesHidden();
   // роли открыты — можно снова закрыть «шторкой» (например, перед тем как снова выкатить стену)
   const hideBtn = d && !hid ? '<button class="btn" data-act="rolesHide">Скрыть роли</button>' : '';
-  const cr = cryptOn(), vt = !cr && vitrOn(); // «Хэллоуин»: вместо стены — склеп с сундуками; «Витраж во тьме» — витраж
-  return `<div class="card drawcard"><h3>Выдача ролей · ${cr ? 'склеп' : vt ? 'витраж' : 'каменная стена'}</h3>
+  const cr = cryptOn(), vt = !cr && vitrOn(); // вместо стены — склеп с сундуками или витраж (по оформлению или по выбору)
+  // вид выдачи — до конца жребия можно сменить (заметка пользователя 2026-10-24)
+  const kinds = d && d.finished ? '' : `<div class="flabel"><span>Вид</span></div><div class="seg">${DRAW_KINDS.filter(([k]) => k !== 'crypt' || (HAS_ART('h_chest_box') && HAS_ART('h_crypt')))
+    .map(([k, t]) => `<button class="${drawKind() === k ? 'on' : ''}" aria-pressed="${drawKind() === k}" data-act="drawKind" data-arg="${k}">${t}</button>`).join('')}</div>`;
+  return `<div class="card drawcard"><h3>Выдача ролей · ${cr ? 'склеп' : vt ? 'витраж' : 'каменная стена'}</h3>${kinds}
     <div class="small muted">${vt
       ? `Игроки по кругу разбивают светящиеся окна витража — как тянут жетон из мешочка: роли разложены по окнам в случайном порядке, и какое окно игрок разобьёт, ту роль и получит. Где какая роль, не видит никто, и вы тоже. ${src} Пока игрок не разбил окно, в его карточке можно назначить роль или тип роли — назначенное выпадет ему из любого окна. Пьяница увидит роль, которой себя считает. Свернуть витраж — невидимой кнопкой в <b>левом нижнем углу</b> экрана; после него роли на экране закрыты, пока вы не нажмёте «Показать роли».`
       : cr
@@ -1438,7 +1450,7 @@ function assignHtml(p) {
 /* «Хэллоуин»: склеп вместо стены (просьба пользователя 2026-10-18). Ячейка — сундук: короб и крышка отдельными картинками (крышка
    распахивается), руна — на замке; после выдачи — открытый пустой сундук с паутиной. При открытии из сундука вылетает случайная нечисть */
 const HFX = ['ghost', 'bats', 'skull', 'wisps']; // вороны убраны: «вообще не интересно смотрятся» (пользователь, 2026-10-18)
-const cryptOn = () => UI.skin === 'hallow' && HAS_ART('h_chest_box') && HAS_ART('h_crypt');
+const cryptOn = () => drawKind() === 'crypt';
 const hChest = () => '<span class="hchest" aria-hidden="true"><i class="hbox"></i><i class="hlid"></i><i class="hopen"></i></span>';
 // геометрия сундука (prep_art.halloween → meta.hallow.chest): короб и крышка в долях закрытого сундука
 function hChestVars() {
@@ -1625,7 +1637,7 @@ function splashFly() {
    демоны, чудовища (d_pane*, пока картинок нет — цветная мозаика с руной). Невыбранное окно светится: свет за ним подсвечивает
    рисунок. Нажали — по стеклу бегут трещины, витраж разлетается осколками в экран, свет из окна заливает весь экран, из света
    появляется роль на приглушённом витраже (d_reveal, пока — роза d_rose). Окно остаётся пустой разбитой рамой, свет за ним гаснет */
-const vitrOn = () => UI.skin === 'glass';
+const vitrOn = () => drawKind() === 'vitr';
 // где в раме стекло (% рамы: l, t, w, h), fa — ширина/высота рамы, arch — доля высоты стекла под стрельчатый верх.
 // Рисованная рама (d_arch) — по замеру её проёма (prep_art → meta.vitr.glass), иначе запасная рама 3:5
 const VG = (HAS_ART('d_arch') && typeof ART_META !== 'undefined' && ART_META.vitr && ART_META.vitr.glass) || { l: 10, t: 7, w: 80, h: 86, fa: .6, arch: .42 };
@@ -1641,12 +1653,6 @@ const LANCET_PTS = (() => {
   return pts.map(([x, y]) => [x, y / VH * 100]);
 })();
 const LANCET = `polygon(${LANCET_PTS.map(([x, y]) => `${x.toFixed(1)}% ${y.toFixed(1)}%`).join(',')})`;
-// трещины от точки удара (для запасной отрисовки; рисованные — d_cracks)
-const VCRACK = (() => { const c = [50, 40], out = [];
-  for (let k = 0; k < 11; k++) { const a = k / 11 * Math.PI * 2 + .3 * Math.sin(k * 7), L = 70 + 25 * Math.sin(k * 3.1);
-    out.push(`M${c[0]},${c[1] * VH / 100} L${(c[0] + Math.cos(a) * L * .45).toFixed(1)},${(c[1] * VH / 100 + Math.sin(a) * L * .55).toFixed(1)} L${(c[0] + Math.cos(a + .12) * L).toFixed(1)},${(c[1] * VH / 100 + Math.sin(a + .12) * L * 1.1).toFixed(1)}`); }
-  for (const R of [14, 28]) out.push(`M${c[0] + R},${c[1] * VH / 100} A${R},${R * 1.1} 0 1 1 ${c[0] + R - .1},${c[1] * VH / 100 - 1}`);
-  return out.join(' '); })();
 // сколько картинок окон есть; номер окна у ячейки — по месту её руны среди всех ячеек (все окна разные). Все 20 — через одно:
 // персона или святой (d_pane0–9), демон или чудовище (d_pane10–19), чтобы на любой стене были и те и другие
 const vitrPanes = () => [...Array(20).keys()].filter(i => HAS_ART('d_pane' + i)).length;
@@ -1679,43 +1685,115 @@ const VBROKEN = (() => { const P = LANCET_PTS.map(([x, y]) => [x, y * VH / 100])
   P.forEach(([x, y], i) => { if (i % 2) return; const [x2, y2] = P[(i + 1) % P.length], mx = (x + x2) / 2, my = (y + y2) / 2, cx = 50 - mx, cy = VH * .45 - my, L = Math.hypot(cx, cy) || 1, h = 7 + (i * 37 % 9);
     out.push(`M${x.toFixed(1)},${y.toFixed(1)} L${(mx + cx / L * h).toFixed(1)},${(my + cy / L * h).toFixed(1)} L${x2.toFixed(1)},${y2.toFixed(1)}Z`); });
   return out.join(' '); })();
-// осколки при разбитии: клинья от точки удара к краю окна, каждый ещё надломлен поперёк. Лететь — от центра и в экран (растут),
-// с вращением; разброс — от времени открытия (одинаковый при перерисовке)
-function vitrShards(w, h) {
-  const P = LANCET_PTS.filter((_, i) => i % 2 === 0), C = [50, 40], rnd = hRand((UI.openAt || 11) + 5), out = [];
-  for (let i = 0; i < P.length; i++) {
-    const a = P[i], b = P[(i + 1) % P.length], t = .35 + rnd() * .3, ai = [C[0] + (a[0] - C[0]) * t, C[1] + (a[1] - C[1]) * t], bi = [C[0] + (b[0] - C[0]) * (t + .08), C[1] + (b[1] - C[1]) * (t + .08)];
-    for (const poly of [[C, ai, bi], [ai, a, b, bi]]) {
-      const cx = poly.reduce((s, p) => s + p[0], 0) / poly.length, cy = poly.reduce((s, p) => s + p[1], 0) / poly.length;
-      const dx = (cx - C[0]) / 100 * w, dy = (cy - C[1]) / 100 * h, L = Math.hypot(dx, dy) || 1, far = 140 + rnd() * 260;
-      out.push({ poly: poly.map(([x, y]) => `${x.toFixed(1)}% ${y.toFixed(1)}%`).join(','), o: `${cx.toFixed(1)}% ${cy.toFixed(1)}%`,
-        tx: Math.round(dx / L * far), ty: Math.round(dy / L * far + 60 + rnd() * 140), r: Math.round((rnd() - .5) * 320), s: (1.5 + rnd() * 1.8).toFixed(2), dl: Math.round(rnd() * 70) });
-    }
+/* Разбитие (заметка пользователя 2026-10-24: «окна разбиваются топорно, стёкла летят неестественно»). Как бьётся стекло: от точки
+   удара — лучи трещин и кольца между ними; осколки — куски между трещинами, обрезанные по форме окна (мелкие у точки удара, крупные
+   у рамы). Всё в пикселях стекла w × h; точка удара — где нажали (UI.openHit), разброс — от времени открытия (тот же при перерисовке) */
+function vitrClip(P, C) { // многоугольник P, обрезанный выпуклым C (Сазерленд — Ходжмен)
+  const cx = C.reduce((s, p) => s + p[0], 0) / C.length, cy = C.reduce((s, p) => s + p[1], 0) / C.length;
+  for (let i = 0; i < C.length && P.length; i++) {
+    const A = C[i], B = C[(i + 1) % C.length]; if (Math.hypot(B[0] - A[0], B[1] - A[1]) < 1e-6) continue;
+    const side = p => (B[0] - A[0]) * (p[1] - A[1]) - (B[1] - A[1]) * (p[0] - A[0]), sc = side([cx, cy]) >= 0 ? 1 : -1, out = [];
+    P.forEach((p, j) => {
+      const q = P[(j + 1) % P.length], sp = side(p) * sc, sq = side(q) * sc;
+      if (sp >= 0) out.push(p);
+      if ((sp >= 0) !== (sq >= 0)) { const t = sp / (sp - sq); out.push([p[0] + (q[0] - p[0]) * t, p[1] + (q[1] - p[1]) * t]); }
+    });
+    P = out;
   }
-  return out;
+  return P;
 }
-// слой разбития поверх стены (внутри карточки роли, пока она прозрачна): копия стекла на месте окна → трещины → осколки,
-// вспышка света из окна, свет заливает экран
+function vitrBreak(w, h) {
+  const key = `${UI.openAt}|${Math.round(w)}|${Math.round(h)}`; if (UI.vbrk && UI.vbrk.key === key) return UI.vbrk;
+  const rnd = hRand((UI.openAt || 11) + 5), hit = UI.openHit, TAU = Math.PI * 2;
+  const I = hit ? [hClamp(hit[0], w * .18, w * .82), hClamp(hit[1], h * .2, h * .8)] : [w * (.4 + rnd() * .2), h * (.36 + rnd() * .16)];
+  const lan = LANCET_PTS.map(([x, y]) => [x / 100 * w, y / 100 * h]);
+  const R = Math.max(...[[0, 0], [w, 0], [0, h], [w, h]].map(p => Math.hypot(p[0] - I[0], p[1] - I[1])));
+  const n = 10 + Math.floor(rnd() * 3), a0 = rnd() * TAU, ang = [...Array(n).keys()].map(k => a0 + (k + (rnd() - .5) * .55) * TAU / n);
+  const rings = [0, .08 + rnd() * .04, .2 + rnd() * .05, .37 + rnd() * .07, .6 + rnd() * .1, 2];
+  // на каждом луче — точка каждого кольца, чуть вразнобой: лучи не идеально прямые, кольца не круглые
+  const V = ang.map(a => rings.map((r, j) => {
+    if (!j) return I;
+    const rr = R * r * (j < rings.length - 1 ? .82 + rnd() * .36 : 1), b = a + (rnd() - .5) * .16;
+    return [I[0] + Math.cos(b) * rr, I[1] + Math.sin(b) * rr];
+  }));
+  const shards = [];
+  for (let k = 0; k < n; k++) for (let j = 0; j < rings.length - 1; j++) {
+    const A = V[k], B = V[(k + 1) % n], P = vitrClip(j ? [A[j], B[j], B[j + 1], A[j + 1]] : [I, B[1], A[1]], lan);
+    if (P.length < 3) continue;
+    let ar = 0, cx = 0, cy = 0;
+    P.forEach((p, m) => { const q = P[(m + 1) % P.length], cr = p[0] * q[1] - q[0] * p[1]; ar += cr; cx += (p[0] + q[0]) * cr; cy += (p[1] + q[1]) * cr; });
+    if (Math.abs(ar) < 12) continue; // крошки (меньше 6 px²) не рисуем
+    cx /= 3 * ar; cy /= 3 * ar;
+    // полёт: у точки удара — быстрее, чуть вверх и к зрителю (свет из-за окна выбивает стекло наружу), у рамы — почти сразу вниз;
+    // отрываются от центра к краям, часть кусков у рамы держится дольше; кувыркаются в трёх осях
+    const dx = cx - I[0], dy = cy - I[1], dd = Math.hypot(dx, dy) || 1, u = hClamp(dd / R, 0, 1), near = 1 - hClamp(u * 1.7, 0, 1);
+    const sp = 90 + near * 560 + rnd() * 110;
+    shards.push({ P, c: [cx, cy],
+      dl: Math.round(190 + u * 170 + rnd() * 50 + (u > .5 && rnd() < .35 ? 120 + rnd() * 240 : 0)), dur: Math.round(1150 + rnd() * 350),
+      vx: dx / dd * sp + (rnd() - .5) * 70, vy: dy / dd * sp * .75 - near * 260 - rnd() * 60, vz: near * (420 + rnd() * 760) + rnd() * 140,
+      wx: (rnd() - .5) * (500 + near * 900), wy: (rnd() - .5) * (500 + near * 900), wz: (rnd() - .5) * 420, ph: rnd() * TAU });
+  }
+  UI.vbrk = { key, I, V, n, shards }; return UI.vbrk;
+}
+// трещины: лучи от точки удара наружу, кольца — отрезки между соседними лучами; рисуются от центра (--cd — задержка), светятся
+function vitrCracks(b, w, h) {
+  const pt = p => `${p[0].toFixed(1)},${p[1].toFixed(1)}`, paths = [];
+  b.V.forEach((v, k) => paths.push([`M${pt(v[0])}` + v.slice(1).map(p => ` L${pt(p)}`).join(''), k * 6]));
+  for (let j = 1; j < b.V[0].length - 1; j++) b.V.forEach((v, k) => paths.push([`M${pt(v[j])} L${pt(b.V[(k + 1) % b.n][j])}`, 40 + j * 28 + k * 4]));
+  const g = cls => `<g class="${cls}">${paths.map(([d, t]) => `<path d="${d}" pathLength="1" style="--cd:${t}ms"/>`).join('')}</g>`;
+  return `<svg class="vcrk" viewBox="0 0 ${w.toFixed(0)} ${h.toFixed(0)}" preserveAspectRatio="none">${g('glow')}${g('line')}</svg>`;
+}
+// слой разбития поверх стены (внутри карточки роли, пока она прозрачна): на месте окна — осколки (вместе — целое стекло), удар,
+// трещины, куски отрываются и падают; из пробоины бьют лучи света, свет заливает экран
 function vitrFx(d, i) {
-  const c = d.cells[i], R = UI.openRect || { x: 120, y: 200, w: 100, h: 166 };
+  if (!UI.openAt || !UI.openRect) return vitrGlow(); // роль открыта до перезагрузки страницы — без разбития, сразу роль
+  const c = d.cells[i], R = UI.openRect;
   const g = { x: R.x + R.w * VG.l / 100, y: R.y + R.h * VG.t / 100, w: R.w * VG.w / 100, h: R.h * VG.h / 100 }; // стекло — в проёме рамы
-  const glass = vitrGlass(d, c), k = vitrPane(d, c);
-  const sh = vitrShards(g.w, g.h).map(s => `<i class="vsh" style="clip-path:polygon(${s.poly});transform-origin:${s.o};--tx:${s.tx}px;--ty:${s.ty}px;--r:${s.r}deg;--s:${s.s};animation-delay:${280 + s.dl}ms">${k >= 0 ? `<i class="vgl art" style="--pi:var(--a-d-pane${k})"></i>` : '<i class="vgl"></i>'}</i>`).join('');
-  // за ролью — приглушённый витраж (d_reveal; пока его нет — роза d_rose на мозаике)
-  return `<i class="vrbg ${HAS_ART('d_reveal') ? 'art' : HAS_ART('d_rose') ? 'rose' : ''}" aria-hidden="true"></i>
-    <div class="vfx c-${c.color}" aria-hidden="true" style="--fx:${(g.x + g.w / 2).toFixed(0)}px;--fy:${(g.y + g.h * .4).toFixed(0)}px"><i class="vflood"></i>
-    <div class="vbox" style="left:${g.x.toFixed(0)}px;top:${g.y.toFixed(0)}px;width:${g.w.toFixed(0)}px;height:${g.h.toFixed(0)}px;--lan:${LANCET}">
-      <i class="vburst"></i><span class="vwhole">${glass}${HAS_ART('d_cracks') ? '<i class="vcrk art"></i>' : `<svg class="vcrk" viewBox="0 0 ${VW} ${VH.toFixed(1)}" preserveAspectRatio="none"><path d="${VCRACK}"/></svg>`}</span>${sh}</div></div>`;
+  const b = vitrBreak(g.w, g.h), glass = vitrGlass(d, c), I = b.I, s1 = g.w * 1.3, s2 = g.w * 4.2;
+  const px = p => `${p[0].toFixed(1)}px ${p[1].toFixed(1)}px`, at = s => `left:${(I[0] - s / 2).toFixed(0)}px;top:${(I[1] - s / 2).toFixed(0)}px;width:${s.toFixed(0)}px;height:${s.toFixed(0)}px`;
+  const sh = b.shards.map(s => `<i class="vsh" style="clip-path:polygon(${s.P.map(px).join(',')});transform-origin:${px(s.c)}">${glass}<i class="vgn"></i>`
+    + `<svg class="vse" viewBox="0 0 ${g.w.toFixed(0)} ${g.h.toFixed(0)}" preserveAspectRatio="none"><path d="M${s.P.map(p => p[0].toFixed(1) + ',' + p[1].toFixed(1)).join(' L')}Z"/></svg></i>`).join('');
+  return `${vitrGlow()}
+    <div class="vfx c-${c.color}" aria-hidden="true" style="--fx:${(g.x + I[0]).toFixed(0)}px;--fy:${(g.y + I[1]).toFixed(0)}px"><i class="vflood"></i>
+    <div class="vbox" style="left:${g.x.toFixed(0)}px;top:${g.y.toFixed(0)}px;width:${g.w.toFixed(0)}px;height:${g.h.toFixed(0)}px;--lan:${LANCET};perspective-origin:${px(I)}">
+      <i class="vshaft" style="${at(s2)}"></i><i class="vburst" style="${at(s1)}"></i>${sh}${vitrCracks(b, g.w, g.h)}<i class="vimp" style="left:${I[0].toFixed(0)}px;top:${I[1].toFixed(0)}px"></i></div></div>`;
 }
-// перерисовка посреди разбития: анимации слоя роли и открытого окна продолжаются с того же места
+// за ролью — витраж (d_reveal; нет — роза d_rose или мозаика) и живой свет (заметка пользователя 2026-10-24): по стеклу медленно
+// ходит пятно света, косые лучи плывут, в воздухе поднимаются светящиеся пылинки цветов стекла; за иконкой — лучи и ореол (CSS)
+const MOTE_C = ['#FFE7A8', '#FFB27A', '#9EC2FF', '#A8F0C0', '#E2B4FF'];
+function vitrGlow() {
+  const rnd = hRand((UI.openAt || 7) + 31);
+  const motes = [...Array(18).keys()].map(m => `<i class="vmote" style="--x:${(rnd() * 100).toFixed(1)}%;--s:${(2 + rnd() * 4).toFixed(1)}px;--du:${(7 + rnd() * 7).toFixed(1)}s;--dl:-${(rnd() * 14).toFixed(1)}s;--dx:${Math.round((rnd() - .5) * 80)}px;--c:${MOTE_C[m % MOTE_C.length]}"></i>`).join('');
+  return `<i class="vrbg ${HAS_ART('d_reveal') ? 'art' : HAS_ART('d_rose') ? 'rose' : ''}" aria-hidden="true"><i class="vrg"></i><i class="vrsun"></i><i class="vrbeam"></i><i class="vrbeam b2"></i><i class="vrvig"></i>${motes}</i>`;
+}
+// полёт осколков ведёт код: бросок с силой тяжести, кувырок в трёх осях, к зрителю — крупнее (перспектива у .vbox);
+// блик — когда кусок поворачивается к свету
+function vitrFly(fx) {
+  fx.dataset.on = '1';
+  const b = UI.vbrk; if (!b) return;
+  fx.querySelectorAll('.vsh').forEach((el, i) => {
+    const s = b.shards[i]; if (!s || !el.animate) return;
+    const N = 28, kf = [], gk = [];
+    for (let q = 0; q <= N; q++) {
+      const u = q / N, t = u * s.dur / 1000, rx = s.wx * t, ry = s.wy * t, z = 480 * (1 - Math.exp(-s.vz * t / 480)); // к зрителю — с замедлением
+      kf.push({ offset: u, opacity: +((1 - hRamp(u, .7, 1)) * (1 - hRamp(z, 330, 470))).toFixed(3),
+        transform: `translate3d(${(s.vx * t).toFixed(1)}px,${(s.vy * t + 1350 * t * t).toFixed(1)}px,${z.toFixed(1)}px) rotateX(${rx.toFixed(1)}deg) rotateY(${ry.toFixed(1)}deg) rotateZ(${(s.wz * t).toFixed(1)}deg)` });
+      gk.push({ offset: u, opacity: +(hRamp(u, 0, .06) * Math.pow(Math.max(0, Math.sin((rx + ry) * Math.PI / 90 + s.ph)), 12) * .85).toFixed(3) });
+    }
+    el.animate(kf, { duration: s.dur, delay: s.dl, fill: 'both', easing: 'linear' });
+    const gn = el.querySelector('.vgn'); if (gn) gn.animate(gk, { duration: s.dur, delay: s.dl, fill: 'both', easing: 'linear' });
+  });
+}
+// после перерисовки: запустить полёт осколков; посреди разбития — все анимации слоя роли и открытого окна продолжаются с того же места
 function vitrAfter() {
   if (!vitrOn() || !UI.openAt) return;
+  const fx = document.querySelector('.vitr .vfx'); if (fx && !fx.dataset.on) vitrFly(fx);
   const el = Date.now() - UI.openAt; if (el < 60) return;
   document.querySelectorAll('.vitr .wreveal, .vitr .wcell.opened').forEach(n => n.getAnimations && n.getAnimations({ subtree: true }).forEach(a => { try { a.currentTime = el; } catch (e) { /* без времени */ } }));
 }
 function hallowAfter() {
-  if (UI.skin !== 'hallow') return;
-  if (UI.splash) splashFly();
+  if (UI.skin === 'hallow' && UI.splash) splashFly();
+  if (!cryptOn()) return; // склеп — и в других оформлениях, если выбран вид выдачи «Склеп»
   const fx = document.querySelector('.hfx'); if (!fx || fx.dataset.on) return;
   cryptFly(fx);
   const el = UI.openAt ? Date.now() - UI.openAt : 0;
@@ -2389,8 +2467,10 @@ const A = {
     const cell = document.querySelector(`.wcell[data-arg="${i}"]`), wall = document.querySelector('.wall');
     if (cell && wall) { const a = cell.getBoundingClientRect(), b = wall.getBoundingClientRect(), fx = (a.left + a.width / 2 - b.left) / b.width;
       UI.openPos = { x: Math.round(a.left + a.width / 2 - b.left), y: Math.round(a.top + a.height * .35 - b.top), dir: fx > .62 ? -1 : fx < .38 ? 1 : (Math.random() < .5 ? -1 : 1) };
-      // витраж: где на экране окно (слой разбития лежит поверх всего слоя стены)
-      const ov = document.querySelector('.wallov').getBoundingClientRect(); UI.openRect = { x: a.left - ov.left, y: a.top - ov.top, w: a.width, h: a.height }; }
+      // витраж: где на экране окно (слой разбития лежит поверх всего слоя стены) и куда в стекле пришёлся удар — туда, где нажали
+      const ov = document.querySelector('.wallov').getBoundingClientRect(); UI.openRect = { x: a.left - ov.left, y: a.top - ov.top, w: a.width, h: a.height };
+      const tp = UI.tap && Date.now() - UI.tap.t < 1500 ? UI.tap : null;
+      UI.openHit = tp ? [tp.x - a.left - a.width * VG.l / 100, tp.y - a.top - a.height * VG.t / 100] : null; }
     UI.openFx = HFX[Math.floor(Math.random() * HFX.length)];
     act(S => E.drawOpen(S, +i), 'жребий: ячейка открыта'); },
   // закрыть роль можно не раньше чем через 2 секунды — чтобы игрок успел прочитать и не закрыл случайно (было 3 с; просьба пользователя 2026-10-18)
@@ -2416,7 +2496,10 @@ const A = {
   edTokDel: arg => { const [id, i] = arg.split('|'); act(S => E.P(S, id).tokens.splice(+i, 1), 'снят жетон'); },
   // меню
   toggleHide: () => { UI.hideInactive = !UI.hideInactive; autoSkip(); render(); },
-  skin: k => { if (!SKINS.some(s => s[0] === k)) return; UI.skin = k; try { localStorage.setItem(SKIN_KEY, k); } catch (e) { /* без хранилища — до перезагрузки */ } render(); },
+  // новое оформление — и выдача ролей как в нём (свой вид можно снова выбрать в карточке выдачи)
+  skin: k => { if (!SKINS.some(s => s[0] === k)) return; UI.skin = k; UI.drawKind = null;
+    try { localStorage.setItem(SKIN_KEY, k); localStorage.removeItem(DRAW_KEY); } catch (e) { /* без хранилища — до перезагрузки */ } render(); },
+  drawKind: k => { if (!DRAW_KINDS.some(s => s[0] === k)) return; UI.drawKind = k; try { localStorage.setItem(DRAW_KEY, k); } catch (e) { /* до перезагрузки */ } render(); },
   splashOff: () => { UI.splash = false; render(); },
   askNew: () => { UI.confirm = 'new'; render(); },
   pgDelAsk: id => { UI.confirm = 'pg:' + id; render(); },
@@ -2559,6 +2642,8 @@ document.addEventListener('input', ev => {
 document.addEventListener('keydown', ev => { if (ev.key === 'Enter' && ev.target.id === 'newName') A.addP(); if (ev.key === 'Enter' && ev.target.id === 'pinIn') A.pinOk(); });
 // круг Гримуара для Шпиона подстраивается под экран (поворот телефона, размер окна)
 let resizeTimer = null;
+// где нажали в последний раз — витраж бьётся от этой точки
+document.addEventListener('pointerdown', e => { UI.tap = { x: e.clientX, y: e.clientY, t: Date.now() }; }, { capture: true, passive: true });
 // перестроить при повороте экрана: Гримуар кругом; витраж — столбцы окон под новый экран (не посреди разбития)
 window.addEventListener('resize', () => {
   if (!UI.grimShow && !(UI.wall && S.draw && S.draw.open === null && vitrOn())) return;
@@ -2643,7 +2728,7 @@ function boot(hotData) {
   try { UI.showLand = localStorage.getItem('botc-grimoire-showland') === '1'; UI.showFlip = localStorage.getItem('botc-grimoire-showflip') === '1'; UI.pickRing = localStorage.getItem('botc-grimoire-pickring') === '1';
     UI.grimGrid = localStorage.getItem('botc-grimoire-grimgrid') === '1'; } catch (e) { /* по умолчанию — вертикально, квадратиками; Гримуар — кругом */ }
   if (TEST) UI.testWelcome = true; // тестовая сборка: окно приветствия при каждом открытии
-  UI.skin = skinLoad();
+  UI.skin = skinLoad(); UI.drawKind = drawKindLoad();
   if (!hotData && UI.skin !== 'basic') { UI.splash = true; setTimeout(() => { if (UI.splash) { UI.splash = false; render(); } }, 2000); }
   if (!document.getElementById('artvars')) artVars();
   render();
