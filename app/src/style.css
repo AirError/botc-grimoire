@@ -1359,7 +1359,7 @@ html .wallov.crypt .wrfor { font-family: var(--f-wet, 'Rubik Wet Paint', 'Kurale
 .vw.opened .vgl, .vw.opened .vfig { animation: vGone .01s .16s forwards; }
 @keyframes vGone { to { opacity: 0; } }
 .vw.opened .vglass { background: radial-gradient(ellipse at 50% 40%, #FFF6DC, var(--glow) 45%, #000 92%); }
-.vw.opened.artb .vframe::after { content: ''; position: absolute; inset: 0; background: var(--a-d-arch-broken) center / 100% 100% no-repeat; opacity: 0; animation: vGlowIn .01s .3s forwards; }
+.vw.opened.artb .vframe::after { content: ''; position: absolute; inset: 0; background: var(--a-d-arch-broken) center / 100% 100% no-repeat; opacity: 0; animation: vGlowIn .01s .45s forwards; }
 .vw.opened .vlight { animation: vFlare 1.4s ease-out forwards; }
 @keyframes vFlare { 0% { opacity: .7; } 30% { opacity: 1; transform: scale(1.7); } 100% { opacity: .2; transform: scale(1.2); } }
 @keyframes vGlowIn { to { opacity: 1; } }
@@ -1369,7 +1369,7 @@ html .wallov.crypt .wrfor { font-family: var(--f-wet, 'Rubik Wet Paint', 'Kurale
    пылинки цветов стекла; за иконкой роли — медленно вращающиеся лучи и дышащий ореол цвета руны */
 .vitr .wreveal { background: none; animation: none; }
 .vitr .wreveal > * { position: relative; z-index: 1; }
-.vitr .wreveal > .vrbg { position: absolute; inset: 0; z-index: 0; pointer-events: none; overflow: hidden; opacity: 0; animation: vRevealBg .7s .85s ease-out forwards; }
+.vitr .wreveal > .vrbg { position: absolute; inset: 0; z-index: 0; pointer-events: none; overflow: hidden; opacity: 0; animation: vRevealBg .7s 1s ease-out forwards; }
 @keyframes vRevealBg { to { opacity: 1; } }
 .vrbg > i { position: absolute; display: block; }
 .vrg { inset: 0; filter: saturate(.78) brightness(.64); }
@@ -1386,7 +1386,36 @@ html .wallov.crypt .wrfor { font-family: var(--f-wet, 'Rubik Wet Paint', 'Kurale
 .vmote::after { content: ''; position: absolute; inset: -150%; border-radius: 50%; background: radial-gradient(circle, #FFFBEA 0, var(--c) 28%, transparent 70%); animation: vTwinkle 1.7s ease-in-out infinite alternate; animation-delay: var(--dl); }
 @keyframes vMote { 0% { transform: translate(0, 0); opacity: 0; } 12% { opacity: 1; } 50% { transform: translate(var(--dx), -55vh); } 88% { opacity: .85; } 100% { transform: translate(calc(var(--dx) * -.5), -112vh); opacity: 0; } }
 @keyframes vTwinkle { from { opacity: .3; transform: scale(.7); } to { opacity: 1; transform: scale(1.15); } }
-.vitr .wreveal > :not(.vfx):not(.vrbg):not(.wrlater) { opacity: 0; animation: vCardIn .55s 1.15s ease-out forwards; }
+/* этап 2: светится сам витраж. Снизу ночной, над ним дневной загорается (1–2,5 с) и дышит; два пятна полного света гуляют по стеклу
+   (обёртка .vrspot с круглой маской двигается, картинка внутри — в обратную сторону, -3× в долях своего размера: витраж стоит).
+   Все слои витража — один размер и место (--rbp, --rbs из vitrAlign: медальон — под знаком роли) */
+.vrbg.glass .vrg, .vrbg.glass .vrlit, .vrspot > i, .vrbloom { background-position: var(--rbp, center); background-size: var(--rbs, cover); background-repeat: no-repeat; }
+.vrbg.glass .vrg { filter: none; }
+.vrbg.glass .vrg.dark { background-image: var(--a-d-reveal-dark); }
+.vrbg.glass .vrg.dim { background-image: var(--a-d-reveal); filter: brightness(.3) saturate(.6); }
+.vrlit { inset: 0; background-image: var(--a-d-reveal); opacity: 0; animation: vLitOn 1.5s 1.5s ease-in-out forwards, vLitBreath 7s 3s ease-in-out infinite alternate; }
+@keyframes vLitOn { to { opacity: .42; } }
+@keyframes vLitBreath { from { opacity: .42; } to { opacity: .64; } }
+.vrspot { left: -100%; top: -100%; width: 300%; height: 300%; opacity: 0;
+  -webkit-mask: radial-gradient(circle at 50% 50%, #000 0, rgba(0, 0, 0, .6) 5%, transparent 12%); mask: radial-gradient(circle at 50% 50%, #000 0, rgba(0, 0, 0, .6) 5%, transparent 12%);
+  animation: vGlowIn 1s 2.2s ease-out forwards, vSpotA 17s 1s ease-in-out infinite alternate; }
+.vrspot > i { position: absolute; display: block; left: 33.3333%; top: 33.3333%; width: 33.3334%; height: 33.3334%; background-image: var(--a-d-reveal); animation: vSpotAi 17s 1s ease-in-out infinite alternate; }
+.vrspot.s2 { animation-name: vGlowIn, vSpotB; animation-duration: 1s, 23s; }
+.vrspot.s2 > i { animation-name: vSpotBi; animation-duration: 23s; }
+@keyframes vSpotA { 0% { transform: translate(0, -3%); } 30% { transform: translate(-9%, 5%); } 65% { transform: translate(8%, 9%); } 100% { transform: translate(4%, -7%); } }
+@keyframes vSpotAi { 0% { transform: translate(0, 9%); } 30% { transform: translate(27%, -15%); } 65% { transform: translate(-24%, -27%); } 100% { transform: translate(-12%, 21%); } }
+@keyframes vSpotB { 0% { transform: translate(6%, 2%); } 40% { transform: translate(-7%, -6%); } 75% { transform: translate(-3%, 10%); } 100% { transform: translate(9%, 4%); } }
+@keyframes vSpotBi { 0% { transform: translate(-18%, -6%); } 40% { transform: translate(21%, 18%); } 75% { transform: translate(9%, -30%); } 100% { transform: translate(-27%, -12%); } }
+.vrbloom { inset: 0; background-image: var(--a-d-reveal-glow); opacity: 0; animation: vBloom 6s 2.4s ease-in-out infinite alternate; }
+@keyframes vBloom { from { opacity: .1; } to { opacity: .3; } }
+.vrbeams { inset: -10%; background: var(--a-d-beams) left top / cover no-repeat; opacity: 0; transform-origin: 0 0; animation: vBeamsIn 1.4s 1.8s ease-out forwards, vBeams 16s 1.2s ease-in-out infinite alternate; }
+@keyframes vBeamsIn { to { opacity: .5; } }
+@keyframes vBeams { from { transform: translate(-3%, -2%) rotate(-2.5deg); } to { transform: translate(2%, 1%) rotate(2.5deg); } }
+.vrbg.glass .vrvig { background: radial-gradient(76% var(--tvh, 22%) at 50% var(--tvy, 66%), rgba(3, 3, 6, .78), rgba(3, 3, 6, .1) 100%); }
+/* подписи поверх светящегося стекла — с тенью */
+.vitr .wreveal .wrfor, .vitr .wreveal .wrlater { text-shadow: 0 1px 3px #000, 0 0 10px rgba(0, 0, 0, .9); }
+.vitr .wreveal .wrlater { color: #E9E1D2; }
+.vitr .wreveal > :not(.vfx):not(.vrbg):not(.wrlater) { opacity: 0; animation: vCardIn .55s 1.3s ease-out forwards; }
 @keyframes vCardIn { from { opacity: 0; transform: translateY(16px) scale(.97); } to { opacity: 1; transform: none; } }
 .vitr .wrart { isolation: isolate; }
 .vitr .wrart .fxc, .vitr .wrart .fxo { display: none; }
@@ -1400,8 +1429,8 @@ html .wallov.crypt .wrfor { font-family: var(--f-wet, 'Rubik Wet Paint', 'Kurale
 /* слой разбития: удар (.vimp), светящиеся трещины от точки удара (.vcrk: лучи, потом кольца), куски отрываются и падают
    (.vsh — полёт ведёт vitrFx/vitrFly в ui.js, в перспективе .vbox), из пробоины бьют лучи света (.vshaft) и вспышка (.vburst) */
 .vitr .wreveal > .vfx { position: absolute; inset: 0; z-index: 3; pointer-events: none; overflow: hidden; }
-.vfx .vflood { position: absolute; inset: 0; opacity: 0; background: radial-gradient(circle at var(--fx, 50%) var(--fy, 40%), #FFFCF2, #FFF0CC 38%, var(--glow) 110%); animation: vFlood 1.6s .34s ease-in-out forwards; }
-@keyframes vFlood { 0% { opacity: 0; } 35%, 52% { opacity: .9; } 100% { opacity: 0; } }
+.vfx .vflood { position: absolute; inset: 0; opacity: 0; background: radial-gradient(circle at var(--fx, 50%) var(--fy, 40%), #FFFCF2, #FFF0CC 38%, var(--glow) 110%); animation: vFlood 1.3s .5s ease-in-out forwards; }
+@keyframes vFlood { 0% { opacity: 0; } 38%, 52% { opacity: .9; } 100% { opacity: 0; } }
 .vbox { position: absolute; perspective: 820px; }
 .vbox > * { position: absolute; display: block; }
 .vsh, .vcrk { inset: 0; }
@@ -1409,7 +1438,11 @@ html .wallov.crypt .wrfor { font-family: var(--f-wet, 'Rubik Wet Paint', 'Kurale
 .vsh .vgn { position: absolute; inset: 0; opacity: 0; background: linear-gradient(125deg, transparent 25%, rgba(255, 255, 255, .9) 50%, transparent 75%); }
 .vse { position: absolute; inset: 0; width: 100%; height: 100%; overflow: visible; }
 .vse path { fill: none; stroke: rgba(255, 249, 232, .55); stroke-width: 1.4; stroke-linejoin: round; }
-.vcrk { width: 100%; height: 100%; clip-path: var(--lan); animation: vCrkOut .12s .25s ease-in forwards; }
+.vcrk { width: 100%; height: 100%; clip-path: var(--lan); animation: vCrkOut .16s .42s ease-in forwards; }
+/* нарисованная трещина (этап 2): картинка узора разбегается кругом от точки удара и светится; держится, пока куски не начнут падать */
+.vcrki { position: absolute; display: block; background-size: 100% 100%; background-repeat: no-repeat; clip-path: circle(0px at var(--cx) var(--cy));
+  filter: drop-shadow(0 0 1.5px var(--glow)) drop-shadow(0 0 4px var(--glow)); animation: vCrkGrow .3s cubic-bezier(.2, .7, .3, 1) forwards; }
+@keyframes vCrkGrow { to { clip-path: circle(var(--cr) at var(--cx) var(--cy)); } }
 .vcrk path { fill: none; stroke-linecap: round; stroke-linejoin: round; stroke-dasharray: 1; stroke-dashoffset: 1; animation: vCrack .2s ease-out forwards; animation-delay: var(--cd, 0ms); }
 .vcrk .glow path { stroke: var(--glow); stroke-width: 3.4; opacity: .55; }
 .vcrk .line path { stroke: #FFF9EC; stroke-width: 1.1; }
@@ -1417,15 +1450,17 @@ html .wallov.crypt .wrfor { font-family: var(--f-wet, 'Rubik Wet Paint', 'Kurale
 @keyframes vCrkOut { to { opacity: 0; } }
 .vimp { width: 48px; height: 48px; margin: -24px 0 0 -24px; border-radius: 50%; background: radial-gradient(circle, #FFF, rgba(255, 248, 225, .7) 30%, transparent 70%); opacity: 0; animation: vImp .34s ease-out forwards; }
 @keyframes vImp { 0% { opacity: 1; transform: scale(.2); } 40% { opacity: .95; transform: scale(1); } 100% { opacity: 0; transform: scale(1.5); } }
-.vburst { border-radius: 50%; opacity: 0; background: radial-gradient(closest-side, #FFFDF5, #FFE9B0 35%, var(--glow) 62%, transparent); animation: vBurst 1.1s .2s ease-out forwards; }
+.vimp.art { margin: 0; border-radius: 0; background: var(--a-d-impact) center / contain no-repeat; animation: vImp .45s ease-out forwards; }
+.vburst { border-radius: 50%; opacity: 0; background: radial-gradient(closest-side, #FFFDF5, #FFE9B0 35%, var(--glow) 62%, transparent); animation: vBurst 1.1s .36s ease-out forwards; }
 @keyframes vBurst { 0% { opacity: 0; transform: scale(.4); } 25% { opacity: 1; transform: scale(1.3); } 100% { opacity: 0; transform: scale(8); } }
 .vshaft { border-radius: 50%; opacity: 0; background: repeating-conic-gradient(from 0deg, transparent 0deg 7deg, rgba(255, 246, 220, .8) 9deg 10deg, transparent 12deg 19deg);
   -webkit-mask: radial-gradient(closest-side, #000 8%, rgba(0, 0, 0, .55) 35%, transparent 72%); mask: radial-gradient(closest-side, #000 8%, rgba(0, 0, 0, .55) 35%, transparent 72%);
-  animation: vShaft 1.4s .2s ease-out forwards; }
+  animation: vShaft 1.4s .36s ease-out forwards; }
 @keyframes vShaft { 0% { opacity: 0; transform: scale(.25) rotate(0deg); } 25% { opacity: 1; } 100% { opacity: 0; transform: scale(2.4) rotate(26deg); } }
 @media (prefers-reduced-motion: reduce) {
   .vw .vlight, .vw .vshine, .wallov.vitr .wcell.vw.opened, .wallov.vitr .wall.roll, .vitr .wreveal > *, .vrbg *, .vrbg *::after, .vitr .wrart::before, .vitr .wrart::after { animation: none !important; }
-  .vmote { display: none !important; }
+  .vmote, .vrspot { display: none !important; }
+  .vrlit { opacity: .55 !important; } .vrbeams { opacity: .4 !important; }
   .vitr .wreveal > .vfx { display: none; }
   .vitr .wreveal > .vrbg, .vitr .wreveal > :not(.vfx):not(.wrlater) { opacity: 1 !important; }
 }

@@ -329,7 +329,7 @@ function artVars() {
       'h_flame', 'h_burst', 'h_fog', 'h_web_tl', 'h_web_tr', 'h_candle3', 'h_pumpkin1', 'h_pumpkin3'],
       [1, 2, 3, 4, 5, 6].map(i => 'h_wisp' + i), [1, 2, 3, 4, 5, 6].map(i => 'h_soul' + i), [1, 2, 3, 4].map(i => 'h_smoke' + i), [1, 2, 3, 4].map(i => 'h_cflame' + i))
     // «Витраж во тьме»: выдача ролей витражом (prompts_vitrage.md)
-    .concat(['d_nave', 'd_reveal', 'd_arch', 'd_arch_broken'], [...Array(20).keys()].map(i => 'd_pane' + i));
+    .concat(['d_nave', 'd_reveal', 'd_arch', 'd_arch_broken', 'd_reveal_dark', 'd_reveal_glow', 'd_beams', 'd_impact', 'd_crack1', 'd_crack2'], [...Array(20).keys()].map(i => 'd_pane' + i));
   const el = document.createElement('style'); el.id = 'artvars';
   el.textContent = `:root{${keys.filter(HAS_ART).map(k => `--a-${k.replace(/_/g, '-')}:url("${ART[k]}");`).join('')}--frame-slice:${(typeof ART_META !== 'undefined' && ART_META.frame_slice) || 0};--drunk-slice:${(typeof ART_META !== 'undefined' && ART_META.drunk_slice) || 0};}`;
   document.head.appendChild(el);
@@ -1702,37 +1702,50 @@ function vitrClip(P, C) { // многоугольник P, обрезанный 
   }
   return P;
 }
+// нарисованные трещины (этап 2; prep_art.crack_pieces → meta.vitr.cracks): у узора — центр удара и куски между линиями
+// (многоугольники в долях картинки); осколки бьются ровно по ним
+const VCRACKS = ((typeof ART_META !== 'undefined' && ART_META.vitr && ART_META.vitr.cracks) || []).filter(c => HAS_ART(c.k));
 function vitrBreak(w, h) {
   const key = `${UI.openAt}|${Math.round(w)}|${Math.round(h)}`; if (UI.vbrk && UI.vbrk.key === key) return UI.vbrk;
   const rnd = hRand((UI.openAt || 11) + 5), hit = UI.openHit, TAU = Math.PI * 2;
   const I = hit ? [hClamp(hit[0], w * .18, w * .82), hClamp(hit[1], h * .2, h * .8)] : [w * (.4 + rnd() * .2), h * (.36 + rnd() * .16)];
   const lan = LANCET_PTS.map(([x, y]) => [x / 100 * w, y / 100 * h]);
   const R = Math.max(...[[0, 0], [w, 0], [0, h], [w, h]].map(p => Math.hypot(p[0] - I[0], p[1] - I[1])));
+  const shards = [];
+  const add = P0 => {
+    const P = vitrClip(P0, lan); if (P.length < 3) return;
+    let ar = 0, cx = 0, cy = 0;
+    P.forEach((p, m) => { const q = P[(m + 1) % P.length], cr = p[0] * q[1] - q[0] * p[1]; ar += cr; cx += (p[0] + q[0]) * cr; cy += (p[1] + q[1]) * cr; });
+    if (Math.abs(ar) < 12) return; // крошки (меньше 6 px²) не рисуем
+    cx /= 3 * ar; cy /= 3 * ar;
+    // полёт: у точки удара — быстрее, чуть вверх и к зрителю (свет из-за окна выбивает стекло наружу), у рамы — почти сразу вниз;
+    // сначала трещина разбегается и держится, потом куски отрываются от центра к краям, часть у рамы держится дольше; кувырок в 3D
+    const dx = cx - I[0], dy = cy - I[1], dd = Math.hypot(dx, dy) || 1, u = hClamp(dd / R, 0, 1), near = 1 - hClamp(u * 1.7, 0, 1);
+    const sp = 90 + near * 560 + rnd() * 110;
+    shards.push({ P, c: [cx, cy],
+      dl: Math.round(380 + u * 200 + rnd() * 60 + (u > .5 && rnd() < .35 ? 120 + rnd() * 260 : 0)), dur: Math.round(1150 + rnd() * 350),
+      vx: dx / dd * sp + (rnd() - .5) * 70, vy: dy / dd * sp * .75 - near * 260 - rnd() * 60, vz: near * (420 + rnd() * 760) + rnd() * 140,
+      wx: (rnd() - .5) * (500 + near * 900), wy: (rnd() - .5) * (500 + near * 900), wz: (rnd() - .5) * 420, ph: rnd() * TAU });
+  };
+  if (VCRACKS.length) {
+    // нарисованный узор: центр — в точку удара, сторона — 1,5 большей стороны стекла, поворот и зеркало — случайно; куски у края
+    // картинки вытягиваются от центра (×4), чтобы закрыть окно до рамы
+    const cr = VCRACKS[Math.floor(rnd() * VCRACKS.length)], fl = rnd() < .5 ? -1 : 1, rot = rnd() * TAU, cs = Math.cos(rot), sn = Math.sin(rot);
+    const S = Math.max(w, h) * 1.5, [cx, cy] = cr.c;
+    const tf = (u, v) => { const k = u < .004 || u > .996 || v < .004 || v > .996 ? 4 : 1, x = (u - cx) * S * fl * k, y = (v - cy) * S * k; return [I[0] + x * cs - y * sn, I[1] + x * sn + y * cs]; };
+    cr.p.forEach(a => { const P = []; for (let q = 0; q < a.length; q += 2) P.push(tf(a[q], a[q + 1])); add(P); });
+    UI.vbrk = { key, I, shards, crack: { k: cr.k, S, x: I[0] - cx * S, y: I[1] - cy * S, ox: cx * S, oy: cy * S, rot: rot * 180 / Math.PI, fl } };
+    return UI.vbrk;
+  }
+  // без картинки: 10–12 лучей и 4 неровных кольца от точки удара; на каждом луче — точка каждого кольца, чуть вразнобой
   const n = 10 + Math.floor(rnd() * 3), a0 = rnd() * TAU, ang = [...Array(n).keys()].map(k => a0 + (k + (rnd() - .5) * .55) * TAU / n);
   const rings = [0, .08 + rnd() * .04, .2 + rnd() * .05, .37 + rnd() * .07, .6 + rnd() * .1, 2];
-  // на каждом луче — точка каждого кольца, чуть вразнобой: лучи не идеально прямые, кольца не круглые
   const V = ang.map(a => rings.map((r, j) => {
     if (!j) return I;
     const rr = R * r * (j < rings.length - 1 ? .82 + rnd() * .36 : 1), b = a + (rnd() - .5) * .16;
     return [I[0] + Math.cos(b) * rr, I[1] + Math.sin(b) * rr];
   }));
-  const shards = [];
-  for (let k = 0; k < n; k++) for (let j = 0; j < rings.length - 1; j++) {
-    const A = V[k], B = V[(k + 1) % n], P = vitrClip(j ? [A[j], B[j], B[j + 1], A[j + 1]] : [I, B[1], A[1]], lan);
-    if (P.length < 3) continue;
-    let ar = 0, cx = 0, cy = 0;
-    P.forEach((p, m) => { const q = P[(m + 1) % P.length], cr = p[0] * q[1] - q[0] * p[1]; ar += cr; cx += (p[0] + q[0]) * cr; cy += (p[1] + q[1]) * cr; });
-    if (Math.abs(ar) < 12) continue; // крошки (меньше 6 px²) не рисуем
-    cx /= 3 * ar; cy /= 3 * ar;
-    // полёт: у точки удара — быстрее, чуть вверх и к зрителю (свет из-за окна выбивает стекло наружу), у рамы — почти сразу вниз;
-    // отрываются от центра к краям, часть кусков у рамы держится дольше; кувыркаются в трёх осях
-    const dx = cx - I[0], dy = cy - I[1], dd = Math.hypot(dx, dy) || 1, u = hClamp(dd / R, 0, 1), near = 1 - hClamp(u * 1.7, 0, 1);
-    const sp = 90 + near * 560 + rnd() * 110;
-    shards.push({ P, c: [cx, cy],
-      dl: Math.round(190 + u * 170 + rnd() * 50 + (u > .5 && rnd() < .35 ? 120 + rnd() * 240 : 0)), dur: Math.round(1150 + rnd() * 350),
-      vx: dx / dd * sp + (rnd() - .5) * 70, vy: dy / dd * sp * .75 - near * 260 - rnd() * 60, vz: near * (420 + rnd() * 760) + rnd() * 140,
-      wx: (rnd() - .5) * (500 + near * 900), wy: (rnd() - .5) * (500 + near * 900), wz: (rnd() - .5) * 420, ph: rnd() * TAU });
-  }
+  for (let k = 0; k < n; k++) for (let j = 0; j < rings.length - 1; j++) { const A = V[k], B = V[(k + 1) % n]; add(j ? [A[j], B[j], B[j + 1], A[j + 1]] : [I, B[1], A[1]]); }
   UI.vbrk = { key, I, V, n, shards }; return UI.vbrk;
 }
 // трещины: лучи от точки удара наружу, кольца — отрезки между соседними лучами; рисуются от центра (--cd — задержка), светятся
@@ -1753,18 +1766,48 @@ function vitrFx(d, i) {
   const px = p => `${p[0].toFixed(1)}px ${p[1].toFixed(1)}px`, at = s => `left:${(I[0] - s / 2).toFixed(0)}px;top:${(I[1] - s / 2).toFixed(0)}px;width:${s.toFixed(0)}px;height:${s.toFixed(0)}px`;
   const sh = b.shards.map(s => `<i class="vsh" style="clip-path:polygon(${s.P.map(px).join(',')});transform-origin:${px(s.c)}">${glass}<i class="vgn"></i>`
     + `<svg class="vse" viewBox="0 0 ${g.w.toFixed(0)} ${g.h.toFixed(0)}" preserveAspectRatio="none"><path d="M${s.P.map(p => p[0].toFixed(1) + ',' + p[1].toFixed(1)).join(' L')}Z"/></svg></i>`).join('');
+  // трещина: нарисованная — картинка узора тем же поворотом и зеркалом, что и куски, разбегается кругом от точки удара; иначе — линии
+  const k = b.crack, crack = k ? `<span class="vcrk art"><i class="vcrki" style="left:${k.x.toFixed(1)}px;top:${k.y.toFixed(1)}px;width:${k.S.toFixed(1)}px;height:${k.S.toFixed(1)}px;`
+    + `transform-origin:${k.ox.toFixed(1)}px ${k.oy.toFixed(1)}px;transform:rotate(${k.rot.toFixed(1)}deg) scaleX(${k.fl});--cx:${k.ox.toFixed(1)}px;--cy:${k.oy.toFixed(1)}px;--cr:${(k.S * .75).toFixed(0)}px;`
+    + `background-image:var(--a-${k.k.replace(/_/g, '-')})"></i></span>` : vitrCracks(b, g.w, g.h);
+  const imp = HAS_ART('d_impact') ? `<i class="vimp art" style="${at(g.w * 1.5)}"></i>` : `<i class="vimp" style="left:${I[0].toFixed(0)}px;top:${I[1].toFixed(0)}px"></i>`;
   return `${vitrGlow()}
     <div class="vfx c-${c.color}" aria-hidden="true" style="--fx:${(g.x + I[0]).toFixed(0)}px;--fy:${(g.y + I[1]).toFixed(0)}px"><i class="vflood"></i>
     <div class="vbox" style="left:${g.x.toFixed(0)}px;top:${g.y.toFixed(0)}px;width:${g.w.toFixed(0)}px;height:${g.h.toFixed(0)}px;--lan:${LANCET};perspective-origin:${px(I)}">
-      <i class="vshaft" style="${at(s2)}"></i><i class="vburst" style="${at(s1)}"></i>${sh}${vitrCracks(b, g.w, g.h)}<i class="vimp" style="left:${I[0].toFixed(0)}px;top:${I[1].toFixed(0)}px"></i></div></div>`;
+      <i class="vshaft" style="${at(s2)}"></i><i class="vburst" style="${at(s1)}"></i>${sh}${crack}${imp}</div></div>`;
 }
 // за ролью — витраж (d_reveal; нет — роза d_rose или мозаика) и живой свет (заметка пользователя 2026-10-24): по стеклу медленно
 // ходит пятно света, косые лучи плывут, в воздухе поднимаются светящиеся пылинки цветов стекла; за иконкой — лучи и ореол (CSS)
 const MOTE_C = ['#FFE7A8', '#FFB27A', '#9EC2FF', '#A8F0C0', '#E2B4FF'];
+/* Этап 2 (заметка пользователя 2026-10-24: «свет разноцветный, а лучше чтоб светился сам витраж»): снизу ночной витраж (d_reveal_dark;
+   нет — дневной, притушенный), над ним дневной — сначала загорается весь (прозрачность), потом по стеклу ходят два пятна полного
+   света: обёртка с круглой маской двигается, картинка внутри — ровно в обратную сторону (только transform), поэтому витраж стоит,
+   а свет гуляет. Сверху — ореол (размытый дневной) и цветные лучи d_beams; знак роли — в пустом медальоне (vitrAlign) */
 function vitrGlow() {
   const rnd = hRand((UI.openAt || 7) + 31);
   const motes = [...Array(18).keys()].map(m => `<i class="vmote" style="--x:${(rnd() * 100).toFixed(1)}%;--s:${(2 + rnd() * 4).toFixed(1)}px;--du:${(7 + rnd() * 7).toFixed(1)}s;--dl:-${(rnd() * 14).toFixed(1)}s;--dx:${Math.round((rnd() - .5) * 80)}px;--c:${MOTE_C[m % MOTE_C.length]}"></i>`).join('');
+  if (HAS_ART('d_reveal') && VMEDAL) return `<i class="vrbg glass" aria-hidden="true"><i class="vrg ${HAS_ART('d_reveal_dark') ? 'dark' : 'dim'}"></i><i class="vrlit"></i>`
+    + `<i class="vrspot s1"><i></i></i><i class="vrspot s2"><i></i></i>${HAS_ART('d_reveal_glow') ? '<i class="vrbloom"></i>' : ''}`
+    + `${HAS_ART('d_beams') ? '<i class="vrbeams"></i>' : '<i class="vrbeam"></i><i class="vrbeam b2"></i>'}<i class="vrvig"></i>${motes}</i>`;
   return `<i class="vrbg ${HAS_ART('d_reveal') ? 'art' : HAS_ART('d_rose') ? 'rose' : ''}" aria-hidden="true"><i class="vrg"></i><i class="vrsun"></i><i class="vrbeam"></i><i class="vrbeam b2"></i><i class="vrvig"></i>${motes}</i>`;
+}
+// медальон на витраже за ролью (prep_art.medallion → meta.vitr.medal: центр и радиус в пикселях картинки)
+const VMEDAL = (typeof ART_META !== 'undefined' && ART_META.vitr && ART_META.vitr.medal) || null;
+// витраж ставится так, чтобы медальон пришёлся на знак роли (на разных экранах он на разной высоте) и экран был закрыт целиком:
+// масштаб — наименьший, при котором картинка закрывает экран со всех сторон от знака (и медальон не меньше знака)
+function vitrAlign() {
+  const bg = document.querySelector('.vitr .vrbg.glass'), ic = document.querySelector('.vitr .wreveal .wrart'), ov = document.querySelector('.vitr .wreveal');
+  if (!bg || !ic || !ov || !VMEDAL) return;
+  const key = `${UI.openAt}|${window.innerWidth}|${window.innerHeight}`;
+  if (!UI.vrAlign || UI.vrAlign.key !== key) {
+    const o = ov.getBoundingClientRect(), r = ic.getBoundingClientRect(), W = o.width, H = o.height, m = VMEDAL;
+    const ix = r.left + r.width / 2 - o.left, iy = r.top + r.height / 2 - o.top;
+    const s = Math.max(ix / m.x, (W - ix) / (m.w - m.x), iy / m.y, (H - iy) / (m.h - m.y), r.width * .46 / m.r);
+    // затемнение под названием и способностью — по месту текста
+    const nm = ov.querySelector('.wrname'), ab = ov.querySelector('.wrab'), t = nm ? nm.getBoundingClientRect().top - o.top : H * .55, bt = ab ? ab.getBoundingClientRect().bottom - o.top : H * .8;
+    UI.vrAlign = { key, p: `${(ix - m.x * s).toFixed(1)}px ${(iy - m.y * s).toFixed(1)}px`, s: `${(m.w * s).toFixed(1)}px ${(m.h * s).toFixed(1)}px`, ty: `${((t + bt) / 2).toFixed(0)}px`, th: `${((bt - t) * .75 + 40).toFixed(0)}px` };
+  }
+  const a = UI.vrAlign; bg.style.setProperty('--rbp', a.p); bg.style.setProperty('--rbs', a.s); bg.style.setProperty('--tvy', a.ty); bg.style.setProperty('--tvh', a.th);
 }
 // полёт осколков ведёт код: бросок с силой тяжести, кувырок в трёх осях, к зрителю — крупнее (перспектива у .vbox);
 // блик — когда кусок поворачивается к свету
@@ -1786,7 +1829,8 @@ function vitrFly(fx) {
 }
 // после перерисовки: запустить полёт осколков; посреди разбития — все анимации слоя роли и открытого окна продолжаются с того же места
 function vitrAfter() {
-  if (!vitrOn() || !UI.openAt) return;
+  if (!vitrOn()) return;
+  vitrAlign(); if (!UI.openAt) return;
   const fx = document.querySelector('.vitr .vfx'); if (fx && !fx.dataset.on) vitrFly(fx);
   const el = Date.now() - UI.openAt; if (el < 60) return;
   document.querySelectorAll('.vitr .wreveal, .vitr .wcell.opened').forEach(n => n.getAnimations && n.getAnimations({ subtree: true }).forEach(a => { try { a.currentTime = el; } catch (e) { /* без времени */ } }));
@@ -2646,6 +2690,8 @@ let resizeTimer = null;
 document.addEventListener('pointerdown', e => { UI.tap = { x: e.clientX, y: e.clientY, t: Date.now() }; }, { capture: true, passive: true });
 // перестроить при повороте экрана: Гримуар кругом; витраж — столбцы окон под новый экран (не посреди разбития)
 window.addEventListener('resize', () => {
+  // роль открыта на витраже — только заново поставить медальон под знак роли
+  if (UI.wall && S.draw && S.draw.open !== null && vitrOn()) { clearTimeout(resizeTimer); resizeTimer = setTimeout(vitrAlign, 150); return; }
   if (!UI.grimShow && !(UI.wall && S.draw && S.draw.open === null && vitrOn())) return;
   clearTimeout(resizeTimer); resizeTimer = setTimeout(render, 150);
 });

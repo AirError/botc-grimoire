@@ -248,8 +248,98 @@ def vitrage():
                 blk = Image.new("RGBA", p.size, (0, 0, 0, 255)); blk.alpha_composite(p); p = blk.convert("RGB")
             p.save(OUT / f"d_pane{n}.png"); n += 1
     out["panes"] = n
-    if n: print("витраж: окон", n, "стекло", out.get("glass"))
+    # этап 2 (заметка пользователя 2026-10-24): ночной витраж за ролью (правка дневного — совпадает с ним линия в линию), ореол —
+    # сильно размытый дневной, медальон под знак роли → out["medal"]; цветные лучи и вспышка удара — свет на чёрном
+    if (SRC / "d_reveal_dark.png").exists():
+        Image.open(SRC / "d_reveal_dark.png").convert("RGB").save(OUT / "d_reveal_dark.jpg", quality=88)
+    if (SRC / "d_reveal.png").exists():
+        lit = Image.open(SRC / "d_reveal.png").convert("RGB")
+        lit.resize((160, round(160 * lit.height / lit.width)), Image.LANCZOS).filter(ImageFilter.GaussianBlur(5)).save(OUT / "d_reveal_glow.jpg", quality=82)
+        md = medallion(lit)
+        if md: out["medal"] = md
+    if (SRC / "d_beams.png").exists():
+        light_rgba(SRC / "d_beams.png", lift=10).save(OUT / "d_beams.png")
+    if (SRC / "d_impact.png").exists():  # квадрат вокруг вспышки (центр картинки)
+        im = light_rgba(SRC / "d_impact.png", lift=10); x0, y0, x1, y1 = im.getbbox(); c = im.width / 2
+        s = max(c - x0, x1 - c, c - y0, y1 - c) + 8; im.crop((round(c - s), round(c - s), round(c + s), round(c + s))).save(OUT / "d_impact.png")
+    # нарисованные трещины: картинка — свет (прозрачность = яркость); куски между линиями — многоугольники: осколки бьются по ним
+    cracks = []
+    for k in ("d_crack1", "d_crack2"):
+        if not (SRC / f"{k}.png").exists(): continue
+        light_rgba(SRC / f"{k}.png", lift=16).save(OUT / f"{k}.png")
+        c = crack_pieces(SRC / f"{k}.png"); c["k"] = k; cracks.append(c)
+        print(f"{k}: центр удара {c['c']}, кусков {len(c['p'])}")
+    if cracks: out["cracks"] = cracks
+    if n: print("витраж: окон", n, "стекло", out.get("glass"), "медальон", out.get("medal"))
     return out
+
+
+def medallion(im):
+    """Пустой медальон под знак роли на витраже за ролью: самое большое ровное тёмно-синее пятно → центр и радиус (пиксели картинки)."""
+    a = np.asarray(im).astype(int); r, g, b = a[..., 0], a[..., 1], a[..., 2]
+    m = (b > r + 50) & (b > g + 30) & (a.max(axis=2) < 150)
+    lab, n = ndimage.label(m)
+    if not n: return None
+    size = ndimage.sum(m, lab, range(1, n + 1)); i = int(size.argmax()) + 1
+    if size[i - 1] < m.size * .01: return None
+    ys, xs = np.where(lab == i)
+    return {"x": round(float(xs.mean()), 1), "y": round(float(ys.mean()), 1), "r": round(float(np.sqrt(size[i - 1] / np.pi)), 1), "w": im.width, "h": im.height}
+
+
+def crack_pieces(src, thr=100, dil=2, min_frac=.0008, eps=3):
+    """Нарисованные трещины (белым по чёрному) → центр удара и куски между линиями: многоугольники в долях картинки
+    (обход границы куска + упрощение Дугласа — Пекера). Линии утолщаются на dil px — щели между кусками; крошки меньше min_frac
+    площади пропускаем: там, у точки удара, — вспышка и сама трещина."""
+    m = np.asarray(Image.open(src).convert("RGB")).astype(float).max(axis=2); H, W = m.shape
+    dens = ndimage.gaussian_filter((m > 200).astype(float), 18)  # центр удара — где гуще всего яркие линии (у середины)
+    y0, x0 = int(H * .3), int(W * .3); iy, ix = np.unravel_index(dens[y0:H - y0, x0:W - x0].argmax(), dens[y0:H - y0, x0:W - x0].shape)
+    lab, n = ndimage.label(~ndimage.binary_dilation(m > thr, iterations=dil))
+    polys = []
+    for i, sl in enumerate(ndimage.find_objects(lab)):
+        if sl is None: continue
+        reg = lab[sl] == i + 1
+        if reg.sum() < W * H * min_frac: continue
+        pts = rdp(trace_boundary(reg), eps)
+        if len(pts) < 3: continue
+        polys.append([round(float(v), 4) for x, y in pts for v in ((x + sl[1].start) / W, (y + sl[0].start) / H)])
+    return {"c": [round((ix + x0) / W, 4), round((iy + y0) / H, 4)], "p": polys}
+
+
+def trace_boundary(reg):
+    """Обход границы связной области (Мур, по часовой стрелке) → точки контура (x, y) по порядку."""
+    m = np.pad(reg, 1)
+    ys, xs = np.nonzero(m); k = np.lexsort((xs, ys))[0]; y, x = int(ys[k]), int(xs[k])
+    D = ((0, -1), (-1, -1), (-1, 0), (-1, 1), (0, 1), (1, 1), (1, 0), (1, -1))  # (dy, dx) по часовой, начиная с запада
+    back, pts, first = 0, [(x - 1, y - 1)], None  # верхняя левая точка: слева от неё пусто — «пришли с запада»
+    for _ in range(8 * int(m.sum()) + 8):
+        for j in range(1, 9):
+            d = (back + j) % 8
+            if m[y + D[d][0], x + D[d][1]]: break
+        else:
+            return pts  # одна точка
+        by, bx = y + D[(d + 7) % 8][0], x + D[(d + 7) % 8][1]  # последняя пустая клетка перед найденной
+        y, x = y + D[d][0], x + D[d][1]; back = D.index((by - y, bx - x))
+        if first is None: first = (y, x, back)
+        elif (y, x, back) == first: break
+        pts.append((x - 1, y - 1))
+    return pts
+
+
+def rdp(pts, eps):
+    """Упрощение замкнутого контура (Дуглас — Пекер): делим по самой дальней от первой точке, каждую половину упрощаем."""
+    if len(pts) < 4: return pts
+    P = np.asarray(pts, float)
+    def simp(A):
+        keep = np.zeros(len(A), bool); keep[0] = keep[-1] = True; st = [(0, len(A) - 1)]
+        while st:
+            i, j = st.pop()
+            if j <= i + 1: continue
+            a, ab = A[i], A[j] - A[i]; L = float(np.hypot(*ab)) or 1e-9
+            dd = np.abs(ab[0] * (A[i + 1:j, 1] - a[1]) - ab[1] * (A[i + 1:j, 0] - a[0])) / L; k = int(dd.argmax())
+            if dd[k] > eps: keep[i + 1 + k] = True; st += [(i, i + 1 + k), (i + 1 + k, j)]
+        return [tuple(p) for p in A[keep]]
+    far = int(np.argmax(((P - P[0]) ** 2).sum(1)))
+    return simp(P[:far + 1])[:-1] + simp(np.vstack([P[far:], P[:1]]))[:-1]
 
 
 def arch_glass(im, mx=.03, mt=.012, mb=.01):

@@ -82,6 +82,9 @@ ART.update({f.rsplit(".", 1)[0]: (CUT / f, w) for f, w in _H.items()})
 ART.update({"d_nave": (CUT / "d_nave.jpg", 720), "d_reveal": (CUT / "d_reveal.jpg", 600), "d_arch": (CUT / "d_arch.png", 400),
             "d_arch_broken": (CUT / "d_arch_broken.png", 400)})
 ART.update({f"d_pane{i}": (CUT / f"d_pane{i}.png", 300) for i in range(20)})
+# этап 2: нарисованные трещины, ночной витраж и ореол за ролью, цветные лучи, вспышка удара
+ART.update({"d_reveal_dark": (CUT / "d_reveal_dark.jpg", 600), "d_reveal_glow": (CUT / "d_reveal_glow.jpg", 160), "d_beams": (CUT / "d_beams.png", 600),
+            "d_impact": (CUT / "d_impact.png", 400), "d_crack1": (CUT / "d_crack1.png", 700), "d_crack2": (CUT / "d_crack2.png", 700)})
 ART.update({f"c_em_{k}": (CUT / f"c_em_{k}.png", 220) for k in ("demon", "minions", "notinplay", "youare", "selected", "thisplayer", "yourrole",
                                                                "yes", "no", "good", "evil", "general_good", "general_evil", "general_neither", "moon")})
 
@@ -99,14 +102,14 @@ def webp_uri(path, width, alpha_quality=100, quality=82):
 # маски гравюры (белое + прозрачность): прозрачность можно сжать с потерями — вдвое легче, на глаз не видно
 LOSSY_ALPHA = {"c_engr", "c_frontis", "c_wreath", "c_night", "c_dial", "c_win_good", "c_win_evil"}
 LOSSY_ALPHA |= {"h_flame", "h_burst", "h_fog", "h_batline", "h_skull_fire"}
-lossy = lambda k: k in LOSSY_ALPHA or k.startswith(("c_em_", "h_em_", "h_ghost", "h_smoke", "h_wisp", "h_soul", "h_cflame", "h_web_"))
+lossy = lambda k: k in LOSSY_ALPHA or k.startswith(("c_em_", "h_em_", "h_ghost", "h_smoke", "h_wisp", "h_soul", "h_cflame", "h_web_", "d_crack", "d_beams", "d_impact"))
 # пестрая мозаика витража жмётся плохо: окна (20 штук) и приглушённый витраж за ролью — качеством пониже, на глаз не видно
-quality = lambda k: 72 if k.startswith("d_pane") else 65 if k == "d_reveal" else 82
+quality = lambda k: 72 if k.startswith("d_pane") else 65 if k in ("d_reveal", "d_reveal_dark") else 82
 art = {k: webp_uri(p, w, 70 if lossy(k) else 100, quality(k)) for k, (p, w) in ART.items() if p.exists()}
 meta = json.loads((CUT / "meta.json").read_text(encoding="utf-8")) if (CUT / "meta.json").exists() else {}
 art_js = ("const ART = " + json.dumps(art, separators=(",", ":")) + ";\n"
           + "const ART_META = " + json.dumps(meta) + ";\n")
-missing = [k for k, (p, _) in ART.items() if not p.exists() and not k.startswith(("d_pane", "d_nave", "d_reveal", "d_arch"))]  # витраж — по желанию
+missing = [k for k, (p, _) in ART.items() if not p.exists() and not k.startswith(("d_pane", "d_nave", "d_reveal", "d_arch", "d_crack", "d_beams", "d_impact"))]  # витраж — по желанию
 if missing:
     print("нет графики:", ", ".join(missing))
 
