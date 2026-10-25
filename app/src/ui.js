@@ -326,7 +326,7 @@ function artVars() {
     .concat(['day', 'night', 'setup', 'table', 'log', 'roles', 'menu'].map(k => 'c_tab_' + k), ENGR_GLYPHS.map(k => 'c_g_' + k), [...Array(24).keys()].map(i => 'rune' + i))
     // «Хэллоуин»: склеп, сундук, нечисть, свет и дым, украшения
     .concat(['h_crypt', 'h_ring', 'h_frame', 'h_chest_box', 'h_chest_lid', 'h_chest_open', 'h_bat_strip', 'h_skull_fire', 'h_wreath', 'h_spider', 'h_batline',
-      'h_flame', 'h_burst', 'h_fog', 'h_web_tl', 'h_web_tr', 'h_candle3', 'h_pumpkin1', 'h_pumpkin3'],
+      'h_flame', 'h_burst', 'h_fog', 'h_web_tl', 'h_web_tr', 'h_candle3', 'h_pumpkin1', 'h_pumpkin3', 'h_spider_strip', 'h_web_full'],
       [1, 2, 3, 4, 5, 6].map(i => 'h_wisp' + i), [1, 2, 3, 4, 5, 6].map(i => 'h_soul' + i), [1, 2, 3, 4].map(i => 'h_smoke' + i), [1, 2, 3, 4].map(i => 'h_cflame' + i))
     // «Витраж во тьме»: выдача ролей витражом (prompts_vitrage.md)
     .concat(['d_nave', 'd_reveal', 'd_arch', 'd_arch_broken', 'd_reveal_dark', 'd_reveal_glow', 'd_beams', 'd_impact', 'd_crack1', 'd_crack2'], [...Array(20).keys()].map(i => 'd_pane' + i));
@@ -1508,7 +1508,11 @@ function assignHtml(p) {
 }
 /* «Хэллоуин»: склеп вместо стены (просьба пользователя 2026-10-18). Ячейка — сундук: короб и крышка отдельными картинками (крышка
    распахивается), руна — на замке; после выдачи — открытый пустой сундук с паутиной. При открытии из сундука вылетает случайная нечисть */
-const HFX = ['ghost', 'bats', 'skull', 'wisps']; // вороны убраны: «вообще не интересно смотрятся» (пользователь, 2026-10-18)
+// вороны убраны: «вообще не интересно смотрятся» (пользователь, 2026-10-18); пауки, шарик с клоуном, девочка с табличкой и паразит —
+// идеи пользователя 2026-10-25 (этап 6 prompts_halloween.md), без своих картинок не вылетают
+const HFX = ['ghost', 'bats', 'skull', 'wisps', 'spiders', 'balloon', 'girl', 'hugger'];
+const HFX_ART = { spiders: ['h_spider_strip'], balloon: ['h_balloon', 'h_clown'], girl: ['h_girl1', 'h_girl2'], hugger: ['h_hugger1', 'h_hugger2'] };
+const hfxOk = k => (HFX_ART[k] || []).every(HAS_ART);
 const cryptOn = () => drawKind() === 'crypt';
 const hChest = () => '<span class="hchest" aria-hidden="true"><i class="hbox"></i><i class="hlid"></i><i class="hopen"></i></span>';
 // геометрия сундука (prep_art.halloween → meta.hallow.chest): короб и крышка в долях закрытого сундука
@@ -1541,11 +1545,37 @@ function skFire() {
 }
 const hSprite = (k, cls) => { const m = (typeof ART_META !== 'undefined' && ART_META.hallow && ART_META.hallow[k]) || { n: 6, w: 1, h: 1 };
   return { n: m.n, ar: m.w / m.h, html: `<i class="hspr ${cls}" style="width:${m.n * 100}%"></i>` }; };
+// помехи «старого телевизора» (девочка): шум рисуется один раз и ложится фоном (переменная --h-noise)
+function hNoise() {
+  if (hNoise.done) return; hNoise.done = true;
+  try {
+    const c = document.createElement('canvas'); c.width = 128; c.height = 96; const x = c.getContext('2d'), im = x.createImageData(128, 96);
+    for (let i = 0; i < im.data.length; i += 4) { const v = Math.random() * 255 | 0; im.data[i] = im.data[i + 1] = im.data[i + 2] = v; im.data[i + 3] = 255; }
+    x.putImageData(im, 0, 0); document.documentElement.style.setProperty('--h-noise', `url(${c.toDataURL('image/png')})`);
+  } catch (e) { /* без шума — только мигание */ }
+}
+const H_SPIDERS = 40; // пауков: 36 бегут по склепу, 4 — крупные, у самого лица
 function cryptFx() {
   const pos = UI.openPos || { x: 180, y: 300, dir: 1 }, fx = UI.openFx || 'ghost';
   const ghosts = [1, 2, 3, 4].filter(i => ART['h_ghost' + i]), souls = [1, 2, 3, 4, 5, 6].filter(i => ART['h_soul' + i]);
-  const bat = hSprite('bat', 'hs-bat');
-  const body = fx === 'ghost' ? `<i class="hcre"><i class="hflip">${ghosts.map(i => `<img class="hgp" src="${ART['h_ghost' + i]}" alt="">`).join('')}</i></i>`
+  const bat = hSprite('bat', 'hs-bat'), hm = (typeof ART_META !== 'undefined' && ART_META.hallow) || {};
+  let extra = '';
+  if (fx === 'spiders') {
+    const sp = hSprite('spider', 'hs-spider');
+    extra = [...Array(H_SPIDERS)].map(() => `<i class="hspd" style="width:${Math.round(56 * sp.ar)}px;height:56px;margin:-28px 0 0 ${-Math.round(28 * sp.ar)}px">${sp.html}</i>`).join('') + '<i class="hwebf"></i>';
+  } else if (fx === 'balloon') {
+    // шар — по центру самого шара (meta.hallow.balloon: центр и радиус в долях высоты), нитка свисает; клоун и клочья — из cryptFly
+    const bs = hm.h_balloon || [356, 1429], bm = hm.balloon || { cy: .15 }, bh = Math.round(64 * bs[1] / bs[0]);
+    extra = `<i class="hbal" style="height:${bh}px;margin:${-Math.round(bm.cy * bh)}px 0 0 -32px;transform-origin:50% ${(bm.cy * 100).toFixed(1)}%"><img src="${ART.h_balloon}" alt=""></i>`
+      + `<i class="hclown"><img src="${ART.h_clown}" alt=""></i>`;
+  } else if (fx === 'girl') {
+    // табличка (meta.hallow.sign — в долях картинки второй позы): надпись пишет приложение
+    hNoise(); const sg = hm.sign || { l: .075, t: .44, w: .846, h: .238 }, pc = v => (v * 100).toFixed(2) + '%';
+    extra = `<i class="hstat"></i><i class="hgclip"><img class="hg1" src="${ART.h_girl1}" alt=""></i>`
+      + `<i class="hgirl"><img src="${ART.h_girl2}" alt=""><b class="hsign" style="left:${pc(sg.l)};top:${pc(sg.t)};width:${pc(sg.w)};height:${pc(sg.h)}">7 ДНЕЙ</b></i>`;
+  } else if (fx === 'hugger') extra = `<i class="hhug"><img class="hh1" src="${ART.h_hugger1}" alt=""><img class="hh2" src="${ART.h_hugger2}" alt=""></i>`;
+  const body = extra ? extra
+    : fx === 'ghost' ? `<i class="hcre"><i class="hflip">${ghosts.map(i => `<img class="hgp" src="${ART['h_ghost' + i]}" alt="">`).join('')}</i></i>`
     : fx === 'bats' ? [1, 2, 3, 4, 5, 6].map(() => `<i class="hbatf" style="width:${Math.round(84 * bat.ar)}px;height:84px;margin:-42px 0 0 ${-Math.round(42 * bat.ar)}px">${bat.html}</i>`).join('')
       // пламя — в обёртке: обёртка укорачивает хвост, когда череп летит на зрителя, само пламя дрожит; виды черепа h_skull2–4 и
       // огненный венец (пламя спереди) — для разворота к зрителю (этап 5), без них череп так и летит в три четверти
@@ -1553,7 +1583,7 @@ function cryptFx() {
         // души (если нарисованы; четыре разных лица из шести) или болотные огоньки
         : souls.length ? souls.map(n => [hRand((UI.openAt || 7) + n)(), n]).sort((a, b) => a[0] - b[0]).slice(0, 4).map(([, n]) => `<i class="hwi soul" style="--m:var(--a-h-soul${n})"></i>`).join('')
           : [1, 2, 3, 4, 5].map(i => `<i class="hwi" style="--m:var(--a-h-wisp${i})"></i>`).join('');
-  return `<div class="hfx fx-${fx}" aria-hidden="true" data-fx="${fx}" data-x="${pos.x}" data-y="${pos.y}" data-dir="${pos.dir}" style="--x:${pos.x}px;--y:${pos.y}px;--dir:${pos.dir}"><i class="hburst"></i><i class="hsm s1"></i><i class="hsm s2"></i>${body}</div>`;
+  return `<div class="hfx fx-${fx}" aria-hidden="true" data-fx="${fx}" data-x="${pos.x}" data-y="${pos.y}" data-dir="${pos.dir}" data-rim="${pos.rim != null ? pos.rim : pos.y - 20}" data-cw="${pos.cw || 100}" style="--x:${pos.x}px;--y:${pos.y}px;--dir:${pos.dir}"><i class="hburst"></i><i class="hsm s1"></i><i class="hsm s2"></i>${body}</div>`;
 }
 /* Полёт нечисти — кодом (Web Animations). Путь — плавная кривая через опорные точки, ключевые кадры через ~30 мс и линейно между
    ними: скорость меняется без рывков (заметка пользователя 2026-10-18 «анимации рваные»: у CSS-кадров замедление было в каждом
@@ -1616,22 +1646,23 @@ function cryptFly(fx) {
   const W = fx.clientWidth, H = fx.clientHeight, dir = +fx.dataset.dir || 1, x0 = +fx.dataset.x, y0 = +fx.dataset.y, kind = fx.dataset.fx;
   const R = hRand(UI.openAt || 7), rnd = (a, b) => a + R() * (b - a), D = 300; // вылетает, когда крышка уже откинута
   const N = { bat: hSprite('bat').n }, C = [W / 2 - x0, H * .42 - y0]; // точка схода — середина экрана (от сундука)
+  const hm = (typeof ART_META !== 'undefined' && ART_META.hallow) || {}, rim = +fx.dataset.rim - y0, cw = +fx.dataset.cw || 100; // край короба — от точки вылета
   if (kind === 'ghost') {
-    // выныривает из сундука (вытянут), уходит в сторону, покачиваясь, — и бросается на зрителя, вырастая и растворяясь
-    // банши (4 позы: выныривает / летит / кричит / рассыпается): чаще бросается на зрителя с криком, иногда уносится и рассыпается на лету
-    const g = fx.querySelector('.hcre'), poses = [...fx.querySelectorAll('.hgp')], flee = poses.length >= 4 && R() < .35, dur = flee ? 1650 : 1750;
-    const lx = (W / 2 - x0) * .9, ly = H * .42 - y0; // бросок — в середину экрана, на зрителя
-    const P = flee ? [[0, 24], [dir * 6, -50], [dir * 40, -118], [dir * 110, -160], [dir * W * .45, -H * .3], [dir * W * .8, -H * .42]]
-      : [[0, 24], [dir * 6, -50], [dir * 38, -118], [dir * 92, -150], [dir * 70 + lx * .3, -150 + (ly + 150) * .4], [lx, ly]];
-    hAnim(g, u => { const v = hAt(P, u), L = flee ? 0 : hRamp(u, .64, 1), big = 1 + 2.3 * Math.pow(L, 1.6), sway = Math.sin(u * Math.PI * 3.2) * (1 - L), grow = flee ? 1 + .25 * hRamp(u, .5, 1) : 1;
+    // банши (позы: выныривает / летит / кричит): выныривает из сундука (вытянута), отлетает чуть в сторону, покачиваясь, — и с криком
+    // бросается на зрителя: в середину экрана, вырастая во весь экран. Всегда на игрока (заметка пользователя 2026-10-25: «часто
+    // улетает вбок» — раньше в трети случаев она уносилась в сторону и рассыпалась)
+    const g = fx.querySelector('.hcre'), poses = [...fx.querySelectorAll('.hgp')], dur = 1750;
+    const lx = W / 2 - x0, ly = H * .42 - y0; // бросок — в середину экрана, на зрителя
+    const P = [[0, 24], [dir * 6, -50], [dir * 34, -118], [dir * 70, -150], [dir * 50 + lx * .35, -150 + (ly + 150) * .4], [lx, ly]];
+    hAnim(g, u => { const v = hAt(P, u), L = hRamp(u, .62, 1), big = 1 + 3.4 * Math.pow(L, 1.7), sway = Math.sin(u * Math.PI * 3.2) * (1 - L);
       return { x: v.x + sway * 7, y: v.y, r: sway * 6 + hClamp(v.vx * dir * .35, -10, 10) * dir * (1 - L) + Math.sin(L * 40) * 4 * L,
-        sx: (.55 + .45 * hSmooth(hRamp(u, 0, .22))) * big * grow, sy: (1.5 - .5 * hSmooth(hRamp(u, 0, .22))) * big * grow, o: hFadeIO(u, .07, flee ? .8 : .9) }; }, dur, D);
-    // позы сменяются плавно (наплывом), а не скачком; [начало, конец] доли полёта, null — поза не показывается
-    const win = poses.length < 4 ? [[0, .26], [.26, .64], [.64, 1]] : flee ? [[0, .26], [.26, .62], null, [.62, 1]] : [[0, .26], [.26, .6], [.6, 1], null];
+        sx: (.55 + .45 * hSmooth(hRamp(u, 0, .22))) * big, sy: (1.5 - .5 * hSmooth(hRamp(u, 0, .22))) * big, o: hFadeIO(u, .07, .92) }; }, dur, D);
+    // позы сменяются плавно (наплывом), а не скачком; [начало, конец] доли полёта, null — поза не показывается (4-я, «рассыпается», не нужна)
+    const win = poses.length < 4 ? [[0, .26], [.26, .64], [.64, 1]] : [[0, .26], [.26, .6], [.6, 1], null];
     poses.forEach((im, i) => { const wi = win[i], w = .09, last = win.slice(i + 1).every(x => !x);
       hFade(im, u => !wi ? 0 : (i === 0 ? 1 : hRamp(u, wi[0] - w / 2, wi[0] + w / 2)) * (last ? 1 : 1 - hRamp(u, wi[1] - w / 2, wi[1] + w / 2)), dur, D); });
-    // крик: склеп вздрагивает, когда призрак бросается
-    if (!flee) hShake(D + dur * .66, 4);
+    // крик: склеп вздрагивает, когда призрак бросается; у самого лица — бледная вспышка
+    hShake(D + dur * .66, 4); hFlash(fx, D + dur * .92, '#DCE6FF', .35);
   } else if (kind === 'bats') {
     // стая вырывается из сундука; половина проносится у самого лица (крупнеет и уходит за края экрана), половина улетает вглубь склепа
     fx.querySelectorAll('.hbatf').forEach((b, i) => {
@@ -1665,6 +1696,115 @@ function cryptFly(fx) {
       fire.animate([[1, 0], [1.07, 4], [.96, -3], [1.05, 2], [1, 0]].map(([k, r], i) => ({ transform: `rotate(${r}deg) scale(${k})`, offset: i / 4 })), { duration: 560, iterations: Infinity, easing: 'ease-in-out' });
     }
     hFlash(fx, D + dur * .95, '#7CFF6A', .55); hShake(D + dur * .95, 6);
+  } else if (kind === 'spiders') {
+    // пауки выбегают из сундука волнами — всё чаще; одни убегают за край, другие замирают по всему экрану, крупные проносятся у самого
+    // лица; поверх ложится паутина на весь экран; потом замершие разбегаются к ближнему краю. Ноги переставляются по пройденному пути:
+    // стоит — ноги стоят (кадры шага — через 16 мс, иначе на бегу ноги мельтешат вразнобой)
+    const ns = hSprite('spider').n, els = [...fx.querySelectorAll('.hspd')], nb = 4, kk = hClamp(Math.min(W, H) / 375, 1, 1.6); // на планшете — крупнее
+    const out = (sx, sy, a, mg) => { // от точки (от сундука) по направлению a — за край экрана с запасом mg
+      const cx = Math.cos(a), cy = Math.sin(a), X = sx + x0, Y = sy + y0;
+      const tx = cx > 1e-6 ? (W + mg - X) / cx : cx < -1e-6 ? (-mg - X) / cx : 1e9, ty = cy > 1e-6 ? (H + mg - Y) / cy : cy < -1e-6 ? (-mg - Y) / cy : 1e9, t = Math.min(tx, ty);
+      return [sx + cx * t, sy + cy * t]; };
+    const wob = (a, b, k, w) => { const dx = b[0] - a[0], dy = b[1] - a[1], l = Math.hypot(dx, dy) || 1; return [a[0] + dx * k - dy / l * w, a[1] + dy * k + dx / l * w]; };
+    // pos(u) → [x, y, масштаб, прозрачность]; голова — по направлению бега (на картинке паук смотрит вверх)
+    const crawl = (el, pos, dur, at) => {
+      const n = Math.max(12, Math.round(dur / 16)), pts = [], kf = [], lk = []; let r = null, dist = 0;
+      for (let i = 0; i <= n; i++) pts.push(pos(i / n));
+      pts.forEach((p, i) => {
+        const a = pts[Math.max(0, i - 1)], b = pts[Math.min(n, i + 1)], vx = b[0] - a[0], vy = b[1] - a[1];
+        if (Math.hypot(vx, vy) > .6) { let nr = Math.atan2(vy, vx) * 180 / Math.PI + 90; if (r != null) nr += Math.round((r - nr) / 360) * 360; r = r == null ? nr : r + (nr - r) * .55; }
+        if (i) dist += Math.hypot(p[0] - pts[i - 1][0], p[1] - pts[i - 1][1]) / p[2];
+        kf.push({ offset: i / n, opacity: +hClamp(p[3], 0, 1).toFixed(3), transform: `translate(${p[0].toFixed(1)}px,${p[1].toFixed(1)}px) rotate(${(r || 0).toFixed(1)}deg) scale(${p[2].toFixed(3)})` });
+        lk.push({ offset: i / n, transform: `translateX(${(-100 * (Math.floor(dist / 7) % ns) / ns).toFixed(3)}%)`, easing: 'step-end' });
+      });
+      el.animate(kf, { duration: dur, delay: at, fill: 'both', easing: 'linear' });
+      const sp = el.querySelector('.hspr'); if (sp) sp.animate(lk, { duration: dur, delay: at, fill: 'both' });
+    };
+    els.forEach((el, i) => {
+      const st = [rnd(-10, 10), rnd(-4, 8)];
+      if (i >= els.length - nb) { // крупный: у самого лица — вырастает втрое и уходит за край
+        const at = D + 620 + (i - els.length + nb) * 170 + rnd(0, 80), e = out(st[0], st[1], rnd(0, Math.PI * 2), 170), m = wob(st, e, .5, rnd(-60, 60));
+        const P = [[st[0], st[1], 1.1], [m[0], m[1], .55], [e[0], e[1], .3]].map(p => hWorld(C, p));
+        crawl(el, u => { const v = hAt3(P, C, u); return [v.x, v.y, v.s * .9 * kk, hRamp(u, 0, .05)]; }, rnd(950, 1150), at);
+        return;
+      }
+      const at = D + 1050 * Math.sqrt(i / (els.length - nb)) + rnd(0, 50), sz = rnd(.7, 1.3) * kk, v = rnd(430, 680) * kk / 1000; // скорость — px/мс
+      if (R() < .42) { // замирает где-то на экране, потом убегает к ближнему краю
+        const S = [rnd(.06, .94) * W - x0, rnd(.1, .9) * H - y0], A = [st, wob(st, S, .5, rnd(-50, 50)), S], ta = Math.hypot(S[0] - st[0], S[1] - st[1]) * 1.1 / v;
+        const X = S[0] + x0, Y = S[1] + y0, dl = [X, W - X, Y, H - Y], j = dl.indexOf(Math.min(...dl));
+        const E = j === 0 ? [-60 - x0, S[1] + rnd(-40, 40)] : j === 1 ? [W + 60 - x0, S[1] + rnd(-40, 40)] : j === 2 ? [S[0] + rnd(-40, 40), -60 - y0] : [S[0] + rnd(-40, 40), H + 60 - y0];
+        const leave = Math.max(ta + 150, D + 1700 + rnd(0, 380) - at), tl = Math.hypot(E[0] - S[0], E[1] - S[1]) / (v * 1.5), B = [S, wob(S, E, .5, rnd(-30, 30)), E], dur = leave + tl;
+        crawl(el, u => { const t = u * dur, p = t < ta ? hSpline(A, 1 - Math.pow(1 - t / ta, 1.6)) : t < leave ? S : hSpline(B, (t - leave) / tl); return [p[0], p[1], sz, hRamp(t, 0, 60)]; }, dur, at);
+      } else {
+        const e = out(st[0], st[1], rnd(0, Math.PI * 2), 50), P = [st, wob(st, e, .33, rnd(-45, 45)), wob(st, e, .66, rnd(-45, 45)), e], dur = Math.hypot(e[0] - st[0], e[1] - st[1]) * 1.08 / v;
+        crawl(el, u => { const p = hSpline(P, u); return [p[0], p[1], sz, hRamp(u * dur, 0, 60)]; }, dur, at);
+      }
+    });
+    // паутина на весь экран: ложится, пока пауков больше всего, и меркнет, когда они разбегаются
+    hAnim(fx.querySelector('.hwebf'), u => ({ s: 1.12 - .12 * hSmooth(hRamp(u, 0, .4)), o: .8 * hSmooth(hRamp(u, 0, .3)) * (1 - hSmooth(hRamp(u, .6, 1))) }), 1600, D + 780);
+  } else if (kind === 'balloon') {
+    // красный шарик всплывает из сундука, покачиваясь на нитке, и летит в лицо; лопается (вспышка, кольцо, красные клочья) — и из
+    // вспышки бросается зубастый клоун, трясясь от смеха
+    const b = fx.querySelector('.hbal'), cl = fx.querySelector('.hclown'), fly = 1050;
+    const P = [[0, 6, 1.7], [dir * 8, -50, 1.6], [dir * 26 + C[0] * .15, -120, 1.35], [C[0] * .6, C[1] * .6 - 30, .8], [C[0], C[1] - 10, .34]].map(p => hWorld(C, p));
+    hAnim(b, u => { const v = hAt3(P, C, u); return { x: v.x, y: v.y, r: Math.sin(u * Math.PI * 3.4) * 9 * (1 - .5 * u) + hClamp(v.vx * .4, -12, 12), s: v.s * (.4 + .6 * hSmooth(hRamp(u, 0, .2))), o: u < .999 ? hRamp(u, 0, .06) : 0 }; }, fly, D);
+    const end = hAt3(P, C, 1), pop = D + fly, Q = [end.x, end.y], rr = 30 * end.s;
+    hFlash(fx, pop - 20, '#FFF4F0', .75);
+    const ring = document.createElement('i'); ring.className = 'hpop'; fx.appendChild(ring);
+    // (прозрачность в начале — 0: до своего срока кадр стоит первым, fill: both)
+    hAnim(ring, u => ({ x: Q[0], y: Q[1], s: rr / 20 * (1 + 3 * u), o: .9 * (1 - u) * hRamp(u, 0, .05) }), 320, pop);
+    for (let k = 0; k < 14; k++) {
+      const sh = document.createElement('i'); sh.className = 'hshred s' + (k % 3); fx.appendChild(sh);
+      const a = k / 14 * Math.PI * 2 + rnd(-.25, .25), d = rr * rnd(1.4, 3.2) + rnd(40, 120), spin = rnd(-1, 1) * 540, g = rnd(60, 160);
+      hAnim(sh, u => { const e = 1 - Math.pow(1 - u, 2.4), L = rr * .7 + d * e; return { x: Q[0] + Math.cos(a) * L, y: Q[1] + Math.sin(a) * L + g * u * u, r: spin * u, s: end.s * .7 * (1 - .5 * u), o: hRamp(u, 0, .03) * (1 - hRamp(u, .55, 1)) }; }, rnd(560, 760), pop);
+    }
+    // клоун — во всю ширину экрана: бросается из вспышки, хохочет (трясётся), подаётся ещё ближе и гаснет
+    const sz = Math.min(W * 1.02, H * .62), cx = W / 2 - x0, cy = H * .45 - y0, cd = 1350;
+    cl.style.width = cl.style.height = sz.toFixed(0) + 'px'; cl.style.margin = `${(-sz / 2).toFixed(0)}px 0 0 ${(-sz / 2).toFixed(0)}px`;
+    hAnim(cl, u => { const t = u * cd, lunge = hSmooth(hRamp(t, 0, 170)), laugh = hRamp(t, 120, 300) * (1 - hRamp(t, 1000, 1300)), w = t / 1000 * Math.PI * 2 * 6;
+      return { x: cx + Math.sin(w) * 5 * laugh, y: cy - Math.abs(Math.sin(w / 2)) * 9 * laugh, r: Math.sin(w / 2) * 3 * laugh,
+        s: (.45 + .63 * lunge) * (1 + .1 * hRamp(t, 170, 1100)) * (1 + .25 * hRamp(t, 1100, cd)), o: hRamp(t, 0, 60) * (1 - hRamp(t, 1080, cd)) }; }, cd, pop + 30);
+    hShake(pop + 60, 7); hShake(pop + 420, 4); hShake(pop + 780, 4);
+  } else if (kind === 'girl') {
+    // помехи старого телевизора; из-за края сундука показываются пальцы и мокрые волосы — она медленно поднимается; помехи вспыхивают —
+    // и она уже прямо перед вами, с табличкой «7 ДНЕЙ», подплывает и дёргается помехами; в конце гаснет, как кинескоп
+    const clip = fx.querySelector('.hgclip'), g1 = fx.querySelector('.hg1'), g2 = fx.querySelector('.hgirl'), st = fx.querySelector('.hstat'), T1 = 950, T2 = 2050;
+    const a1 = hm.h_girl1 || [639, 266], a2 = hm.h_girl2 || [642, 993];
+    const w1 = Math.min(cw * 1.35, W * .6), h1 = w1 * a1[1] / a1[0]; // пальцы — на краю короба
+    clip.style.cssText = `width:${w1.toFixed(0)}px;height:${h1.toFixed(0)}px;margin:${(rim + 6 - h1).toFixed(0)}px 0 0 ${(-w1 / 2).toFixed(0)}px`;
+    hAnim(g1, u => { const t = u * T1, up = hSmooth(hRamp(t, 0, 700)); return { y: h1 * (1 - up) + Math.sin(t / 37) * .8 * up, o: t < T1 - 20 ? 1 : 0 }; }, T1, D);
+    const h2 = Math.min(H * .8, W * .96 * a2[1] / a2[0]), w2 = h2 * a2[0] / a2[1], gx = W / 2 - x0, gy = H * .48 - y0, td = T2 - T1 + 160;
+    g2.style.cssText = `width:${w2.toFixed(0)}px;height:${h2.toFixed(0)}px;margin:${(-h2 / 2).toFixed(0)}px 0 0 ${(-w2 / 2).toFixed(0)}px`;
+    const jit = [[.2, 9], [.47, -12], [.72, 7]].map(([p, d]) => [p + rnd(-.04, .04), d]); // рывки помех
+    hAnim(g2, u => { const t = u * td, near = .94 + .14 * hRamp(t, 0, T2 - T1), off = hRamp(t, T2 - T1, td - 10), j = jit.reduce((s, [p, d]) => s + (Math.abs(u - p) < .022 ? d : 0), 0);
+      return { x: gx + j, y: gy, sx: near * (1 + .3 * off), sy: near * (1 - .98 * off), o: off >= 1 ? 0 : hRamp(t, 0, 40) }; }, td, D + T1);
+    // помехи — всё время, вспышками на стыках; шум дёргается целыми скачками
+    const sd = T2 + 320, ok = [[0, 0], [60, .5], [200, .22], [T1 - 60, .25], [T1, .9], [T1 + 140, .2], [T2 - 40, .22], [T2 + 40, .9], [T2 + 200, .35], [sd, 0]];
+    st.animate(ok.map(([t, o]) => ({ offset: t / sd, opacity: o })), { duration: sd, delay: D, fill: 'both', easing: 'linear' });
+    const jk = []; for (let t = 0; t < sd; t += 50) jk.push({ offset: t / sd, transform: `translate(${-rnd(0, 90).toFixed(0)}px,${-rnd(0, 90).toFixed(0)}px)`, easing: 'step-end' });
+    jk.push({ offset: 1, transform: 'none' }); st.animate(jk, { duration: sd, delay: D, fill: 'both' });
+    hShake(D + T1, 3); hFlash(fx, D + T2 + 60, '#E8EEF8', .45);
+  } else if (kind === 'hugger') {
+    // паразит выскакивает из сундука на край короба, припадает, дрожа, — и прыгает прямо в лицо: растопыренные лапы во весь экран,
+    // удар, дрожь, брызги слизи стекают по «стеклу» экрана
+    const hg = fx.querySelector('.hhug'), p1 = fx.querySelector('.hh1'), p2 = fx.querySelector('.hh2'), ar = hm.h_hugger1 || [837, 923];
+    const w0 = Math.min(cw * 1.1, 130), h0 = w0 * ar[1] / ar[0], sit = rim - h0 * .3, cover = Math.max(W, H) * 1.3 / (w0 * .9);
+    hg.style.cssText = `width:${w0.toFixed(0)}px;height:${h0.toFixed(0)}px;margin:${(-h0 / 2).toFixed(0)}px 0 0 ${(-w0 / 2).toFixed(0)}px`;
+    const t1 = 380, t2 = 760, t3 = 1180, t4 = 1400, t5 = 1680; // выскочил / припал / долетел / держится / тает
+    const LP = [[dir * 4, sit + 4, 1], [C[0] * .3 + dir * 14, sit + (C[1] - sit) * .25 - 40, .55], [C[0], C[1], 1 / cover]].map(p => hWorld(C, p));
+    hAnim(hg, u => { const t = u * t5;
+      if (t < t1) { const e = hSmooth(t / t1); return { x: dir * 4 * e, y: 14 + (sit - 14) * e - Math.sin(e * Math.PI) * 46, s: .35 + .55 * e, r: (1 - e) * dir * -20, o: hRamp(t, 0, 50) }; }
+      if (t < t2) { const k = (t - t1) / (t2 - t1); return { x: dir * 4 + Math.sin(t / 19) * 1.6, y: sit + 4 * hSmooth(hRamp(k, 0, .5)), sx: .9 * (1 + .06 * hRamp(k, 0, .6)), sy: .9 * (1 - .1 * hRamp(k, 0, .6)), r: Math.sin(t / 23) * 1.5 }; }
+      if (t < t3) { const v = hAt3(LP, C, Math.pow((t - t2) / (t3 - t2), 1.15)); return { x: v.x, y: v.y, s: .9 * v.s, r: 14 * dir * (t - t2) / (t3 - t2) }; }
+      if (t < t4) { const k = (t - t3) / (t4 - t3); return { x: C[0] + Math.sin(t / 15) * 6 * (1 - k), y: C[1] + Math.cos(t / 13) * 5 * (1 - k), s: .9 * cover * (1 + .04 * Math.sin(t / 30)), r: 14 * dir }; }
+      const k = (t - t4) / (t5 - t4); return { x: C[0], y: C[1] + 30 * k, s: .9 * cover * (1 + .08 * k), r: 14 * dir, o: 1 - hSmooth(k) }; }, t5, D);
+    hFade(p1, u => 1 - hRamp(u * t5, t2, t2 + 60), t5, D); hFade(p2, u => hRamp(u * t5, t2, t2 + 60), t5, D);
+    hFlash(fx, D + t3 - 20, '#D7E86A', .5); hShake(D + t3, 8);
+    for (let k = 0; k < 10; k++) { // слизь на «стекле»: брызги расплываются и стекают
+      const sl = document.createElement('i'); sl.className = 'hslime s' + (k % 3); fx.appendChild(sl);
+      const px = C[0] + rnd(-.45, .45) * W, py = C[1] + rnd(-.4, .35) * H, sz = rnd(.5, 1.6), drop = rnd(50, 160);
+      hAnim(sl, u => ({ x: px, y: py + drop * Math.pow(hRamp(u, .12, 1), 1.4), sx: sz * hSmooth(hRamp(u, 0, .08)), sy: sz * hSmooth(hRamp(u, 0, .08)) * (1 + .5 * hRamp(u, .12, 1)), o: .85 * (1 - hRamp(u, .6, 1)) }), rnd(1200, 1600), D + t3 + rnd(0, 60));
+    }
   } else {
     // души / огоньки: кружат спиралью вокруг сундука (ближняя сторона крупнее), потом одна за другой бросаются в экран —
     // кричащее лицо вырастает во весь экран, вспышка цвета руны
@@ -2592,12 +2732,16 @@ const A = {
     // столбцов 3 на телефоне, 4–5 на широком экране)
     const cell = document.querySelector(`.wcell[data-arg="${i}"]`), wall = document.querySelector('.wall');
     if (cell && wall) { const a = cell.getBoundingClientRect(), b = wall.getBoundingClientRect(), fx = (a.left + a.width / 2 - b.left) / b.width;
-      UI.openPos = { x: Math.round(a.left + a.width / 2 - b.left), y: Math.round(a.top + a.height * .35 - b.top), dir: fx > .62 ? -1 : fx < .38 ? 1 : (Math.random() < .5 ? -1 : 1) };
+      // rim — верхний край короба (оттуда выглядывает девочка, на него запрыгивает паразит), cw — ширина короба
+      const bx = (cell.querySelector('.hbox') || cell).getBoundingClientRect();
+      UI.openPos = { x: Math.round(a.left + a.width / 2 - b.left), y: Math.round(a.top + a.height * .35 - b.top), dir: fx > .62 ? -1 : fx < .38 ? 1 : (Math.random() < .5 ? -1 : 1),
+        rim: Math.round(bx.top - b.top), cw: Math.round(bx.width) };
       // витраж: где на экране окно (слой разбития лежит поверх всего слоя стены) и куда в стекле пришёлся удар — туда, где нажали
       const ov = document.querySelector('.wallov').getBoundingClientRect(); UI.openRect = { x: a.left - ov.left, y: a.top - ov.top, w: a.width, h: a.height };
       const tp = UI.tap && Date.now() - UI.tap.t < 1500 ? UI.tap : null;
       UI.openHit = tp ? [tp.x - a.left - a.width * VG.l / 100, tp.y - a.top - a.height * VG.t / 100] : null; }
-    UI.openFx = HFX[Math.floor(Math.random() * HFX.length)];
+    // кто вылетит — случайно, но не тот же, что у прошлого сундука
+    const fxs = HFX.filter(k => hfxOk(k) && k !== UI.openFx); UI.openFx = fxs[Math.floor(Math.random() * fxs.length)] || 'ghost';
     act(S => E.drawOpen(S, +i), 'жребий: ячейка открыта'); },
   // закрыть роль можно не раньше чем через 2 секунды — чтобы игрок успел прочитать и не закрыл случайно (было 3 с; просьба пользователя 2026-10-18)
   drawClose: () => { if (UI.openAt && Date.now() - UI.openAt < 2000) return; UI.openAt = null;

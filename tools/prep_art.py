@@ -452,6 +452,36 @@ def alpha_pad(im, thr=8):
     return Image.fromarray(a, "RGBA")
 
 
+def defringe(im, band=4, lo=185, hi=235):
+    """Светлая кайма у края вырезки (белый фон между прядями волос, между лапами) — прозрачнее, чем светлее."""
+    A = np.asarray(im).copy(); t = A[..., 3] < 24
+    near = ndimage.distance_transform_edt(~t) <= band
+    k = np.clip((hi - A[..., :3].min(axis=2).astype(float)) / (hi - lo), 0, 1)
+    A[..., 3] = np.where(near & ~t, A[..., 3] * k, A[..., 3]).round().astype(np.uint8)
+    return Image.fromarray(A, "RGBA")
+
+
+def blob_poses(im, n=2, dil=6):
+    """Позы на листе, заходящие за середину (сеткой не разрезать): n самых крупных кусков слева направо, мелкие куски (кончики лап) —
+    к ближайшему крупному. Каждая поза — по центру общего холста: масштаб твари при смене поз не меняется."""
+    A = np.asarray(im); a = A[..., 3] > 24
+    lab, k = ndimage.label(ndimage.binary_dilation(a, iterations=dil)); objs = ndimage.find_objects(lab)
+    big = sorted((np.argsort(ndimage.sum(a, lab, range(1, k + 1)))[::-1][:n] + 1).tolist(), key=lambda i: objs[i - 1][1].start)
+    def gap(i, b):
+        s, t = objs[i - 1], objs[b - 1]
+        dx = max(t[1].start - s[1].stop, 0, s[1].start - t[1].stop); dy = max(t[0].start - s[0].stop, 0, s[0].start - t[0].stop)
+        return dx * dx + dy * dy
+    owner = {i: i if i in big else min(big, key=lambda b: gap(i, b)) for i in range(1, k + 1)}
+    res = []
+    for b in big:
+        m = ndimage.binary_dilation(np.isin(lab, [i for i, o in owner.items() if o == b]) & a, iterations=2)
+        X = A.copy(); X[..., 3] = np.where(m, X[..., 3], 0); res.append(alpha_bbox(Image.fromarray(X, "RGBA"), thr=8))
+    W, H = max(r.width for r in res), max(r.height for r in res); out = []
+    for r in res:
+        c = Image.new("RGBA", (W, H), (255, 255, 255, 0)); c.alpha_composite(r, ((W - r.width) // 2, (H - r.height) // 2)); out.append(c)
+    return out
+
+
 def facing(im):
     """Куда смотрит летящая фигура: голова (верхняя треть силуэта) правее середины — вправо (1), левее — влево (−1)."""
     a = np.asarray(im)[..., 3].astype(float); ys, xs = np.nonzero(a > 40)
@@ -541,6 +571,33 @@ def halloween():
             for i, im in enumerate(grid_pieces(white_alpha(SRC / f"{n}.png"), 4, 1), 1): save(f"{k}{i}", im)
     if have("h_fog"):
         f = light_mask(SRC / "h_fog.png", lift=10); w, h = f.size; save("h_fog", f.crop((0, h // 2 - 40, w, h)))
+    # этап 6 (идеи пользователя 2026-10-25): пауки и паутина, шарик и клоун, девочка с табличкой, паразит
+    if have("h_spider_walk"):  # паук сверху, 8 кадров бега 4×2 — как кадры мыши (тело в одной точке), с отсветом свечей
+        fr = sprite_frames(white_alpha(SRC / "h_spider_walk.png"), 4, 2, pad=10); st = halo(strip(fr, 140), sigma=3.5)
+        save("h_spider_strip", st); out["spider"] = {"n": len(fr), "w": round(st.width / len(fr)), "h": 140}
+    if have("h_web_full"): save("h_web_full", light_mask(SRC / "h_web_full.png", lift=14))
+    if have("h_balloon"):  # шарик на нитке; где сам шар (центр и радиус в долях высоты картинки) — чтобы лопнуть его в нужном месте
+        b = alpha_bbox(white_alpha(SRC / "h_balloon.png"), thr=20); a = np.asarray(b)[..., 3] > 128
+        rows = np.nonzero(a.sum(axis=1) > a.shape[1] * .2)[0]; bulb = rows[rows < rows.min() + a.shape[0] * .5]
+        out["balloon"] = {"cy": round(float((bulb.min() + bulb.max()) / 2 / b.height), 4), "r": round(float((bulb.max() - bulb.min()) / 2 / b.height), 4)}
+        save("h_balloon", b)
+    if have("h_clown"):  # лицо на чёрном; волосы упираются в край кадра — край растворяется
+        c = black_alpha(SRC / "h_clown.png"); A = np.asarray(c).copy(); h, w = A.shape[:2]
+        e = np.minimum.outer(np.minimum(np.arange(h), np.arange(h)[::-1]), np.minimum(np.arange(w), np.arange(w)[::-1]))
+        A[..., 3] = (A[..., 3] * np.clip(e / (w * .04), 0, 1)).round().astype(np.uint8); save("h_clown", Image.fromarray(A, "RGBA"))
+    if have("h_girl"):  # две позы по половинам; белый фон между прядями — прозрачный; табличка — самая большая тёплая песочная область
+        g = defringe(white_alpha(SRC / "h_girl.png", inner_thr=232, min_area=12))
+        p1, p2 = [alpha_bbox(alpha_pad(p), thr=8) for p in grid_frames(g, 2, 1, pad=0)]
+        save("h_girl1", p1); save("h_girl2", p2)
+        P2 = np.asarray(p2).astype(int); r, gg, bl = P2[..., 0], P2[..., 1], P2[..., 2]
+        warm = (P2[..., 3] > 200) & (r > 140) & (r - bl > 28) & (r >= gg) & (gg > bl)
+        lab, n = ndimage.label(ndimage.binary_opening(warm, iterations=2))
+        if n:
+            ys, xs = np.nonzero(lab == 1 + int(np.argmax(ndimage.sum(warm, lab, range(1, n + 1))))); H, W = warm.shape
+            out["sign"] = {"l": round(float(xs.min() / W), 4), "t": round(float(ys.min() / H), 4), "w": round(float((xs.max() - xs.min()) / W), 4), "h": round(float((ys.max() - ys.min()) / H), 4)}
+            print("табличка девочки:", out["sign"])
+    if have("h_hugger"):  # поза прыжка заходит за середину листа — позы по кускам; блики на спине не трогаем (min_area)
+        for i, im in enumerate(blob_poses(defringe(white_alpha(SRC / "h_hugger.png", inner_thr=232, min_area=200))), 1): save(f"h_hugger{i}", im)
     return out
 
 

@@ -1253,6 +1253,39 @@ html .wallov.crypt .wrfor { font-family: var(--f-wet, 'Rubik Wet Paint', 'Kurale
 /* души: крупнее, цвет руны высветлен — лица читаются на тёмном склепе */
 .hwi.soul { width: 120px; height: 120px; margin: -60px 0 0 -60px; }
 @supports (background: color-mix(in srgb, red 50%, white)) { .hwi.soul { background: color-mix(in srgb, var(--glow) 62%, #FFFFFF); } }
+/* этап 6 (идеи пользователя 2026-10-25). Размеры и места того, что во весь экран, ставит cryptFly; до старта всё невидимо */
+.hspd, .hbal, .hclown, .hhug, .hg1, .hgirl, .hstat, .hwebf { opacity: 0; }
+.hspd { overflow: hidden; }
+.hs-spider { background-image: var(--a-h-spider-strip); }
+.hfx > .hwebf { left: 0; top: 0; width: 100%; height: 100%; background: #E6E1EE; -webkit-mask: var(--a-h-web-full) center / cover no-repeat; mask: var(--a-h-web-full) center / cover no-repeat; }
+.hbal { width: 64px; }
+.hbal img, .hclown img, .hhug img, .hgirl img { position: absolute; left: 0; top: 0; width: 100%; height: 100%; object-fit: contain; }
+.hpop { width: 40px; height: 40px; margin: -20px 0 0 -20px; border-radius: 50%; border: 2px solid #FFF6F2; opacity: 0; }
+.hshred { width: 22px; height: 14px; margin: -7px 0 0 -11px; opacity: 0; background: linear-gradient(135deg, #F04A4A, #B0101C 60%, #7A0812); }
+.hshred.s0 { clip-path: polygon(0 20%, 70% 0, 100% 60%, 30% 100%); }
+.hshred.s1 { clip-path: polygon(10% 0, 100% 30%, 60% 100%, 0 70%); }
+.hshred.s2 { clip-path: polygon(0 0, 100% 45%, 20% 100%); }
+/* девочка: первая поза выглядывает из-за края короба (окошко с обрезкой), вторая — прямо перед зрителем; низ растворяется */
+.hgclip { overflow: hidden; }
+.hgclip .hg1 { position: absolute; left: 0; top: 0; width: 100%; height: 100%; object-fit: contain; object-position: bottom; }
+.hgirl { container-type: inline-size; }
+.hgirl img { -webkit-mask-image: linear-gradient(#000 78%, transparent); mask-image: linear-gradient(#000 78%, transparent); }
+.hsign { position: absolute; display: flex; align-items: center; justify-content: center; transform: rotate(-3deg);
+  font-family: 'Rubik Wet Paint', 'Kurale', Georgia, serif; font-weight: 400; font-size: 15cqw; line-height: 1; white-space: nowrap; color: #5A0E0A; opacity: .9; }
+/* помехи: шум (--h-noise) с запасом за краями — дёргается скачками; поверх — строки развёртки */
+.hfx > .hstat { left: -96px; top: -96px; width: calc(100% + 192px); height: calc(100% + 192px); background: #6F7480 var(--h-noise) 0 0 / 256px 192px repeat; image-rendering: pixelated; }
+.hstat::after { content: ''; position: absolute; inset: 0; background: repeating-linear-gradient(0deg, rgba(0, 0, 0, .35) 0 2px, transparent 2px 4px); }
+/* слизь паразита на «стекле» */
+/* слизь паразита на «стекле»: полупрозрачные кляксы неровной формы с бликом, из каждой стекает потёк (растягивается вместе с кляксой) */
+.hslime { width: 66px; height: 50px; margin: -25px 0 0 -33px; opacity: 0; border-radius: 46% 54% 38% 62% / 55% 44% 56% 45%;
+  background: radial-gradient(circle at 34% 30%, rgba(255, 255, 228, .85) 0 5%, transparent 12%),
+    radial-gradient(ellipse at 50% 50%, rgba(200, 228, 92, .7), rgba(150, 186, 42, .55) 58%, rgba(120, 150, 30, 0) 72%); }
+.hslime.s1 { border-radius: 62% 38% 52% 48% / 40% 58% 42% 60%; }
+.hslime.s2 { width: 52px; height: 58px; border-radius: 40% 60% 60% 40% / 50% 38% 62% 50%; }
+.hslime::after { content: ''; position: absolute; left: 44%; top: 56%; width: 14%; height: 110%; border-radius: 0 0 50% 50% / 0 0 26% 26%;
+  background: linear-gradient(rgba(176, 208, 62, .62), rgba(150, 186, 42, .5) 75%, rgba(150, 186, 42, 0)); }
+.hslime.s1::after { left: 28%; height: 80%; }
+.hslime.s2::after { left: 58%; height: 140%; width: 11%; }
 @media (prefers-reduced-motion: reduce) {
   .hfog, .hpump::before, .hcand::before, .hcf, html .wallov.crypt .wcell::before, html .wallov.crypt .wcell.opened, html .wallov.crypt .wcell.opened .hlid { animation: none !important; }
   .hfx, .hsbat { display: none; }

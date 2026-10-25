@@ -77,6 +77,9 @@ _H.update({f"h_smoke{i}.png": 200 for i in range(1, 5)})
 _H.update({f"h_cflame{i}.png": 60 for i in range(1, 5)})
 _H.update({f"h_candle{i}.png": 160 for i in range(1, 5)})
 _H.update({f"h_pumpkin{i}.png": 160 for i in range(1, 5)})
+# этап 6: пауки и паутина на весь экран, шарик и клоун во весь экран, девочка с табличкой, паразит, прыгающий в лицо
+_H.update({"h_spider_strip.png": 8000, "h_web_full.png": 720, "h_balloon.png": 200, "h_clown.png": 720,
+           "h_girl1.png": 420, "h_girl2.png": 560, "h_hugger1.png": 300, "h_hugger2.png": 640})
 ART.update({f.rsplit(".", 1)[0]: (CUT / f, w) for f, w in _H.items()})
 # «Витраж во тьме»: выдача ролей витражом (prep_art.vitrage, prompts_vitrage.md); без картинок окна рисует CSS
 ART.update({"d_nave": (CUT / "d_nave.jpg", 720), "d_reveal": (CUT / "d_reveal.jpg", 600), "d_arch": (CUT / "d_arch.png", 400),
@@ -102,7 +105,7 @@ def webp_uri(path, width, alpha_quality=100, quality=82):
 # маски гравюры (белое + прозрачность): прозрачность можно сжать с потерями — вдвое легче, на глаз не видно
 LOSSY_ALPHA = {"c_engr", "c_frontis", "c_wreath", "c_night", "c_dial", "c_win_good", "c_win_evil"}
 LOSSY_ALPHA |= {"h_flame", "h_burst", "h_fog", "h_batline", "h_skull_fire"}
-lossy = lambda k: k in LOSSY_ALPHA or k.startswith(("c_em_", "h_em_", "h_ghost", "h_smoke", "h_wisp", "h_soul", "h_cflame", "h_web_", "d_crack", "d_beams", "d_impact"))
+lossy = lambda k: k in LOSSY_ALPHA or k.startswith(("c_em_", "h_em_", "h_ghost", "h_smoke", "h_wisp", "h_soul", "h_cflame", "h_web_", "h_clown", "h_girl", "h_hugger", "d_crack", "d_beams", "d_impact"))
 # пестрая мозаика витража жмётся плохо: окна (20 штук) и приглушённый витраж за ролью — качеством пониже, на глаз не видно
 quality = lambda k: 72 if k.startswith("d_pane") else 65 if k in ("d_reveal", "d_reveal_dark") else 82
 art = {k: webp_uri(p, w, 70 if lossy(k) else 100, quality(k)) for k, (p, w) in ART.items() if p.exists()}
