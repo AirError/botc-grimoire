@@ -765,6 +765,19 @@ img.shroud { object-fit: contain; }
   background: var(--paper); cursor: pointer; font-size: 11.5px; line-height: 1.15; text-align: center; opacity: .55; }
 .ptok .pti { width: 30px; height: 30px; object-fit: contain; }
 .ptok.on { opacity: 1; border: 2px solid var(--gold); background: var(--goldbg); font-weight: 700; padding: 5px 2px; }
+/* подготовка: блефы — иконки ролей с подписью и «Выбрать»; в окне выбора роли в игре — серые, недоступны */
+.ptok.dis { opacity: .22; filter: grayscale(1); cursor: default; }
+.ptok small { font-size: 10px; font-weight: 400; color: var(--muted); }
+.bluffrow { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; }
+.bluffrow .ptok { width: 78px; cursor: default; }
+.bluffrow .ptok.empty { opacity: .5; justify-content: center; }
+.prepcur { display: flex; align-items: center; gap: 8px; }
+.prepcur .pci { width: 32px; height: 32px; object-fit: contain; flex: none; }
+.prepcur .pcn { display: flex; flex-direction: column; flex: 1; min-width: 0; line-height: 1.2; }
+.prepcur .btn { flex: none; }
+/* выбор игрока кругом Гримуара: кого нельзя — серые, выбранный — в золотом кольце */
+.gct:disabled { opacity: .28; filter: grayscale(1); cursor: default; }
+.gct.on { box-shadow: 0 0 0 3px var(--gold), 0 0 14px var(--gold); }
 .gassign { position: absolute; left: 4px; right: 4px; bottom: 4px; font-size: 10.5px; font-weight: 800; color: var(--gold); background: var(--card);
   border: 1px solid var(--gold); border-radius: 999px; padding: 0 4px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .ideas summary { cursor: pointer; color: var(--gold); font-weight: 700; padding: 4px 0; }
@@ -1143,6 +1156,10 @@ html .wallov.crypt .wall.roll { animation: hCryptIn 1.1s ease-out both; }
 .crypt .wscroll { position: relative; z-index: 1; padding-bottom: calc(96px + env(safe-area-inset-bottom, 0px)); }
 /* сундуки стоят посреди склепа, между рядами — проход */
 html .wallov.crypt .wgrid { align-content: center; row-gap: 20px; }
+/* склеп — на весь экран (заметка пользователя 2026-10-25: «на iPad склеп не во весь экран»): столбцов — сколько дают самые крупные сундуки,
+   ширина сетки — чтобы все ряды влезли по высоте (--wc, --wmax из cryptGrid) */
+html .wallov.crypt .wall { max-width: none; }
+html .wallov.crypt .wgrid { grid-template-columns: repeat(var(--wc, 3), minmax(0, 1fr)); width: min(92%, var(--wmax, 100%)); margin-inline: auto; flex: 0 0 auto; margin-block: auto; }
 .crypt .whint { color: #CDBBA0; text-shadow: 0 1px 4px #000; }
 .hcrypt { position: absolute; inset: 0; z-index: 0; overflow: hidden; pointer-events: none; }
 /* туман: широкая полоса плывёт влево и повторяется без шва */
@@ -1256,9 +1273,7 @@ html .wallov.crypt .wrfor { font-family: var(--f-wet, 'Rubik Wet Paint', 'Kurale
   /* круги в слоях (рассадка, номинация, ночной выбор, Гримуар Шпиона) — тоже не выше экрана */
   .ringbox .ring, .grimbox .gcirc { width: min(100%, calc(100dvh - 210px)); margin-inline: auto; }
   .nightring { width: min(100%, calc(100dvh - 250px)); margin-inline: auto; }
-  /* склеп — на всю ширину экрана: сундуки в 4–5 столбцов, размер — чтобы все ряды влезли по высоте (--wmax из wallOverlay) */
-  html .wallov.crypt .wall { max-width: none; background-position: center 34%; }
-  html .wallov.crypt .wgrid { grid-template-columns: repeat(var(--wc, 5), minmax(0, 1fr)); width: min(92%, var(--wmax, 100%)); margin-inline: auto; flex: 0 0 auto; margin-block: auto; }
+  html .wallov.crypt .wall { background-position: center 34%; }
   html .wallov.crypt .wscroll { padding-bottom: calc(84px + env(safe-area-inset-bottom, 0px)); }
   html .wallov.crypt .hpump { width: 72px; height: 72px; } html .wallov.crypt .hcand { width: 74px; height: 86px; }
 }
