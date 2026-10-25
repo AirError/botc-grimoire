@@ -1497,18 +1497,25 @@ function specialSpec(S, step, first) {
   // Фокусник (вики): Приспешникам указывают на Демона и Фокусника, Демону — на Приспешников и Фокусника (в любом порядке — по местам)
   const mag = S.players.find(p => actsAs(p) === 'magician' && p.alive && !abilityOff(S, p));
   const magIds = mag ? [mag.id] : [];
+  // с Фокусником порядок указания — случайный, один на ночь (вики: «в любом порядке»; заметка пользователя 2026-10-25: «Фокусник всегда
+  // стоит последним — замешивай его»): и в карточке шага, по которой рассказчик указывает, и на экране показа
+  const mixed = ids => { if (!mag) return seatSort(S, ids); const rank = stable(S, 'evilMix', () => shuffle(S.players.map(q => q.id))); return ids.slice().sort((a, b) => rank.indexOf(a) - rank.indexOf(b)); };
+  const demonSide = () => mixed((demon ? [demon.id] : []).concat(magIds)), minionSide = () => mixed(minions.map(m => m.id).concat(magIds));
+  const names = ids => ids.map(id => nm(S, id)).join(', ') || '—';
   // Приспешникам — только «ЭТО ДЕМОН» (друг друга они видят, проснувшись вместе; решение пользователя); Демону — Приспешники и блефы
-  const minionCards = () => [{ label: 'Приспешникам', caption: CARD.demon, players: seatSort(S, (demon ? [demon.id] : []).concat(magIds)) }];
-  const demonCards = () => [{ label: 'Демону', caption: CARD.minions, players: seatSort(S, minions.map(m => m.id).concat(magIds)) }];
-  const magLine = mag ? `Фокусник: ${mag.name} — ${step.id === 'minioninfo' ? 'Приспешникам укажите и на него, как на Демона' : 'Демону укажите и на него, как на Приспешника'} (порядок — по местам)` : '';
-  if (step.id === 'minioninfo') spec.info = () => ({ show: `Демон: ${demon ? demon.name : '—'}`, lines: [`Приспешники: ${minions.map(m => m.name).join(', ') || '—'}`, magLine], tokens: minionCards() });
+  const minionCards = () => [{ label: 'Приспешникам', caption: CARD.demon, players: demonSide() }];
+  const demonCards = () => [{ label: 'Демону', caption: CARD.minions, players: minionSide() }];
+  const magLine = mag ? `Фокусник — ${mag.name}, ${step.id === 'minioninfo' ? `Демон — ${demon ? demon.name : '—'}` : 'остальные — Приспешники'} (только для вас; указывайте в порядке списка)` : '';
+  const minionsLine = () => mag ? `Укажите как на Приспешников: ${names(minionSide())}` : `Приспешники: ${minions.map(m => m.name).join(', ') || '—'}`;
+  if (step.id === 'minioninfo') spec.info = () => ({ show: mag ? `Укажите как на Демона: ${names(demonSide())}` : `Демон: ${demon ? demon.name : '—'}`,
+    lines: [`Приспешники: ${minions.map(m => m.name).join(', ') || '—'}`, magLine], tokens: minionCards() });
   const blocker = meetingBlocker(S);
   if (step.meet) {
     spec.title = step.id === 'minioninfo' ? 'Злые знакомятся: Приспешники' : 'Злые знакомятся: Демон';
     spec.text = step.id === 'minioninfo' ? 'Разбудите Приспешников, пусть посмотрят друг на друга. Покажите жетон *ЭТО ДЕМОН* и укажите на Демона.'
       : 'Разбудите Демона. Покажите жетон *ЭТО ВАШИ ПРИСПЕШНИКИ* и укажите на Приспешников.';
     spec.bounds = [Y('Носитель свойства «злые не знакомятся» умер трезвым — злые узнают друг друга этой ночью')];
-    if (step.id === 'demoninfo') spec.info = () => ({ show: `Приспешники: ${minions.map(m => m.name).join(', ') || '—'}`, lines: [magLine], tokens: demonCards() });
+    if (step.id === 'demoninfo') spec.info = () => ({ show: minionsLine(), lines: [magLine], tokens: demonCards() });
     return spec;
   }
   if (first && blocker && step.id === 'minioninfo') { spec.active = false; spec.reason = `в игре ${rname(blocker.role)} — Приспешники и Демон не знакомятся`; }
@@ -1534,7 +1541,7 @@ function specialSpec(S, step, first) {
     return spec;
   }
   if (step.id === 'demoninfo') {
-    spec.info = () => ({ show: `Блефы: ${S.bluffs.map(rname).join(', ')}`, lines: [`Приспешники: ${minions.map(m => m.name).join(', ') || '—'}`, magLine, lunLine],
+    spec.info = () => ({ show: `Блефы: ${S.bluffs.map(rname).join(', ')}`, lines: [minionsLine(), magLine, lunLine],
       tokens: lunCards().concat(demonCards(), bluffCards(S, 'Демону')) });
   }
   if (step.id === 'dawn') {

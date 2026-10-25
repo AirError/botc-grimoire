@@ -1309,6 +1309,16 @@ try {
     const mi = E.stepSpec(G, G.night.steps.find(s => s.id === 'minioninfo')).info({}), di = E.stepSpec(G, G.night.steps.find(s => s.id === 'demoninfo')).info({});
     const mg = byRole(G, 'magician').id;
     ok('Фокусник: Приспешники видят его Демоном, Демон — Приспешником', mi.tokens[0].players.includes(mg) && mi.tokens[0].players.includes(byRole(G, 'imp').id) && di.tokens.some(t => t.caption === E.CARD.minions && t.players.includes(mg)));
+    // заметка пользователя 2026-10-25: «Фокусник всегда стоит последним — замешивай его»: порядок случайный, один на ночь, в карточке тот же
+    const minTok = info => info.tokens.find(t => t.caption === E.CARD.minions).players;
+    const di2 = E.stepSpec(G, G.night.steps.find(s => s.id === 'demoninfo')).info({});
+    let lastN = 0;
+    for (let k = 0; k < 40; k++) {
+      const Q = game(['chef', 'investigator', 'magician', 'banshee', 'monk', 'saint', 'poisoner', 'imp'], 'nachtmahr'); E.autoSetup(Q, true); E.startGame(Q);
+      const pl = E.stepSpec(Q, Q.night.steps.find(s => s.id === 'minioninfo')).info({}).tokens[0].players; if (pl[pl.length - 1] === byRole(Q, 'magician').id) lastN++;
+    }
+    ok('Фокусник замешан: порядок случайный, от перерисовки не меняется, в карточке рассказчика — тот же', minTok(di).join() === minTok(di2).join() && lastN > 0 && lastN < 40
+      && di.lines[0] === 'Укажите как на Приспешников: ' + minTok(di).map(id => G.players.find(p => p.id === id).name).join(', '), `последним ${lastN} из 40; ${di.lines[0]}`);
     // Страшила: номинировал выбранного, его казнили — команда проигрывает
     G = game(['steward', 'chef', 'investigator', 'monk', 'soldier', 'saint', 'fearmonger', 'imp'], 'nachtmahr');
     E.autoSetup(G, true); E.startGame(G);
