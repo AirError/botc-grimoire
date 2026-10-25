@@ -1464,6 +1464,31 @@ try {
     ok('Чёрт под защитой Монаха убивает себя — ничего, нового Чёрта нет (вики)', imp.alive && imp.role === 'imp' && po.role === 'poisoner');
   }
 
+  // 38. Пукка (вики: «Players that the Pukka kills are still poisoned at their time of death»; вопрос пользователя 2026-10-25 про Банши)
+  {
+    const G = game(['chef', 'empath', 'banshee', 'soldier', 'monk', 'poisoner', 'pukka', 'saint'], 'nachtmahr'); E.autoSetup(G, true); E.startGame(G);
+    const bn = byRole(G, 'banshee'), so = byRole(G, 'soldier'), ch = byRole(G, 'chef');
+    const calm = t => ({ pukka: { t: [t.id] }, poisoner: { t: [ch.id] }, monk: { t: [ch.id] } });
+    runNight(G, calm(bn)); E.endDay(G);
+    runNight(G, calm(so));
+    ok('Банши убита Пуккой — отравлена в момент смерти: способности нет, не объявляют', !bn.alive && !E.hasTok(bn, 'hasability') && !E.hasTok(bn, 'poisoned', 'pukka'));
+    E.endDay(G); runNight(G, calm(byRole(G, 'empath')));
+    ok('Солдат, отравленный Пуккой, умирает (без способности)', !so.alive);
+
+    const B = game(['chef', 'empath', 'banshee', 'soldier', 'monk', 'poisoner', 'imp', 'saint'], 'nachtmahr'); E.autoSetup(B, true); E.startGame(B); runNight(B); E.endDay(B);
+    const b2 = byRole(B, 'banshee');
+    runNight(B, { imp: { t: [b2.id] }, poisoner: { t: [byRole(B, 'chef').id] }, monk: { t: [byRole(B, 'chef').id] } });
+    ok('Банши убита Чёртом — способность есть', !b2.alive && E.hasTok(b2, 'hasability', 'banshee'));
+
+    const R2 = game(['ravenkeeper', 'chef', 'empath', 'monk', 'soldier', 'poisoner', 'pukka', 'saint'], 'tb'); E.autoSetup(R2, true); E.startGame(R2);
+    const rk = byRole(R2, 'ravenkeeper'), c2 = byRole(R2, 'chef'), quiet = t => ({ pukka: { t: [t.id] }, poisoner: { t: [c2.id] }, monk: { t: [c2.id] } });
+    runNight(R2, quiet(rk)); E.endDay(R2);
+    const st = runUntil(R2, 'ravenkeeper', quiet(byRole(R2, 'empath'))), sp = st && E.stepSpec(R2, st);
+    ok('Смотритель убит Пуккой — просыпается отравленным (ложная информация)', !rk.alive && sp && sp.active && !!sp.dist, sp && JSON.stringify(sp.dist));
+    runNight(R2, quiet(byRole(R2, 'empath')));
+    ok('Смотритель убит Пуккой — яд снят на рассвете', !E.hasTok(rk, 'poisoned', 'pukka'));
+  }
+
   for (const k of Object.keys(DATA.scripts)) ok('сценарий ' + k + ' — все роли в данных', DATA.scripts[k].roles.every(r => DATA.roles[r]));
 } catch (e) { results.push('ERROR ' + e.message + '\n' + e.stack); }
 
