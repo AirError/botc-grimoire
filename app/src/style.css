@@ -46,6 +46,9 @@ h3 { font-family: var(--f-sc); font-weight: 700; font-size: 15px; letter-spacing
 .btn.primary { background: var(--ink); color: var(--paper); border-color: var(--ink); font-weight: 700; }
 .btn.danger { color: var(--evil); border-color: var(--evil); }
 .btn.wide { width: 100%; }
+/* окно «Назначьте блефы и ложные цели»: главная кнопка — крупно по центру (просьба пользователя 2026-10-25), остальные — под ней поровну */
+.btn.startgo { display: block; width: min(100%, 360px); min-height: 64px; margin: 6px auto 0; font-size: 20px; letter-spacing: .02em; }
+.prepsec > .btn { flex: 1 1 140px; }
 .btn:disabled { opacity: .45; cursor: default; }
 .btn:focus-visible, .chip:focus-visible, select:focus-visible, input:focus-visible, textarea:focus-visible { outline: 2px solid var(--gold); outline-offset: 2px; }
 .actions { display: grid; grid-template-columns: 1fr auto auto; gap: 8px; }

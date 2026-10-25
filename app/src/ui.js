@@ -747,7 +747,8 @@ function prepOverlay() {
       : 'Можно поменять посреди игры: отметки в Гримуаре переедут к выбранным игрокам. Внука и близнеца лучше не менять после того, как их показали.'}</div>
     ${prepFields(!start)}
     ${probs.length ? `<div class="warn">${probs.map(esc).join('<br>')}</div>` : ''}
-    ${start ? `<div class="row"><button class="btn primary" data-act="startGo" ${probs.length ? 'disabled' : ''}>Начать первую ночь</button><button class="btn" data-act="autoPrep">Заполнить случайно</button></div><button class="btn wide" data-act="prepClose">Назад к подготовке</button>`
+    ${start ? `<button class="btn primary startgo" data-act="startGo" ${probs.length ? 'disabled' : ''}>Начать первую ночь</button>
+      <div class="row prepsec"><button class="btn" data-act="autoPrep">Заполнить случайно</button><button class="btn" data-act="prepClose">Назад к подготовке</button></div>`
       : '<button class="btn primary wide" data-act="prepClose">Готово</button>'}</div></div>`;
 }
 const prepBtn = () => '<div class="card"><button class="btn wide" data-act="prepOpen">Блефы и ложные цели</button></div>';
