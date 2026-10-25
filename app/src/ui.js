@@ -1801,7 +1801,18 @@ function cryptFly(fx) {
       const k = (t - t4) / (t5 - t4); return { x: C[0], y: C[1] + 30 * k, s: .9 * cover * (1 + .08 * k), r: 14 * dir, o: 1 - hSmooth(k) }; }, t5, D);
     hFade(p1, u => 1 - hRamp(u * t5, t2, t2 + 60), t5, D); hFade(p2, u => hRamp(u * t5, t2, t2 + 60), t5, D);
     hFlash(fx, D + t3 - 20, '#D7E86A', .5); hShake(D + t3, 8);
-    for (let k = 0; k < 10; k++) { // слизь на «стекле»: брызги расплываются и стекают
+    // кислотная кровь на «стекле» (этап 7): нарисованные кляксы шлёпаются — первая, самая крупная, туда, куда пришёлся удар, —
+    // разрастаются из центра шлепка с отскоком, потёки тянутся вниз, клякса сползает и меркнет
+    const acid = [1, 2, 3, 4, 5, 6].filter(i => ART['h_acid' + i]).sort(() => R() - .5), kk = hClamp(Math.min(W, H) / 375, 1, 1.6);
+    acid.slice(0, 6).concat(acid.slice(0, 1)).forEach((n, k) => {
+      const im = document.createElement('img'); im.className = 'hacid'; im.alt = ''; im.src = ART['h_acid' + n]; fx.appendChild(im);
+      const [cx, cy] = (hm.acid || [])[n - 1] || [.5, .4], sz = hm['h_acid' + n] || [1, 1], w = (k ? rnd(120, 200) : 260) * kk, h = w * sz[1] / sz[0];
+      im.style.cssText = `width:${w.toFixed(0)}px;height:${h.toFixed(0)}px;margin:${(-cy * h).toFixed(0)}px 0 0 ${(-cx * w).toFixed(0)}px;transform-origin:${(cx * 100).toFixed(1)}% ${(cy * 100).toFixed(1)}%`;
+      const px = C[0] + (k ? rnd(-.42, .42) * W : rnd(-20, 20)), py = C[1] + (k ? rnd(-.38, .3) * H : rnd(-20, 20)), flip = R() < .5 ? -1 : 1, rot = rnd(-12, 12), drop = rnd(30, 90), at = D + t3 + (k ? rnd(20, 160) : 0);
+      hAnim(im, u => { const t = u * 1800, pop = t < 90 ? .25 + .85 * hSmooth(t / 90) : 1.1 - .1 * hSmooth(hRamp(t, 90, 220)), drip = hRamp(t, 250, 1800);
+        return { x: px, y: py + drop * Math.pow(drip, 1.3), r: rot, sx: flip * pop, sy: pop * (1 + .2 * drip), o: hRamp(t, 0, 40) * .95 * (1 - hRamp(t, 1150, 1800)) }; }, 1800, at);
+    });
+    if (!acid.length) for (let k = 0; k < 10; k++) { // без картинок — кляксы кодом
       const sl = document.createElement('i'); sl.className = 'hslime s' + (k % 3); fx.appendChild(sl);
       const px = C[0] + rnd(-.45, .45) * W, py = C[1] + rnd(-.4, .35) * H, sz = rnd(.5, 1.6), drop = rnd(50, 160);
       hAnim(sl, u => ({ x: px, y: py + drop * Math.pow(hRamp(u, .12, 1), 1.4), sx: sz * hSmooth(hRamp(u, 0, .08)), sy: sz * hSmooth(hRamp(u, 0, .08)) * (1 + .5 * hRamp(u, .12, 1)), o: .85 * (1 - hRamp(u, .6, 1)) }), rnd(1200, 1600), D + t3 + rnd(0, 60));

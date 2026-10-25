@@ -598,6 +598,12 @@ def halloween():
             print("табличка девочки:", out["sign"])
     if have("h_hugger"):  # поза прыжка заходит за середину листа — позы по кускам; блики на спине не трогаем (min_area)
         for i, im in enumerate(blob_poses(defringe(white_alpha(SRC / "h_hugger.png", inner_thr=232, min_area=200))), 1): save(f"h_hugger{i}", im)
+    if have("h_acid"):  # этап 7: кляксы кислотной крови на чёрном → полупрозрачный свет (как на стекле); центр шлепка — самая толстая
+        # часть кляксы (потёки и брызги тоньше), в долях картинки — от него клякса разрастается
+        out["acid"] = []
+        for i, im in enumerate(grid_pieces(light_rgba(SRC / "h_acid.png", lift=12), 3, 2, thr=20), 1):
+            a = np.asarray(im)[..., 3] > 60; d = ndimage.distance_transform_edt(a); cy, cx = ndimage.center_of_mass(d > d.max() * .55)
+            out["acid"].append([round(float(cx / im.width), 3), round(float(cy / im.height), 3)]); save(f"h_acid{i}", im)
     return out
 
 
