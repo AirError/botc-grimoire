@@ -449,11 +449,14 @@ function distribution(nPlayers, roles, mods, maxOut) {
   if (roles.includes('kazali') && !free) { kazali = m; t += m; m = 0; free = true; notes.push(`Казали: Приспешников при раздаче нет — Казали выберет ${kazali} в 1-ю ночь; вместо них добрые роли, сколько Горожан и Изгоев — решаете вы`); }
   for (const [id, c] of Object.entries(OUT_CHOICES)) {
     if (!roles.includes(id)) continue;
-    // Аэронавт сам Горожанин: хотя бы один Горожанин должен остаться
-    const opts = c.opts.filter(x => o + x >= 0 && t - x >= (id === 'balloonist' ? 1 : 0) && (x <= 0 || o + x <= maxOut));
+    // Аэронавт сам Горожанин: хотя бы один Горожанин должен остаться; Ловчий «без изменений» — только если Девице есть место среди Изгоев
+    const opts = c.opts.filter(x => o + x >= (id === 'huntsman' ? 1 : 0) && t - x >= (id === 'balloonist' ? 1 : 0) && (x <= 0 || o + x <= maxOut));
     let v = mods[id] ?? c.def;
     if (!opts.includes(v)) v = opts.length === 1 ? opts[0] : opts.includes(c.def) ? c.def : null;
-    choices.push({ id, opts, value: v });
+    // почему варианта нет (заметка пользователя 2026-10-26: Крёстный Отец не даёт «−1», когда Изгоев 0, а Ловчий добавил Девицу)
+    const why = c.opts.filter(x => !opts.includes(x)).map(x => x < 0 ? `убрать Изгоя нельзя: по таблице их ${o}${id === 'godfather' && roles.includes('huntsman') ? ' (Девицу Ловчего не убирают — она обязательна)' : ''}`
+      : x > 0 && o + x > maxOut ? 'добавить нельзя: в сценарии больше нет Изгоев' : id === 'huntsman' && x === 0 ? 'других Изгоев нет — Девица добавляется' : '').filter(Boolean).join('; ');
+    choices.push({ id, opts, value: v, why });
     if (v !== null) { o += v; t -= v; }
   }
   return { townsfolk: t, outsider: o, minion: m, demon: d, notes, choices, free, kazali, pending: choices.filter(c => c.value === null).map(c => c.id) };

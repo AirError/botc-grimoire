@@ -1980,11 +1980,14 @@ function distribution(nPlayers, roles, mods, maxOut) {
   if (roles.includes('kazali') && !free) { kazali = m; t += m; m = 0; free = true; notes.push(`Казали: Приспешников при раздаче нет — Казали выберет ${kazali} в 1-ю ночь; вместо них добрые роли, сколько Горожан и Изгоев — решаете вы`); }
   for (const [id, c] of Object.entries(OUT_CHOICES)) {
     if (!roles.includes(id)) continue;
-    // Аэронавт сам Горожанин: хотя бы один Горожанин должен остаться
-    const opts = c.opts.filter(x => o + x >= 0 && t - x >= (id === 'balloonist' ? 1 : 0) && (x <= 0 || o + x <= maxOut));
+    // Аэронавт сам Горожанин: хотя бы один Горожанин должен остаться; Ловчий «без изменений» — только если Девице есть место среди Изгоев
+    const opts = c.opts.filter(x => o + x >= (id === 'huntsman' ? 1 : 0) && t - x >= (id === 'balloonist' ? 1 : 0) && (x <= 0 || o + x <= maxOut));
     let v = mods[id] ?? c.def;
     if (!opts.includes(v)) v = opts.length === 1 ? opts[0] : opts.includes(c.def) ? c.def : null;
-    choices.push({ id, opts, value: v });
+    // почему варианта нет (заметка пользователя 2026-10-26: Крёстный Отец не даёт «−1», когда Изгоев 0, а Ловчий добавил Девицу)
+    const why = c.opts.filter(x => !opts.includes(x)).map(x => x < 0 ? `убрать Изгоя нельзя: по таблице их ${o}${id === 'godfather' && roles.includes('huntsman') ? ' (Девицу Ловчего не убирают — она обязательна)' : ''}`
+      : x > 0 && o + x > maxOut ? 'добавить нельзя: в сценарии больше нет Изгоев' : id === 'huntsman' && x === 0 ? 'других Изгоев нет — Девица добавляется' : '').filter(Boolean).join('; ');
+    choices.push({ id, opts, value: v, why });
     if (v !== null) { o += v; t -= v; }
   }
   return { townsfolk: t, outsider: o, minion: m, demon: d, notes, choices, free, kazali, pending: choices.filter(c => c.value === null).map(c => c.id) };
@@ -6170,10 +6173,7 @@ function viewSetup() {
   if (n >= 5 && n <= 15) {
     const d = E.setupDistribution(S);
     const rowsD = E.distCheck(d, E.countTeams(S)).map(x => `<tr><td class="t-${x.t}">${E.TEAM_RU[x.t]}</td><td class="${x.bad ? 'bad' : ''}">${x.have} из ${x.want}</td></tr>`).join('');
-    // роли, у которых число Изгоев выбирает рассказчик: Крёстный Отец, Аэронавт, Привратник
-    const MOD_RU = { '-1': '−1 Изгой', 0: 'без изменений', 1: '+1 Изгой' };
-    const choices = d.choices.map(c => `<div class="field ${c.value === null ? 'ask' : ''}"><label>${esc(E.rname(c.id))}: ${c.value === null ? 'выберите, сколько Изгоев' : 'Изгоев'}</label>
-      <div class="seg">${c.opts.map(v => `<button class="${c.value === v ? 'on' : ''}" data-act="outMod" data-arg="${c.id}|${v}">${MOD_RU[v]}</button>`).join('')}</div></div>`).join('');
+    const choices = outChoicesHtml(d);
     const odd = E.unknownSetup(S);
     roles = `<div class="card"><h3>Роли</h3><table class="dist">${rowsD}</table>${choices}${d.notes.length ? `<div class="small muted">${d.notes.map(esc).join('<br>')}</div>` : ''}
       ${odd.length ? `<div class="warn">Раскладку с ролями ${odd.map(E.rname).map(esc).join(', ')} проверьте сами: в приложении нет её правил, поэтому начать игру оно не мешает. Механику этих ролей ведёте вы — в справочнике есть подсказки.</div>` : ''}
@@ -6727,11 +6727,22 @@ function seatMarks0(p) {
     && (!m[2] || !DATA.roles[m[2]] || m[2] === 'drunk' || !isGoodRole(m[2]) || onBoard.has(m[2])));
 }
 function roleTokenHtml(p, key) {
-  const r = tokenRole(p), name = r ? E.rname(r) : '?', fit = name.length > 13 ? ' textLength="112" lengthAdjust="spacingAndGlyphs"' : '';
+  const r = tokenRole(p), name = r ? E.rname(r) : '?';
   return `<span class="rtk ${p.alive ? '' : 'dead'}">${r ? ico(r, tokenAlign(p), 'rtki') : ''}
-    <svg class="rtkn" viewBox="0 0 100 100" aria-hidden="true"><path id="${key}" d="M13 56A37 37 0 0 0 87 56" fill="none"/><text><textPath href="#${key}" startOffset="50%" text-anchor="middle"${fit}>${esc(name)}</textPath></text></svg>
+    <svg class="rtkn" viewBox="0 0 100 100" aria-hidden="true"><path id="${key}" d="M13 56A37 37 0 0 0 87 56" fill="none"/><text><textPath href="#${key}" startOffset="50%" text-anchor="middle">${esc(name)}</textPath></text></svg>
     ${shroudHtml(p)}</span>`;
 }
+// название роли дугой по низу жетона (полукруг ~116 единиц): длинное уменьшается по замеру шрифтом жетона. Растягивать textLength
+// у textPath Safari не умеет — «Верховная Жрица» и «Смотритель Воронов» теряли первые буквы (заметка пользователя 2026-10-26)
+let tokCtx = null;
+function fitTokNames() {
+  const ts = document.querySelectorAll('.rtkn text'); if (!ts.length) return;
+  tokCtx = tokCtx || document.createElement('canvas').getContext('2d'); if (!tokCtx) return;
+  const cs = getComputedStyle(ts[0]); tokCtx.font = `${cs.fontWeight} 14.5px ${cs.fontFamily}`;
+  ts.forEach(t => { const w = tokCtx.measureText(t.textContent).width; t.style.fontSize = w > 104 ? (14.5 * 104 / w).toFixed(2) + 'px' : ''; });
+}
+// шрифт догрузился позже первой отрисовки — пересчитать
+if (document.fonts) { document.fonts.ready.then(fitTokNames); if (document.fonts.addEventListener) document.fonts.addEventListener('loadingdone', fitTokNames); }
 // места по кругу: первое — внизу экрана (у рассказчика), дальше по часовой или против — как номера за столом (seatDir).
 // Все размеры — в cqw (доли ширины поля), поэтому круг сам масштабируется под экран.
 // На высоком экране круг немного вытянут по высоте (не больше чем в 1,3 раза) — жетоны крупнее. label — табличка с именем под жетоном.
@@ -7000,8 +7011,15 @@ function drawCard() {
       : `<button class="btn primary wide" data-act="drawStart">${cr ? 'Открыть склеп' : vt ? 'Зажечь витраж' : 'Выкатить стену'}</button>`}</div>`;
 }
 
+// сдвиг числа Изгоев, который выбирает рассказчик (Крёстный Отец, Аэронавт, Привратник, Ловчий) — в «Ролях» и в «Ролях на игру»;
+// почему варианта нет — мелко под кнопками. Ловчий: Девица — один из Изгоев (например, тот, кого добавил Крёстный Отец) или сверху
+const MOD_RU = { '-1': '−1 Изгой', 0: 'без изменений', 1: '+1 Изгой' };
+const MOD_RU_ROLE = { huntsman: { 0: 'Девица — одна из этих Изгоев', 1: '+1 Изгой: Девица' } };
+const outChoicesHtml = d => d.choices.map(c => `<div class="field ${c.value === null ? 'ask' : ''}"><label>${esc(E.rname(c.id))}: ${c.value === null ? 'выберите, сколько Изгоев' : 'Изгоев'}</label>
+  <div class="seg">${c.opts.map(v => `<button class="${c.value === v ? 'on' : ''}" data-act="outMod" data-arg="${c.id}|${v}">${(MOD_RU_ROLE[c.id] || MOD_RU)[v]}</button>`).join('')}</div>${c.why ? `<div class="small muted">${esc(c.why)}</div>` : ''}</div>`).join('');
+
 // «Роли на игру»: рассказчик отмечает роли сценария; раздача и жребий берут только их (по числу игроков)
-const TEAM_PL = { townsfolk: 'Горожане', outsider: 'Изгои', minion: 'Приспешники', demon: 'Демоны' };
+const TEAM_PL ={ townsfolk: 'Горожане', outsider: 'Изгои', minion: 'Приспешники', demon: 'Демоны' };
 function poolCard() {
   if (S.draw) return '';
   const n = S.players.filter(p => !E.isTraveller(p)).length; if (n < 5 || n > 15) return '';
@@ -7009,7 +7027,6 @@ function poolCard() {
   const cnt = t => pool.filter(r => team(r) === t).length, good = cnt('townsfolk') + cnt('outsider');
   // Марионетка: можно отметить ещё одного Горожанина — он ляжет в мешочек вместо её жетона (заметка пользователя 2026-10-21)
   const mar = pool.includes('marionette'), marX = E.poolMarExtra(S) ? 1 : 0, need = mar ? `${n} или ${n + 1}` : `${n}`;
-  const MOD_RU = { '-1': '−1 Изгой', 0: 'без изменений', 1: '+1 Изгой' };
   const stat = ['townsfolk', 'outsider', 'minion', 'demon'].map(t => {
     const want = d[t] + (t === 'townsfolk' ? marX : 0);
     const bad = d.free && (t === 'townsfolk' || t === 'outsider') ? good !== d.townsfolk + d.outsider + marX : cnt(t) !== want;
@@ -7017,8 +7034,7 @@ function poolCard() {
   const groups = ['townsfolk', 'outsider', 'minion', 'demon'].map(t => {
     const rs = S.script.roles.filter(r => team(r) === t); if (!rs.length) return '';
     return `<div class="poolgrp"><div class="small muted">${TEAM_PL[t]}</div><div class="pooltiles">${rs.map(r => `<button class="ptok ${pool.includes(r) ? 'on' : ''}" data-act="poolToggle" data-arg="${r}" aria-pressed="${pool.includes(r)}">${ico(r, null, 'pti')}<span>${esc(E.rname(r))}</span></button>`).join('')}</div></div>`; }).join('');
-  const choices = d.choices.map(c => `<div class="field ${c.value === null ? 'ask' : ''}"><label>${esc(E.rname(c.id))}: ${c.value === null ? 'выберите, сколько Изгоев' : 'Изгоев'}</label>
-    <div class="seg">${c.opts.map(v => `<button class="${c.value === v ? 'on' : ''}" data-act="outMod" data-arg="${c.id}|${v}">${MOD_RU[v]}</button>`).join('')}</div></div>`).join('');
+  const choices = outChoicesHtml(d);
   return `<div class="card"><details class="pooldet" ${pool.length ? 'open' : ''}><summary><b>Роли на игру</b> <span class="small muted">${pool.length ? `выбрано ${pool.length} из ${need}` : 'не выбраны — раздача случайная по раскладке'}</span></summary>
     <div class="small muted">Отметьте роли, которые будут в игре: случайная раздача и жребий возьмут только их. Блефы Демона наберутся из остальных добрых ролей.</div>
     <div class="pstats">${stat}</div>${choices}${d.notes.length ? `<div class="small muted">${d.notes.map(esc).join('<br>')}</div>` : ''}
@@ -7952,7 +7968,7 @@ function render() {
   if (UI.tab === 'roles') filterRefs();
   paintSave();
   window.scrollTo(0, scrollY);
-  hallowAfter(); vitrAfter();
+  hallowAfter(); vitrAfter(); fitTokNames(); tabsPin();
 }
 
 /* ------------------------------------------------------------ обработчики */
@@ -7993,7 +8009,7 @@ const A = {
   move: arg => { const [id, d] = arg.split('|'); act(S => { const i = S.players.findIndex(p => p.id === id), j = i + (+d); if (j >= 0 && j < S.players.length) [S.players[i], S.players[j]] = [S.players[j], S.players[i]]; }, 'порядок мест'); },
   delP: id => act(S => { S.players = S.players.filter(p => p.id !== id); }, 'удалён игрок'),
   deal: () => { if (S.draw) return alertNote('Роли выдаются или выданы жребием — случайная раздача недоступна.'); act(S => E.randomDeal(S), 'случайная раздача ролей'); },
-  outMod: arg => { const [id, v] = arg.split('|'); act(S => { S.flags.mods = Object.assign({}, S.flags.mods, { [id]: +v }); }, `${E.rname(id)}: ${{ '-1': '−1 Изгой', 0: 'Изгоев без изменений', 1: '+1 Изгой' }[v]}`); },
+  outMod: arg => { const [id, v] = arg.split('|'); act(S => { S.flags.mods = Object.assign({}, S.flags.mods, { [id]: +v }); }, `${E.rname(id)}: ${(MOD_RU_ROLE[id] || { '-1': '−1 Изгой', 0: 'Изгоев без изменений', 1: '+1 Изгой' })[v]}`); },
   setRole: (id, el) => act(S => E.setupRole(S, E.P(S, id), el.value), 'роль ' + E.P(S, id).name),
   setDrunk: (a, el) => act(S => E.makeDrunk(S, el.value), 'Пьяница'),
   setBelieves: (id, el) => act(S => { E.P(S, id).believes = el.value || null; }, 'роль-обманка'),
@@ -8470,6 +8486,34 @@ window.addEventListener('resize', () => {
   if (!UI.grimShow && !(UI.wall && S.draw && S.draw.open === null && (vitrOn() || cryptOn()))) return;
   clearTimeout(resizeTimer); resizeTimer = setTimeout(render, 150);
 });
+
+/* iOS (ошибка WebKit; заметка пользователя 2026-10-26: «нижняя панель поехала вместе со страницей»): после клавиатуры или списка
+   выбора видимая область (visualViewport) не возвращается на место, и панель с position: fixed уезжает вверх и ездит со страницей.
+   1) Держим панель у нижнего края видимой области сдвигом (только transform; пока печатают или увеличили страницу — не трогаем).
+   2) В приложении с экрана «Домой» высота окна может застрять уменьшенной — тогда один раз перекладываем страницу (display),
+      это заставляет WebKit заново измерить окно. В обычном Safari и на компьютере ничего не делаем */
+const IOS = /iP(hone|ad|od)/.test(navigator.userAgent) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
+const typingNow = () => { const f = document.activeElement; return !!f && /^(INPUT|TEXTAREA|SELECT)$/.test(f.tagName); };
+const vpMax = {};
+function tabsPin() {
+  const vv = window.visualViewport, t = document.querySelector('.tabs'); if (!IOS || !vv || !t) return;
+  const d = typingNow() || Math.abs(vv.scale - 1) > .01 ? 0 : Math.round(vv.offsetTop + vv.height - window.innerHeight);
+  t.style.transform = d ? `translateY(${d}px)` : '';
+}
+function vpHeal() {
+  if (!IOS || !navigator.standalone || typingNow()) return;
+  if (window.innerHeight >= (vpMax[window.innerWidth] || 0) - 4) return;
+  const y = window.scrollY, h = document.documentElement;
+  h.style.display = 'none'; void h.offsetHeight; h.style.display = ''; window.scrollTo(0, y); tabsPin();
+}
+if (IOS) {
+  let pinRaf = 0; const pinSoon = () => { if (!pinRaf) pinRaf = requestAnimationFrame(() => { pinRaf = 0; tabsPin(); }); };
+  const seen = () => { vpMax[window.innerWidth] = Math.max(vpMax[window.innerWidth] || 0, window.innerHeight); };
+  seen(); window.addEventListener('resize', () => { if (!typingNow()) seen(); pinSoon(); });
+  if (window.visualViewport) { visualViewport.addEventListener('resize', pinSoon); visualViewport.addEventListener('scroll', pinSoon); }
+  window.addEventListener('scroll', pinSoon, { passive: true });
+  document.addEventListener('focusout', () => { setTimeout(pinSoon, 60); setTimeout(() => { vpHeal(); pinSoon(); }, 400); });
+}
 
 // порядок мест: зажать ручку ⠿ и тянуть (пальцем или мышью); строки раздвигаются, на отпускании — новое место
 let dragS = null;

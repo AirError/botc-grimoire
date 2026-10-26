@@ -1499,6 +1499,19 @@ try {
     ok('Смотритель убит Пуккой — яд снят на рассвете', !E.hasTok(rk, 'poisoned', 'pukka'));
   }
 
+  // 39. Крёстный Отец и Ловчий (заметка пользователя 2026-10-26; вики: Крёстный Отец «remove one Outsider and add one Townsfolk» — при 0 Изгоях
+  // убирать некого; Ловчий — «if the Damsel is not in play, remove a Townsfolk and add the Damsel»)
+  {
+    let d = E.distribution(7, ['godfather', 'huntsman', 'damsel'], {}, 4);
+    const gf = d.choices.find(c => c.id === 'godfather'), hu = d.choices.find(c => c.id === 'huntsman');
+    ok('7 игроков, Изгоев 0: Крёстный Отец — только +1, с пояснением', gf.opts.join() === '1' && /убрать Изгоя нельзя/.test(gf.why), gf.why);
+    ok('Крёстный Отец +1 и Ловчий: можно «Девица — одна из этих Изгоев» (итого 1 Изгой) или сверху (2)', hu.opts.join() === '0,1');
+    d = E.distribution(7, ['godfather', 'huntsman', 'damsel'], { huntsman: 0 }, 4);
+    ok('Девица — добавленный Крёстным Изгой: 4 Горожанина, 1 Изгой', d.townsfolk === 4 && d.outsider === 1);
+    d = E.distribution(8, ['godfather', 'huntsman', 'damsel'], { godfather: -1, huntsman: 0 }, 4);
+    ok('8 игроков, Крёстный Отец −1: Изгоев 0 — Девица только сверху (итого 1)', d.choices.find(c => c.id === 'huntsman').opts.join() === '1' && d.outsider === 1 && d.townsfolk === 5);
+  }
+
   for (const k of Object.keys(DATA.scripts)) ok('сценарий ' + k + ' — все роли в данных', DATA.scripts[k].roles.every(r => DATA.roles[r]));
 } catch (e) { results.push('ERROR ' + e.message + '\n' + e.stack); }
 
