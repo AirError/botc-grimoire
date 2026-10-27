@@ -573,20 +573,33 @@ const notesHtml = () => (UI.notes || []).map(t => `<div class="warn">${esc(t)}</
 
 /* Странники и Сказочники — общие для подготовки и «Гримуара» */
 // Странники, рекомендованные сценарием, — первыми
-function travellerOptions() {
+function travellerOptions(cur) {
   const free = DATA.travellers.filter(r => !S.players.some(p => p.role === r)), rec = (S.script.travellers || []).filter(r => free.includes(r));
-  const opt = r => `<option value="${r}">${esc(E.rname(r))}</option>`;
-  if (!rec.length) return plainOptions(free, null, '— роль Странника —');
+  const opt = r => `<option value="${r}" ${r === cur ? 'selected' : ''}>${esc(E.rname(r))}</option>`;
+  if (!rec.length) return plainOptions(free, cur, '— роль Странника —');
   return `<option value="">— роль Странника —</option><optgroup label="Из сценария">${rec.map(opt).join('')}</optgroup><optgroup label="Остальные">${free.filter(r => !rec.includes(r)).map(opt).join('')}</optgroup>`;
 }
+function trKeep() {
+  const v = id => { const el = document.getElementById(id); return el ? el.value : ''; };
+  UI.trForm = { name: v('trName'), role: v('trRole'), pos: v('trPos'), amigo: v('trAmigo') };
+}
 function travellerForm() {
-  const pos = S.players.map(p => `<option value="${p.id}">после ${esc(p.name)}</option>`).join('');
+  const f = UI.trForm || { name: '', role: '', pos: '', amigo: '' }, al = S.flags._trAlign === 'evil' ? 'evil' : 'good';
+  const pos = S.players.map(p => `<option value="${p.id}" ${f.pos === p.id ? 'selected' : ''}>после ${esc(p.name)}</option>`).join('');
+  // Гном (вики): друг — игрок его стороны, объявляется, как только Гном вошёл в игру, и больше не меняется (заметка пользователя
+  // 2026-10-28). На подготовке стороны ещё не розданы — друга выбирают в карточке «Подготовка»
+  const same = S.players.filter(q => q.role && (E.isTraveller(q) ? q.align : S.phase === 'setup' ? (isGoodRole(q.role) ? 'good' : 'evil') : q.align) === al);
+  const amigo = f.role !== 'gnome' ? '' : S.phase === 'setup' ? '<div class="small muted">Друга Гнома выберете в карточке «Подготовка», когда роли будут розданы.</div>'
+    : `<div class="flabel"><span>Друг Гнома — игрок ${al === 'evil' ? 'злой' : 'доброй'} стороны; объявите всем сразу, поменять потом нельзя</span></div>
+      <select id="trAmigo" aria-label="Друг Гнома"><option value="">— случайно —</option>${same.map(q => `<option value="${q.id}" ${f.amigo === q.id ? 'selected' : ''}>${esc(q.name)}</option>`).join('')}</select>`;
   return `<details class="addbox"><summary>${art('traveller', 'hg')}Добавить Странника</summary><div class="field">
-    <input type="text" id="trName" placeholder="Имя игрока" aria-label="Имя Странника">
-    <select id="trRole" aria-label="Роль Странника">${travellerOptions()}</select>
+    <input type="text" id="trName" placeholder="Имя игрока" aria-label="Имя Странника" value="${esc(f.name)}">
+    <select id="trRole" data-act="trRoleSel" aria-label="Роль Странника">${travellerOptions(f.role)}</select>
     <div class="flabel"><span>Сторону выбирает рассказчик</span></div>
-    <div class="seg"><button class="${S.flags._trAlign === 'evil' ? '' : 'on'}" data-act="trAlign" data-arg="good">Добрый</button><button class="${S.flags._trAlign === 'evil' ? 'on' : ''}" data-act="trAlign" data-arg="evil">Злой</button></div>
-    <select id="trPos" aria-label="Место в круге">${pos}<option value="" selected>в конец круга</option></select>
+    <div class="seg"><button class="${al === 'evil' ? '' : 'on'}" data-act="trAlign" data-arg="good">Добрый</button><button class="${al === 'evil' ? 'on' : ''}" data-act="trAlign" data-arg="evil">Злой</button></div>
+    ${amigo}
+    <select id="trPos" aria-label="Место в круге">${pos}<option value="" ${f.pos ? '' : 'selected'}>в конец круга</option></select>
+    <div class="small muted">${S.phase === 'setup' ? 'Сторону Странник узнает в первую ночь — шаг после блефов Демону.' : S.phase === 'night' ? 'Сторону Странник узнает следующим шагом этой ночи.' : 'Сторону покажете сразу — карточка вверху экрана дня.'}</div>
     <button class="btn" data-act="trAdd">Добавить в круг</button></div></details>`;
 }
 function fabledZone() {
@@ -700,6 +713,12 @@ function prepDefs(mid) {
       ok: p => nb.includes(p) && !!p.role && (isGoodRole(p.role) || p === cur), apply: (S, id) => { if (id) E.makeMarionette(S, id); },
       hint: nb.some(p => p.role && isGoodRole(p.role)) ? '' : 'У Демона нет соседей с доброй ролью — пересадите игроков или назначьте роли.' });
   }
+  // Гном в игре с начала: друг — игрок его стороны, объявить до 1-й ночи; посреди игры не меняется (заметка пользователя 2026-10-28)
+  if (!mid) for (const g of S.players.filter(p => p.role === 'gnome')) {
+    const ok = q => q !== g && !!q.role && (E.isTraveller(q) ? q.align : isGoodRole(q.role) ? 'good' : 'evil') === g.align, a = E.gnomeAmigo(S, g);
+    out.push({ k: 'gnome_' + g.id, label: `Гном (${g.name}, ${g.align === 'evil' ? 'злой' : 'добрый'}): друг — игрок той же стороны; объявите всем до первой ночи, потом не меняется`,
+      cur: a && ok(a) ? a.id : null, ask: !(a && ok(a)), ok, apply: (S, id) => { if (id) E.setGnomeAmigo(S, g.id, id); } });
+  }
   return out;
 }
 // поля подготовки (заметка пользователя 2026-10-25): блефы — иконками ролей с подписью и «Выбрать» (плиткой, как «Роли на игру»);
@@ -780,7 +799,9 @@ function revealHtml(info, dist) {
 // (заметка пользователя 2026-10-15). Шаг «Марионетка» — Демону, его цвет — по роли
 const stepAlign = st => { const p = st.pid && !st.fakeCannibal && st.id !== 'marionette' && E.P(S, st.pid); return p && !E.isTraveller(p) ? p.align : null; };
 const alignTeam = (t, al) => !al || !t ? t : al === 'good' && (t === 'minion' || t === 'demon') ? 'townsfolk' : al === 'evil' && (t === 'townsfolk' || t === 'outsider') ? 'minion' : t;
-const stepIcon = (st, cls) => st.pid ? ico(st.fakeCannibal ? 'cannibal' : st.id, stepAlign(st), cls) : st.fabled ? ico(st.id, 'good', cls) : art(st.id, cls);
+// шаг «Странник узнаёт сторону» (travinfo) — значок роли Странника
+const stepIcon = (st, cls) => { const tr = st.trav && E.P(S, st.pid); if (st.trav && !tr) return art('traveller', cls);
+  return st.pid ? ico(st.fakeCannibal ? 'cannibal' : tr ? tr.role : st.id, stepAlign(st), cls) : st.fabled ? ico(st.id, 'good', cls) : art(st.id, cls); };
 function viewNight() {
   const st = E.currentStep(S); if (!st) return '';
   const spec = E.stepSpec(S, st), inp = stepDraft(st, spec);
@@ -789,7 +810,7 @@ function viewNight() {
   const missing = spec.active ? E.missingInputs(spec, inp) : [];
   let info = null; try { info = spec.active ? spec.info(inp) : null; } catch (e) { info = null; }
   const goon = spec.active ? E.goonWarn(S, st, spec, inp) : null;
-  const next = S.night.steps.slice(i + 1, i + 5).map(s => `<div>${s.pid ? stepIcon(s, 'ui') : ''}${esc(s.meet ? 'Злые знакомятся' : s.fakeCannibal ? 'Каннибал — отравлен' : E.rname(s.id))}${s.pid ? ` <span>· ${esc(E.nm(S, s.pid))}</span>` : ''}</div>`).join('');
+  const next = S.night.steps.slice(i + 1, i + 5).map(s => `<div>${s.pid ? stepIcon(s, 'ui') : ''}${esc(s.meet ? 'Злые знакомятся' : s.trav ? 'Странник узнаёт сторону' : s.fakeCannibal ? 'Каннибал — отравлен' : E.rname(s.id))}${s.pid ? ` <span>· ${esc(E.nm(S, s.pid))}</span>` : ''}</div>`).join('');
   const back = (S.night.revived || []).filter(id => E.P(S, id) && E.P(S, id).alive);
   const deaths = (E.nightDeaths(S).length ? `<div class="small"><b>Умерли этой ночью:</b> ${E.nightDeaths(S).map(d => esc(E.nm(S, d.pid))).join(', ')}</div>` : '')
     + (back.length ? `<div class="small"><b>Снова жив:</b> ${back.map(id => esc(E.nm(S, id))).join(', ')}</div>` : '');
@@ -825,6 +846,15 @@ function viewDay() {
     ${S.night && (S.night.revived || []).some(id => E.P(S, id) && E.P(S, id).alive) ? `<div class="small">Снова жив: ${S.night.revived.filter(id => E.P(S, id) && E.P(S, id).alive).map(id => esc(E.nm(S, id))).join(', ')}</div>` : ''}
     ${S.night ? `<details><summary class="small">Слова для утра</summary>${morningHtml(false)}</details>` : ''}
     ${dayStatusBtn()}</div>`);
+  // Странник вошёл днём — сразу узнаёт свою сторону (злой — и Демона); не показали — шаг этой ночью (заметка пользователя 2026-10-28)
+  for (const p of S.players.filter(q => E.isTraveller(q) && (S.flags.travShown || {})[q.id] === false)) {
+    const r = E.travReveal(S, p), g = p.role === 'gnome' && E.gnomeAmigo(S, p);
+    parts.push(`<div class="card ask"><h3 class="hi">${art('traveller', 'hg')}Странник вошёл в игру: ${esc(p.name)}</h3>
+      ${boundsHtml([{ w: 'Покажите', t: 'отведите Странника в сторону: добрый — палец вверх; злой — палец вниз и укажите на Демона (Приспешников и блефов он не узнаёт)' }])}
+      <div class="reveal"><div class="big">${esc(r.show)}</div>${r.lines.map(t => `<div class="ln">${esc(t)}</div>`).join('')}</div>
+      ${g ? `<div class="small"><b>Гном:</b> объявите всем — ${esc(g.name)} одной стороны с Гномом</div>` : ''}
+      ${showButtons(r.tokens)}<button class="btn primary" data-act="travDone" data-arg="${p.id}">Сторона показана</button></div>`);
+  }
   // Амнезиак: раз в день приватно угадывает свою способность
   for (const a of S.players.filter(p => p.role === 'amnesiac' && p.alive)) {
     const done = (d.amnesiac || {})[a.id], ab = S.flags['amnesiac_' + a.id];
@@ -950,14 +980,6 @@ function viewDay() {
       ${chipsPlayers('gun', 1, p => p.alive && first.voters.includes(p.id), sel, { act: 'dayPick', noRole: true })}
       <div class="row"><button class="btn danger" data-act="gunShoot" data-arg="${g.id}" ${sel.length ? '' : 'disabled'}>Выстрел</button><button class="btn" data-act="gunSkip">Стрелок не стреляет сегодня</button></div></div>`);
   }
-  // Гном (вики): друг — игрок его стороны, объявлен всем; убить номинировавшего друга — в карточке голосования
-  for (const g of S.players.filter(p => p.role === 'gnome' && p.alive)) {
-    const a = E.gnomeAmigo(S, g);
-    parts.push(`<div class="card"><details><summary class="small"><b>Гном</b> (${esc(g.name)}): друг — ${esc(a ? a.name : 'не выбран')}</summary><div class="field" style="margin-top:8px">
-      ${boundsHtml([{ w: 'Вы решаете', t: 'друг Гнома — игрок его стороны; объявите всем, как только Гном вошёл в игру. Друг сменил сторону — Гном остаётся прежним' },
-        { w: 'Игрок выбирает', t: 'номинировали друга — до голосования Гном может убить номинировавшего (сколько угодно раз за игру; голосование идёт). Не подсказывайте' }])}
-      <div class="flabel"><span>Друг Гнома</span></div>${chipsPlayers('gnome', 1, q => q !== g && q.align === g.align, a ? [a.id] : [], { act: 'gnomeAmigo', noRole: true })}</div></details></div>`);
-  }
   // Гангстер (вики): раз в день — убить живого соседа, если другой живой сосед согласен
   for (const g of S.players.filter(p => p.role === 'gangster' && p.alive && !d.gangsterUsed)) {
     const nb = E.aliveNeighbours(S, g); if (nb.length < 2) continue;
@@ -1010,10 +1032,6 @@ function viewDay() {
   const judge = S.players.find(p => p.role === 'judge' && p.alive && !S.flags['judge_' + p.id]);
   const judgeHtml = (onId, byId) => judge && byId !== judge.id && !d.executed ? `<div class="field"><label>Судья (${esc(judge.name)}), раз за игру: исход номинации ${esc(E.nm(S, onId))}</label>
     <div class="seg"><button data-act="judge" data-arg="${judge.id}|${onId}|1">Казнь состоится — сейчас</button><button data-act="judge" data-arg="${judge.id}|${onId}|0">Казни не будет</button></div></div>` : '';
-  // Гном: номинирован его друг — до голосования Гном может убить номинировавшего (один раз на номинацию)
-  const gnomeHtml = (onId, byId) => byId && byId !== 'st' && d.gnomeNom !== d.nominated.length ? S.players.filter(g => g.role === 'gnome' && g.alive && (E.gnomeAmigo(S, g) || {}).id === onId)
-    .map(g => `<div class="field"><label>Гном (${esc(g.name)}): номинирован его друг — до голосования Гном может убить номинировавшего (говорит сам игрок — не подсказывайте)</label>
-      <button class="btn danger" data-act="gnomeKill" data-arg="${g.id}|${byId}">Гном убивает ${esc(E.nm(S, byId))}</button></div>`).join('') : '';
   const { vd, bishop, butcherTurn, byOk, onOk, canVote } = nomRules();
   if (nm.stage === 'vote') {
     const on = E.P(S, nm.on), by = nm.by === 'st' ? null : E.P(S, nm.by);
@@ -1028,7 +1046,7 @@ function viewDay() {
       ${tiles('voters', 99, canVote, nm.voters, 'vote', { ghost: !vd, order: voteOrder(nm.on), mark: nm.on })}
       ${(() => { const vn = E.voteNeeds(S); return `<div class="reveal"><div class="lab">Голосов</div><div class="big">${cnt}</div>
         <div class="ln">Для казни нужно — <b>${vn.exec}</b>${vn.cancel ? ` · для отмены (ничья, казни не будет) — <b>${vn.cancel}</b>` : ''}</div>${weighted.map(t => `<div class="ln">${esc(t)}</div>`).join('')}</div>`; })()}
-      ${gnomeHtml(nm.on, nm.by)}${judgeHtml(nm.on, nm.by)}
+      ${gnomeKillHtml(nm.on, nm.by)}${judgeHtml(nm.on, nm.by)}
       ${confirmRow('voteDone', 'Подтвердить голоса', true, 'voteCancel', 'Отменить номинацию')}</div>`);
   } else if (!d.executed || butcherTurn) {
     const pv = E.nominationPreview(S, nm.by, nm.on);
@@ -1356,6 +1374,14 @@ function seatRing() {
       <button class="btn primary wide" data-act="ringClose">Готово</button></div></div>`;
 }
 // номинация кругом: нажать, кто номинирует, потом — кого; голосование — отметить поднявших руку по кругу
+// Гном: номинирован его друг — до голосования Гном может убить номинировавшего (один раз на номинацию). В карточке голосования
+// и в голосовании кругом (заметка пользователя 2026-10-28: номинировал друга Гнома кругом — кнопки не было)
+function gnomeKillHtml(onId, byId) {
+  const d = S.day; if (!byId || byId === 'st' || d.gnomeNom === d.nominated.length) return '';
+  return S.players.filter(g => g.role === 'gnome' && g.alive && (E.gnomeAmigo(S, g) || {}).id === onId)
+    .map(g => `<div class="field"><label>Гном (${esc(g.name)}): номинирован его друг — до голосования Гном может убить номинировавшего (говорит сам игрок — не подсказывайте)</label>
+      <button class="btn danger" data-act="gnomeKill" data-arg="${g.id}|${byId}">Гном убивает ${esc(E.nm(S, byId))}</button></div>`).join('');
+}
 function nomRing() {
   const d = S.day, nm = d.draft, th = E.voteThreshold(S), n = S.players.length, g = ringGeom(n, false, 330);
   const { bishop, butcherTurn, byOk, onOk, canVote } = nomRules(), vote = nm.stage === 'vote';
@@ -1402,7 +1428,7 @@ function nomRing() {
       ${!vote && open ? selfNomBtn(nm, onOk, bishop) : ''}
       ${pv.notes.map(t => `<div class="warn">${esc(t)}</div>`).join('')}
       ${pv.askSpy ? `<div class="field"><label>Ваше решение: Шпион определяется Горожанином?</label><div class="seg"><button class="${nm.spy ? '' : 'on'}" data-act="nomSpy" data-arg="0">Нет</button><button class="${nm.spy ? 'on' : ''}" data-act="nomSpy" data-arg="1">Да — его казнят</button></div></div>` : ''}
-      ${vote ? confirmRow('voteDone', 'Подтвердить голоса', true, 'voteCancel', 'Отменить номинацию')
+      ${vote ? gnomeKillHtml(nm.on, nm.by) + confirmRow('voteDone', 'Подтвердить голоса', true, 'voteCancel', 'Отменить номинацию')
         : open ? confirmRow('nominate', 'Подтвердить номинацию', (bishop || nm.by) && nm.on, 'nomClear', 'Сбросить') : ''}
       <button class="btn wide" data-act="ringClose">Вернуться к экрану дня</button></div></div>`;
 }
@@ -2548,11 +2574,14 @@ const A = {
   autoPrep: () => act(S => E.autoSetup(S, true), 'подготовка случайно'),
   start: () => { UI.prep = 'start'; render(); },
   // Странники и Сказочники
-  trAlign: v => draft(S => { S.flags._trAlign = v; }),
+  // форма перерисовывается (сторона, роль — у Гнома появляется выбор друга): введённое запоминаем в UI.trForm
+  trAlign: v => { trKeep(); draft(S => { S.flags._trAlign = v; }); },
+  trRoleSel: () => { trKeep(); render(); },
   trAdd: () => {
-    const name = document.getElementById('trName').value.trim(), role = document.getElementById('trRole').value, after = document.getElementById('trPos').value;
+    trKeep(); const { name, role, pos, amigo } = UI.trForm;
     if (!role) return alertNote('Выберите роль Странника.');
-    act(S => E.addTraveller(S, name || 'Странник', role, S.flags._trAlign === 'evil' ? 'evil' : 'good', after || null), 'Странник ' + (name || E.rname(role)));
+    UI.trForm = null;
+    act(S => E.addTraveller(S, name.trim() || 'Странник', role, S.flags._trAlign === 'evil' ? 'evil' : 'good', pos || null, amigo || null), 'Странник ' + (name.trim() || E.rname(role)));
   },
   trLeave: id => act(S => { const p = E.P(S, id); E.log(S, `Странник ${p.name} уходит из игры`, 'effect'); S.players = S.players.filter(q => q.id !== id); }, 'Странник ушёл'),
   fabAdd: () => { const id = document.getElementById('fabAdd').value; if (id) act(S => { S.fabled = (S.fabled || []).concat(id); if (S.phase !== 'setup') E.log(S, `Рассказчик вводит Сказочника: ${E.rname(id)}`, 'effect'); }, 'Сказочник ' + E.rname(id)); },
@@ -2605,7 +2634,7 @@ const A = {
   dayPick2: arg => { const [key, id] = arg.split('|'); draft(S => { const sel = (S.day.picks[key] || []).slice(); if (sel.includes(id)) sel.splice(sel.indexOf(id), 1); else { if (sel.length >= 2) sel.shift(); sel.push(id); } S.day.picks[key] = sel; }); },
   gunShoot: gid => { const t = S.day.picks.gun[0]; act(S => { E.gunslingerShot(S, gid, t); S.day.picks.gun = []; }); },
   gunSkip: () => act(S => { S.day.gunUsed = true; E.log(S, 'Стрелок сегодня не стреляет', 'day'); }),
-  gnomeAmigo: arg => { const id = arg.split('|')[1], g = S.players.find(p => p.role === 'gnome' && p.alive); if (g) act(S => E.setGnomeAmigo(S, g.id, id), 'Гном: друг'); },
+  travDone: id => act(S => E.travDone(S, id), 'Страннику показана сторона'),
   gnomeKill: arg => { const [g, by] = arg.split('|'); act(S => E.gnomeKill(S, g, by), 'Гном убивает номинировавшего'); },
   gangKill: arg => { const [g, v] = arg.split('|'); act(S => E.gangsterKill(S, g, v), 'Гангстер'); },
   cacklePick: cid => { const t = S.day.picks.cackle[0]; act(S => { E.cacklejackPick(S, cid, t); S.day.picks.cackle = []; }, 'Хохотун: «НЕ Я»'); },

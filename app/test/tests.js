@@ -595,7 +595,9 @@ try {
   S = tbGame(); E.startGame(S); runNight(S, { poisoner: { t: ids(S, 'chef') } }); E.endDay(S);
   const ap = E.addTraveller(S, 'Уч', 'apprentice', 'good', null);
   E.endDay(S);
-  ok('Ученик, вошедший позже, просыпается после заката', S.night.steps[1] && S.night.steps[1].id === 'apprentice');
+  // сразу после заката (и шага «Странник узнаёт сторону»: способность Ученика зависит от стороны)
+  const apSteps = S.night.steps.filter(s => !s.trav);
+  ok('Ученик, вошедший позже, просыпается после заката', apSteps[1] && apSteps[1].id === 'apprentice' && S.night.steps.findIndex(s => s.trav) < S.night.steps.findIndex(s => s.id === 'apprentice'), S.night.steps.map(s => s.key).join(','));
   runNight(S, { apprentice: { r: 'monk' }, imp: { t: ids(S, 'chef') }, monk: { t: ids(S, 'washerwoman') }, poisoner: { t: ids(S, 'chef') } });
   ok('Ученик получил способность Монаха и действует в ту же ночь', ap.gained === 'monk' && S.log.some(e => e.t.startsWith(`Монах (${ap.name})`)));
   S = tbGame([['Бар', 'barista']]); E.startGame(S);
@@ -1551,6 +1553,41 @@ try {
       if (!qsp || qsp.defaults.n > 2 || qsp.defaults.n < 0) bad++;
     }
     ok('Отравленный Эмпат: ложное число — только возможное (0–2)', bad === 0, `плохих: ${bad}`);
+  }
+
+  // 41. заметки пользователя 2026-10-28: Странник узнаёт сторону (шаг ночи / карточка дня), друг Гнома выбирается при входе
+  {
+    const G = game(['chef', 'empath', 'monk', 'soldier', 'saint', 'poisoner', 'imp'], 'tb');
+    const gb = E.addTraveller(G, 'Добрый', 'beggar', 'good'), ev = E.addTraveller(G, 'Злой', 'gunslinger', 'evil');
+    E.autoSetup(G, true); E.startGame(G);
+    const keys = G.night.steps.map(s => s.key), di = keys.indexOf('demoninfo');
+    ok('Странники с начала игры — шаг «Странник узнаёт сторону» в 1-ю ночь сразу после блефов Демону',
+      di >= 0 && keys[di + 1] === 'trav:' + gb.id && keys[di + 2] === 'trav:' + ev.id, keys.join(','));
+    const evs = E.stepSpec(G, G.night.steps[di + 2]), inf = evs.info({}), imp = byRole(G, 'imp');
+    ok('Злому Страннику — жест «злой» и ЭТО ДЕМОН с Демоном, без Приспешников', evs.active && inf.tokens[0].thumb === 'down'
+      && inf.tokens.some(t => t.caption === 'ЭТО ДЕМОН' && t.players.length === 1 && t.players[0] === imp.id), JSON.stringify(inf.tokens));
+    const gi = E.stepSpec(G, G.night.steps[di + 1]).info({});
+    ok('Доброму Страннику — только жест «добрый»', gi.tokens.length === 1 && gi.tokens[0].thumb === 'up');
+    runNight(G, { poisoner: { t: [byRole(G, 'chef').id] } });
+    ok('Показали — во 2-ю ночь шага нет', G.flags.travShown[gb.id] === true && G.flags.travShown[ev.id] === true);
+    const late = E.addTraveller(G, 'Поздний', 'thief', 'evil');
+    ok('Странник вошёл днём — сторона ещё не показана (карточка дня)', G.flags.travShown[late.id] === false);
+    E.endDay(G);
+    const k2 = G.night.steps.map(s => s.key);
+    ok('Не показали днём — шаг этой ночью сразу после заката', k2[k2.indexOf('dusk') + 1] === 'trav:' + late.id && !k2.includes('trav:' + gb.id), k2.join(','));
+    const nightly = E.addTraveller(G, 'Ночной', 'bureaucrat', 'good');
+    ok('Странник вошёл ночью — шаг следующим', G.night.steps[G.night.i + 1].key === 'trav:' + nightly.id);
+    ok('Шаг показа не путается с ночным шагом самого Странника', G.night.steps.filter(s => s.id === 'bureaucrat').every(s => !s.trav));
+
+    const T = game(['chef', 'empath', 'monk', 'soldier', 'saint', 'poisoner', 'imp'], 'tb'); E.autoSetup(T, true); E.startGame(T);
+    runNight(T, { poisoner: { t: [byRole(T, 'chef').id] } });
+    const goodP = T.players.find(p => p.align === 'good' && p.role === 'empath'), evilP = byRole(T, 'poisoner');
+    const g1 = E.addTraveller(T, 'Гном', 'gnome', 'good', null, goodP.id);
+    ok('Гном: друг — выбранный при входе игрок его стороны', E.gnomeAmigo(T, g1) === goodP && E.hasTok(goodP, 'amigo', 'gnome'));
+    const T2 = game(['chef', 'empath', 'monk', 'soldier', 'saint', 'poisoner', 'imp'], 'tb'); E.autoSetup(T2, true); E.startGame(T2);
+    runNight(T2, { poisoner: { t: [byRole(T2, 'chef').id] } });
+    const g2 = E.addTraveller(T2, 'Гном', 'gnome', 'good', null, byRole(T2, 'poisoner').id), a2 = E.gnomeAmigo(T2, g2);
+    ok('Гном: выбран игрок другой стороны — друг подбирается случайно из его стороны', a2 && a2.align === 'good' && a2 !== g2, a2 && a2.name);
   }
 
   for (const k of Object.keys(DATA.scripts)) ok('сценарий ' + k + ' — все роли в данных', DATA.scripts[k].roles.every(r => DATA.roles[r]));

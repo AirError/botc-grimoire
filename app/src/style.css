@@ -271,6 +271,7 @@ details > .tale { margin-top: 10px; }
 .savpick.on { color: #FFFFFF; font-weight: 700; } .savpick.t.on { background: var(--ok); } .savpick.f.on { background: var(--evil); }
 .field.ask { background: var(--warnbg); border-radius: 9px; padding: 9px 11px; }
 .field.ask > label { color: var(--warn); font-weight: 700; }
+.card.ask { outline: 2px solid var(--warn); outline-offset: -2px; } /* ждёт рассказчика: Странник вошёл — показать сторону */
 
 /* панель вкладок */
 .tabs { position: fixed; left: 0; right: 0; bottom: 0; z-index: 6; background: var(--card); border-top: 1px solid var(--line);

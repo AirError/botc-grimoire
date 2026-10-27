@@ -937,6 +937,12 @@ function buildSteps(S) {
     if (f.night !== S.n || order.includes(f.role) || !DATA.order.first.includes(f.role)) continue;
     insertStep(steps, { key: f.role + ':' + f.pid + ':fresh', id: f.role, pid: f.pid, fresh: true }, order);
   }
+  // Странник ещё не узнал свою сторону (travShown: false — пишет addTraveller): в 1-ю ночь — после блефов Демону, потом — после заката
+  const trs = S.players.filter(p => isTraveller(p) && (S.flags.travShown || {})[p.id] === false);
+  if (trs.length) {
+    const di = first ? steps.findIndex(s => s.id === 'demoninfo') : -1;
+    steps.splice(di >= 0 ? di + 1 : steps.findIndex(s => s.id === 'dusk') + 1, 0, ...trs.map(p => ({ key: 'trav:' + p.id, id: 'travinfo', pid: p.id, trav: true })));
+  }
   return steps;
 }
 function addFresh(S, pid, role, night) { S.flags.fresh = (S.flags.fresh || []).filter(f => f.night >= S.n && f.pid !== pid).concat({ pid, role, night: night || S.n }); }
@@ -946,7 +952,8 @@ function rebuildRest(S) {
   const done = new Set(S.night.steps.slice(0, S.night.i + 1).map(st => st.key)), k = ord.indexOf(cur.id);
   // знакомство злых этой ночью (умер Дурманщик) buildSteps не знает — сохраняем его, иначе оно пропадало, когда позже
   // этой ночью менялась роль (заметка пользователя 2026-10-27: Ловчий превратил Девицу — шага знакомства не было)
-  const meet = S.night.steps.slice(S.night.i + 1).filter(st => st.meet);
+  // так же — показ стороны Страннику, вошедшему этой ночью (addTraveller)
+  const meet = S.night.steps.slice(S.night.i + 1).filter(st => st.meet || st.trav);
   S.night.steps = S.night.steps.slice(0, S.night.i + 1).concat(buildSteps(S).filter(st => !done.has(st.key)
     && (st.fresh || st.fakeCannibal || k < 0 || ord.indexOf(st.id) > k)));
   for (const st of meet) if (!S.night.steps.some(x => x.key === st.key)) {
@@ -1321,13 +1328,14 @@ function gunslingerShot(S, gid, tid) {
 }
 // Гном (вики): «AMIGO» — игрок одной с Гномом стороны; рассказчик объявляет его всем, как только Гном вошёл в игру. Номинировали
 // его — до голосования Гном может убить номинировавшего (сколько угодно раз за игру; голосование всё равно идёт; рассказчик не подсказывает).
-// Заметка пользователя 2026-10-27: «Гном не реализован — не даёт выбрать друга Гнома и жетона нет»
+// Заметка пользователя 2026-10-27: «Гном не реализован — не даёт выбрать друга Гнома и жетона нет». 2026-10-28: друга выбирают при
+// входе Гнома (форма «Добавить Странника»; в игре с начала — в «Подготовке») и больше не меняют — на вики друг один на всю игру
 const gnomeAmigo = (S, g) => { const id = S.flags['gnome_' + g.id]; return id ? P(S, id) : null; };
 function setGnomeAmigo(S, gid, pid) {
   const g = P(S, gid), a = P(S, pid); if (!g || !a) return;
   S.players.forEach(q => { q.tokens = q.tokens.filter(t => !(t.k === 'amigo' && t.by === gid)); });
   S.flags['gnome_' + gid] = pid; addTok(S, a, 'amigo', 'gnome', null, { by: gid });
-  log(S, `Гном (${g.name}): объявите всем — ${a.name} одной стороны с Гномом`, 'effect');
+  if (S.phase !== 'setup') log(S, `Гном (${g.name}): объявите всем — ${a.name} одной стороны с Гномом`, 'effect'); // на подготовке — строка в Закате 1-й ночи
 }
 function gnomeEnter(S, g) {
   const same = S.players.filter(q => q !== g && q.align === g.align), core = same.filter(q => !isTraveller(q));
@@ -1397,13 +1405,44 @@ function evilMeetsTonight(S) {
   log(S, 'Злые узнают друг друга этой ночью', 'effect');
 }
 
-function addTraveller(S, name, roleId, align, afterId) {
+// amigoId — друг Гнома, выбранный в форме (нет — случайный игрок той же стороны)
+function addTraveller(S, name, roleId, align, afterId, amigoId) {
   const p = newPlayer(name); p.role = roleId; p.align = align === 'evil' ? 'evil' : 'good';
   const i = afterId ? S.players.findIndex(q => q.id === afterId) : S.players.length - 1;
   S.players.splice(i + 1, 0, p);
   if (S.phase !== 'setup') log(S, `В игру входит Странник ${name}: ${rname(roleId)} (${p.align === 'evil' ? 'злой' : 'добрый'})`, 'effect');
-  if (roleId === 'gnome') gnomeEnter(S, p);
+  if (roleId === 'gnome') { const a = amigoId && P(S, amigoId); if (a && a !== p && a.align === p.align) setGnomeAmigo(S, p.id, a.id); else gnomeEnter(S, p); }
+  // сторону он ещё не знает: днём — карточка «Странник вошёл в игру», ночью — шаг сразу после текущего, на подготовке — шаг 1-й ночи
+  S.flags.travShown = Object.assign({}, S.flags.travShown, { [p.id]: false });
+  if (S.phase === 'night' && S.night) {
+    const cur = S.night.steps[S.night.i];
+    S.night.steps.splice(cur && cur.id === 'dawn' ? S.night.i : S.night.i + 1, 0, { key: 'trav:' + p.id, id: 'travinfo', pid: p.id, trav: true });
+  }
   return p;
+}
+// Странник узнаёт свою сторону (вики, «Типы персонажей»: сторону выбирает рассказчик, когда Странник входит в игру; «Странники»: злой
+// узнаёт, кто Демон, — без Приспешников и блефов; Дурманщик: злой Странник всё равно узнаёт Демона). Как и когда показать, вики
+// не говорит — заметка пользователя 2026-10-28: «где ночная фаза, где я показываю страннику, злой он или добрый?»
+function travReveal(S, p) {
+  const evil = p.align === 'evil', alive = S.players.filter(demonAlive), dem = evil ? (alive.length ? alive : S.players.filter(isDemon)) : [];
+  return { show: `${p.name}: ${evil ? 'злой' : 'добрый'}${evil ? ` · Демон: ${dem.map(q => q.name).join(', ') || 'нет'}` : ''}`,
+    lines: [evil ? 'Жест «злой», затем жетон ЭТО ДЕМОН — укажите на Демона. Приспешников и блефов злой Странник не узнаёт' : 'Жест «добрый»'],
+    tokens: [{ label: p.name, thumb: evil ? 'down' : 'up' }].concat(dem.length ? [{ label: p.name, caption: CARD.demon, players: dem.map(q => q.id) }] : []) };
+}
+function travDone(S, pid) {
+  const p = P(S, pid); S.flags.travShown = Object.assign({}, S.flags.travShown, { [pid]: true });
+  if (p) log(S, `Странник ${p.name} узнал свою сторону: ${p.align === 'evil' ? 'злой' : 'добрый'}`, 'action');
+}
+function travSpec(S, step) {
+  const p = P(S, step.pid);
+  const spec = { title: 'Странник узнаёт сторону', who: p ? p.name : '', pid: step.pid, team: 'traveller', active: !!p, reason: p ? '' : 'Странник ушёл из игры',
+    text: 'Разбудите Странника. Покажите его сторону: добрый — палец вверх; злой — палец вниз, жетон *ЭТО ДЕМОН* и укажите на Демона.',
+    inputs: [], defaults: {}, warn: [], info: () => null, apply: () => {},
+    bounds: [Y('сторону Странника выбрали вы, когда он вошёл в игру (поменять — в карточке игрока)'), { w: 'Злой Странник', t: 'узнаёт только Демона — без Приспешников и блефов (вики)' }] };
+  if (!p) return spec;
+  spec.info = () => travReveal(S, p);
+  spec.apply = () => travDone(S, p.id);
+  return spec;
 }
 
 // порог изгнания: половина всех игроков с округлением вверх — живых и мёртвых, Странники тоже считаются
@@ -1463,6 +1502,7 @@ function fabledSpec(S, step, first) {
 // общий вид шага: {title, who, text, active, reason, inputs, defaults, info(inp), apply(inp)}
 function stepSpec(S, step) {
   const first = S.n === 1 || !!step.fresh; // fresh: Каннибал получил способность «в 1-ю ночь» — работает как в первую
+  if (step.trav) return travSpec(S, step);
   if (DATA.special[step.id]) return specialSpec(S, step, first);
   if (step.fabled) return fabledSpec(S, step, first);
   if (step.fakeCannibal) return cannibalFakeSpec(S, step);
@@ -3028,6 +3068,8 @@ function skipStep(S, how) {
     if (st.id === 'po' && !S.flags.poCharged && !abilityOff(S, P(S, st.pid))) { S.flags.poCharged = true; log(S, 'По никого не выбрал — следующей ночью атакует троих', 'action'); }
     // Девица: пропуск в последующую ночь — рассказчик решил не показывать, больше не напоминаем (в 1-ю ночь — напомним в следующую)
     if (st.id === 'damsel' && S.n > 1) S.flags.damselShown = true;
+    // Странник: пропустили — сторону показали иначе (шепнули днём), больше не напоминаем
+    if (st.trav) S.flags.travShown = Object.assign({}, S.flags.travShown, { [st.pid]: true });
     rpTag(S, l0, k);
   }
   S.night.i += 1; if (S.night.i >= S.night.steps.length) endNight(S);
@@ -3242,7 +3284,7 @@ function klutzChoose(S, pid) {
 
 const ENGINE = { canBluff, setPrepFlag, ensureHerring, PREP_FLAGS, poolMarExtra, bansheeVotes, fauxPawOn, droisoned, nightDeaths, revive, psychopathKill, exeQuestions, roleWorks, makeMarionette, makeDrunk, setupRole, storytellerRole, gossipPending, setGossip, pithagAdvice, puzzleHit, puzzleGuess, politicianStats, politiciansPending, politicianSide, voteNeeds, ghostSpent, demonSeatNeighbours, generalGuess, choiceCount, newGame, newPlayer, P, nm, rname, realTeam, actsAs, aliveCount, aliveAll, coreCount, isTraveller, exile, exileThreshold, addTraveller, meetingBlocker, isDemon, distribution, setupDistribution, distCheck, unknownSetup, countTeams, randomDeal,
   amnesiacGuess, AMNESIAC_ANSWERS, storytellerKill, voteCount, voteWeight, voudonActive, bishopActive, travellerWorks, executeNow,
-  judgeRuling, gunslingerShot, gnomeAmigo, setGnomeAmigo, gnomeKill, gangsterKill, cacklejackPick, tinkerDies, doomsayerKill, fiddlerEnd, swapSeats, goonWarn, damselGuess, changeRole, madnessExecute, harpyKill,
+  judgeRuling, gunslingerShot, gnomeAmigo, setGnomeAmigo, gnomeKill, travReveal, travDone, gangsterKill, cacklejackPick, tinkerDies, doomsayerKill, fiddlerEnd, swapSeats, goonWarn, damselGuess, changeRole, madnessExecute, harpyKill,
   finishRoles, autoSetup, setupProblems, drawStart, drawOpen, drawClose, drawCancel, drawShown, drawLocked, drawProblem, distortion,
   randomPool, dealPool, validPool, scriptOutsiders, CARD, jinxesInPlay, startGame, startNight, currentStep, stepSpec, applyStep, skipStep,
   stepInputs, missingInputs, endNight, rpStrip, recPatch, replayNight, editNight, editTarget, acceptEdit,
