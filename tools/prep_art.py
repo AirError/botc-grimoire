@@ -716,13 +716,28 @@ def skins():
 def digits(name="digits", prefix="digit", light=False):
     """Цифры 0–9 (digits.png, 2 строки по 5): каждая — по своей клетке; высота — по строке, чтобы все цифры были одного роста.
     Свои цифры оформлений: d_digits — витражные (на белом, как основные), h_digits — пламя тёмной магии на чёрном (light: свет →
-    прозрачность, клетки ровной сеткой — свечение соседних цифр может слипаться)."""
+    прозрачность, клетки ровной сеткой — свечение соседних цифр может слипаться; кусок — в клетку своего центра, как grid_pieces,
+    но рамка — по ширине самой цифры (не квадрат: в «12» цифры стояли бы врозь) и по высоте всей строки (все одного роста))."""
     if not (SRC / f"{name}.png").exists():
         return 0
     if light:
-        ps = grid_pieces(light_rgba(SRC / f"{name}.png", lift=12), 5, 2, thr=30)
-        for k, d in enumerate(ps): d.resize((round(d.width * 220 / d.height), 220), Image.LANCZOS).save(OUT / f"{prefix}{k}.png")
-        return len(ps)
+        arr = np.asarray(light_rgba(SRC / f"{name}.png", lift=12)).copy(); a = arr[..., 3]; H, W = a.shape
+        lab, n = ndimage.label(ndimage.binary_dilation(a > 30, iterations=3))
+        idx = range(1, n + 1); cent = ndimage.center_of_mass(a > 30, lab, idx); area = ndimage.sum(a > 30, lab, idx)
+        cell, box = {}, {}
+        for i, (cy, cx) in enumerate(cent, 1):
+            if np.isnan(cy): continue
+            k = min(1, int(cy / H * 2)) * 5 + min(4, int(cx / W * 5)); cell.setdefault(k, []).append(i)
+            if area[i - 1] < 400: continue  # искры по краям рамку не раздувают (внутри неё остаются)
+            ys, xs = np.where(lab == i); b = box.get(k, (W, H, 0, 0))
+            box[k] = (min(b[0], xs.min()), min(b[1], ys.min()), max(b[2], xs.max() + 1), max(b[3], ys.max() + 1))
+        band = [(min(b[1] for k, b in box.items() if k // 5 == r), max(b[3] for k, b in box.items() if k // 5 == r)) for r in (0, 1)]
+        for k, (x0, _, x1, _) in sorted(box.items()):
+            y0, y1 = band[k // 5]
+            sub = arr[y0:y1, x0:x1].copy(); sub[..., 3] = np.where(np.isin(lab[y0:y1, x0:x1], cell[k]), sub[..., 3], 0)
+            d = Image.fromarray(sub, "RGBA"); d.resize((round(d.width * 220 / d.height), 220), Image.LANCZOS).save(OUT / f"{prefix}{k}.png")
+        print(f"цифр ({name}):", len(box))
+        return len(box)
     im = white_alpha(SRC / f"{name}.png", edge_thr=215, inner_thr=205)  # в золотых цифрах белого нет — режем и светлую кайму в «дырках»
     al = np.asarray(im)[..., 3] > 40
     h, w = al.shape
