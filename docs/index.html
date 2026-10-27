@@ -839,6 +839,10 @@ img.shroud { object-fit: contain; }
 /* ночной выбор кругом: иконка роли над именем, номер выбора */
 .rseat.withicon .rno { order: -2; }
 .rseat .rsi { order: -1; width: 44%; height: auto; max-height: 40%; object-fit: contain; }
+/* ночной выбор кругом: значки состояния под именем (заметка пользователя 2026-10-27) */
+.rseat .rmk { position: absolute; left: 50%; bottom: -14%; transform: translateX(-50%); display: flex; gap: 2px; pointer-events: none; z-index: 1; }
+.rseat .rmk .rtok, .rseat .rmk .rmore { width: 1.6em; height: 1.6em; box-shadow: 0 1px 3px rgba(0, 0, 0, .35); }
+.rseat .rmk .rmore { font-size: .62em; width: 2.6em; height: 2.6em; }
 .rseat .rord { position: absolute; right: -4%; top: -4%; width: 1.7em; height: 1.7em; border-radius: 50%; background: var(--evil); color: #FFFFFF;
   font-weight: 800; display: flex; align-items: center; justify-content: center; font-size: max(.7em, 11px); }
 .nightring { margin: 6px 0; }
@@ -1161,7 +1165,7 @@ html .wallov.crypt .wall.roll { animation: hCryptIn 1.1s ease-out both; }
 @keyframes hCryptIn { from { opacity: 0; filter: brightness(.15); transform: scale(1.06); } to { opacity: 1; filter: none; transform: none; } }
 .crypt .wscroll { position: relative; z-index: 1; padding-bottom: calc(96px + env(safe-area-inset-bottom, 0px)); }
 /* сундуки стоят посреди склепа, между рядами — проход */
-html .wallov.crypt .wgrid { align-content: center; row-gap: 20px; }
+html .wallov.crypt .wgrid { align-content: center; row-gap: var(--wgap, 20px); }
 /* склеп — на весь экран (заметка пользователя 2026-10-25: «на iPad склеп не во весь экран»): столбцов — сколько дают самые крупные сундуки,
    ширина сетки — чтобы все ряды влезли по высоте (--wc, --wmax из cryptGrid) */
 html .wallov.crypt .wall { max-width: none; }
@@ -1595,7 +1599,7 @@ const TOK_RU = {
   master: 'Хозяин', mad: 'Помешан', hasability: 'Сохранил способность', twin: 'Близнец', grandchild: 'Внук',
   herring: 'Ложная цель', chosen: 'Выбран', note: 'Заметка', know: 'Раскрытый', lunch: 'Обед', shown: 'Показан', guessused: 'Догадка использована', second: 'Второй (Гарпия)',
   votes3: '3 голоса', voteneg: 'Голос против', sober: 'Трезв и здоров', twice: 'Действует дважды', bad: 'Что-то плохое',
-  fauxpaw: 'Кошачья лапка', fear: 'Страх', finalnight: 'Последняя ночь: без атаки',
+  fauxpaw: 'Кошачья лапка', fear: 'Страх', finalnight: 'Последняя ночь: без атаки', amigo: 'Друг Гнома', notme: 'Не я',
 };
 
 function expire(S, when) { // when: 'dusk' | 'dawn'
@@ -2383,6 +2387,8 @@ function startGame(S) {
     const q = S.flags[flag] && P(S, S.flags[flag]);
     if (q && inPlay(S, rid)) addTok(S, q, tok, rid); else S.flags[flag] = null;
   }
+  // Гном: друг Гнома — игрок его стороны, выбран при входе Гнома; раздача могла поменять стороны — тогда выбирается заново
+  for (const g of S.players.filter(p => p.role === 'gnome')) { const a = gnomeAmigo(S, g); if (a && a !== g && a.align === g.align) addTok(S, a, 'amigo', 'gnome', null, { by: g.id }); else gnomeEnter(S, g); }
   // история для фактов Саванта (2026-10-16): есть только у игр, начатых после обновления (`hist` — признак)
   const tm = countTeams(S);
   S.flags.hist = { teams: { townsfolk: tm.townsfolk, outsider: tm.outsider }, picks: [], exe: [], poison: [], off: [], abn: [] };
@@ -2473,8 +2479,14 @@ function addFresh(S, pid, role, night) { S.flags.fresh = (S.flags.fresh || []).f
 function rebuildRest(S) {
   const ord = DATA.order[S.n === 1 ? 'first' : 'other'], cur = S.night.steps[S.night.i];
   const done = new Set(S.night.steps.slice(0, S.night.i + 1).map(st => st.key)), k = ord.indexOf(cur.id);
+  // знакомство злых этой ночью (умер Дурманщик) buildSteps не знает — сохраняем его, иначе оно пропадало, когда позже
+  // этой ночью менялась роль (заметка пользователя 2026-10-27: Ловчий превратил Девицу — шага знакомства не было)
+  const meet = S.night.steps.slice(S.night.i + 1).filter(st => st.meet);
   S.night.steps = S.night.steps.slice(0, S.night.i + 1).concat(buildSteps(S).filter(st => !done.has(st.key)
     && (st.fresh || st.fakeCannibal || k < 0 || ord.indexOf(st.id) > k)));
+  for (const st of meet) if (!S.night.steps.some(x => x.key === st.key)) {
+    const at = S.night.steps.findIndex((s, i) => i > S.night.i && s.id === 'dawn'); S.night.steps.splice(at < 0 ? S.night.steps.length : at, 0, st);
+  }
 }
 // шаг на место роли в ночном порядке; роли нет в порядке этой ночи — перед рассветом
 function insertStep(steps, st, order) {
@@ -2842,6 +2854,41 @@ function gunslingerShot(S, gid, tid) {
   if (abilityOff(S, g)) return log(S, 'Ничего не происходит — способность не работает', 'day');
   attemptKill(S, t, 'ability', 'gunslinger');
 }
+// Гном (вики): «AMIGO» — игрок одной с Гномом стороны; рассказчик объявляет его всем, как только Гном вошёл в игру. Номинировали
+// его — до голосования Гном может убить номинировавшего (сколько угодно раз за игру; голосование всё равно идёт; рассказчик не подсказывает).
+// Заметка пользователя 2026-10-27: «Гном не реализован — не даёт выбрать друга Гнома и жетона нет»
+const gnomeAmigo = (S, g) => { const id = S.flags['gnome_' + g.id]; return id ? P(S, id) : null; };
+function setGnomeAmigo(S, gid, pid) {
+  const g = P(S, gid), a = P(S, pid); if (!g || !a) return;
+  S.players.forEach(q => { q.tokens = q.tokens.filter(t => !(t.k === 'amigo' && t.by === gid)); });
+  S.flags['gnome_' + gid] = pid; addTok(S, a, 'amigo', 'gnome', null, { by: gid });
+  log(S, `Гном (${g.name}): объявите всем — ${a.name} одной стороны с Гномом`, 'effect');
+}
+function gnomeEnter(S, g) {
+  const same = S.players.filter(q => q !== g && q.align === g.align), core = same.filter(q => !isTraveller(q));
+  const pool = core.length ? core : same;
+  if (pool.length) setGnomeAmigo(S, g.id, pick(pool).id);
+}
+function gnomeKill(S, gid, byId) {
+  const g = P(S, gid), by = P(S, byId); S.day.gnomeNom = S.day.nominated.length; // на эту номинацию — один раз
+  log(S, `Гном (${g.name}) убивает номинировавшего: ${by.name}`, 'day');
+  if (abilityOff(S, g)) return log(S, 'Ничего не происходит — способность не работает', 'day');
+  attemptKill(S, by, 'ability', 'gnome');
+}
+// Гангстер (вики): раз в день может убить живого соседа, если согласен другой живой сосед (согласны оба — выбирает Гангстер).
+// Согласие уже было — способность на сегодня потрачена, даже если сосед не умер
+function gangsterKill(S, gid, vid) {
+  const g = P(S, gid), v = P(S, vid); S.day.gangsterUsed = true;
+  log(S, `Гангстер (${g.name}) с согласия соседа убивает ${v.name}`, 'day');
+  if (abilityOff(S, g)) return log(S, 'Ничего не происходит — способность не работает', 'day');
+  attemptKill(S, v, 'ability', 'gangster');
+}
+// Хохотун (вики): каждый день выбирает игрока — «НЕ Я»; этой ночью роль меняет кто-то другой (шаг cacklejack, кроме 1-й ночи)
+function cacklejackPick(S, cid, pid) {
+  S.players.forEach(q => rmTok(q, 'notme', 'cacklejack'));
+  addTok(S, P(S, pid), 'notme', 'cacklejack', ['dawn', S.n + 1]); S.day.cackleUsed = true;
+  log(S, `Хохотун (${P(S, cid).name}) выбирает ${nm(S, pid)}: этой ночью роль меняет кто-то другой`, 'day');
+}
 // Механик может умереть в любой момент (решение рассказчика)
 function tinkerDies(S, pid) {
   const t = P(S, pid);
@@ -2890,6 +2937,7 @@ function addTraveller(S, name, roleId, align, afterId) {
   const i = afterId ? S.players.findIndex(q => q.id === afterId) : S.players.length - 1;
   S.players.splice(i + 1, 0, p);
   if (S.phase !== 'setup') log(S, `В игру входит Странник ${name}: ${rname(roleId)} (${p.align === 'evil' ? 'злой' : 'добрый'})`, 'effect');
+  if (roleId === 'gnome') gnomeEnter(S, p);
   return p;
 }
 
@@ -3078,6 +3126,11 @@ function specialSpec(S, step, first) {
     spec.info = () => ({ show: `Блефы: ${S.bluffs.map(rname).join(', ')}`, lines: [minionsLine(), magLine, lunLine],
       tokens: lunCards().concat(demonCards(), bluffCards(S, 'Демону')) });
   }
+  // Гном (вики): «все игроки начинают, зная игрока одной с Гномом стороны» — объявить до первой ночи
+  if (step.id === 'dusk' && first) {
+    const gl = S.players.filter(g => g.role === 'gnome' && gnomeAmigo(S, g)).map(g => `Гном (${g.name}): объявите всем — ${gnomeAmigo(S, g).name} одной стороны с Гномом (если ещё не объявили)`);
+    if (gl.length) spec.info = () => ({ show: null, lines: gl });
+  }
   if (step.id === 'dawn') {
     const pend = [];
     if (S.flags.moonchildPending) pend.push(`Дитя Луны (${nm(S, S.flags.moonchildPending)}) днём выберет игрока`);
@@ -3254,15 +3307,27 @@ function infoPair(team) {
 }
 
 // Повар, Эмпат, Часовщик, Оракул: число. Рекомендация при искажении — на 1 больше или меньше верного
+// сколько игроков могут оказаться злыми для чужой информации: злые, Затворник (может определиться злым), «Кошачья лапка»
+const evilLike = (S, except) => S.players.filter(q => q !== except && (q.align === 'evil' || q.role === 'recluse' || regEvil(S, q))).length;
+// ложь пьяному/отравленному — правдоподобная (заметка пользователя 2026-10-27: «у Эмпата никак не может быть 3!»): только число,
+// которое могло бы выпасть (compute даёт min/max), лучше соседнее с верным
+function plausibleFake(truth, lo, hi) {
+  const near = [truth - 1, truth + 1].filter(v => v >= lo && v <= hi);
+  if (near.length) return pick(near);
+  const far = []; for (let v = lo; v <= Math.min(hi, truth + 4); v++) if (v !== truth) far.push(v);
+  return far.length ? pick(far) : truth;
+}
 function countInfo(compute, label) {
   return (S, p, first, off) => {
     const dist = distortion(S, p), r0 = compute(S, p), truth = r0.n, num = typeof truth === 'number';
-    const fake = stable(S, `count:${p.id}`, () => num ? (truth > 0 && Math.random() < 0.5 ? truth - 1 : truth + 1) : truth);
+    const lo = r0.min ?? 0, hi = r0.max ?? Infinity;
+    const fake = stable(S, `count:${p.id}`, () => num ? plausibleFake(truth, lo, hi) : truth);
     return {
       inputs: num ? [NUM('n', label + ' — что показать')] : [], defaults: num ? { n: dist ? fake : truth } : {},
       info: inp => {
         const v = num ? (inp.n ?? truth) : truth;
-        return { show: String(v), lines: [label, num && v !== truth ? `Верное число: ${truth}` : '', dist && dist.must && v === truth ? 'Вортокс: нужно ЛОЖНОЕ число' : '', ...(r0.lines || [])] };
+        return { show: String(v), lines: [label, num && v !== truth ? `Верное число: ${truth}` : '', num && (v < lo || v > hi) ? `Такого числа быть не может (возможно ${lo}–${hi}) — игрок поймёт, что информация ложная` : '',
+          dist && dist.must && v === truth ? 'Вортокс: нужно ЛОЖНОЕ число' : '', ...(r0.lines || [])] };
       },
       apply: inp => {
         const v = num ? (inp.n ?? truth) : truth;
@@ -3292,11 +3357,11 @@ const LOGIC = {
   chef: countInfo((S) => {
     const ps = S.players, n = ps.length; let c = 0;
     for (let i = 0; i < n; i++) if (regEvil(S, ps[i]) && regEvil(S, ps[(i + 1) % n])) c++; // «Кошачья лапка» Оборотня — тоже злой
-    return { n: c, lines: regNote(S, ps.map(q => q.id)) };
+    return { n: c, max: Math.max(0, evilLike(S) - 1), lines: regNote(S, ps.map(q => q.id)) }; // пар не больше, чем злых минус один
   }, 'Пар соседей-злодеев (покажите пальцами)'),
   empath: countInfo((S, p) => {
     const nb = aliveNeighbours(S, p);
-    return { n: nb.filter(q => regEvil(S, q)).length, lines: [`Соседи: ${nb.map(q => q.name).join(' и ')}`, ...regNote(S, nb.map(q => q.id))] };
+    return { n: nb.filter(q => regEvil(S, q)).length, max: Math.min(nb.length, evilLike(S, p)), lines: [`Соседи: ${nb.map(q => q.name).join(' и ')}`, ...regNote(S, nb.map(q => q.id))] };
   }, 'Злых среди живых соседей'),
   fortuneteller: (S, p, first, off) => {
     const truth = inp => (inp.t || []).map(id => P(S, id)).some(q => q && (isDemon(q) || q.id === S.flags.ftHerring));
@@ -3556,7 +3621,7 @@ const LOGIC = {
     const ps = S.players, n = ps.length, d = ps.findIndex(isDemon); if (d < 0) return { n: '—' };
     let best = n;
     ps.forEach((q, i) => { if (realTeam(q) === 'minion') { const k = Math.abs(i - d); best = Math.min(best, k, n - k); } });
-    return { n: best === n ? '—' : best, lines: regNote(S, ps.map(q => q.id)) };
+    return { n: best === n ? '—' : best, min: 1, max: Math.floor(n / 2), lines: regNote(S, ps.map(q => q.id)) };
   }, 'Шагов от Демона до ближайшего Приспешника'),
   // Сновидец (вики): игрок не он сам и не Странник; 1 добрая и 1 злая роль, одна из них — его. Роли выбирает рассказчик,
   // в списках они уже стоят по умолчанию (заметка пользователя 2026-10-17): роль стороны игрока — настоящая (если Сновидец трезв
@@ -3677,7 +3742,7 @@ const LOGIC = {
     return { inputs: [y.field], info: inp => ({ show: y.shown(inp) ? 'ДА — кивните' : 'НЕТ — покачайте головой', lines: [`Приспешник сегодня ${truth ? 'номинировал' : 'не номинировал'}`, ...y.lines(inp)] }),
       apply: inp => { log(S, `Глашатай (${p.name}): ${y.shown(inp) ? 'да' : 'нет'}`, 'info'); y.record(inp); } };
   },
-  oracle: countInfo(S => ({ n: S.players.filter(q => !q.alive && q.align === 'evil').length }), 'Мёртвых злых игроков'),
+  oracle: countInfo(S => ({ n: S.players.filter(q => !q.alive && q.align === 'evil').length, max: Math.min(S.players.filter(q => !q.alive).length, evilLike(S)) }), 'Мёртвых злых игроков'),
   seamstress: (S, p, first, off) => {
     if (once(S, p, 'seamstress')) return { active: false, reason: 'Способность уже использована' };
     const same = inp => { const ps = (inp.t || []).map(id => P(S, id)); return ps.length === 2 && ps[0].align === ps[1].align; };
@@ -4035,6 +4100,20 @@ const LOGIC = {
         log(S, `Ученик (${p.name}) получает способность: ${rname(inp.r)}`, 'effect'); if (inp.r === 'fortuneteller') ensureHerring(S); rebuildRest(S);
       },
     };
+  },
+  // Хохотун (вики): каждую ночь, кроме 1-й, роль меняет любой игрок без метки «НЕ Я» (живой или мёртвый, злой или добрый); новая роль —
+  // любая, в игре или нет, сторона прежняя; это новая способность (Повар сразу узнаёт своё число). Хохотун сам не просыпается
+  cacklejack: (S, p, first, off) => first ? { active: false, reason: 'В 1-ю ночь роли не меняются' } : {
+    inputs: [PL('t', 1, 'Чья роль меняется (не тот, кого Хохотун выбрал днём, — «НЕ Я»)', q => q !== p && !hasTok(q, 'notme', 'cacklejack')),
+      ROLE('r', 'Новая роль (в игре или нет)', r => ['townsfolk', 'outsider', 'minion', 'demon'].includes(R(r).team))],
+    info: inp => { const t = inp.t && P(S, inp.t[0]); return t && inp.r ? { show: `${t.name}: «ТЕПЕРЬ ВЫ» и жетон ${rname(inp.r)}`, lines: [inp.r === t.role ? 'Это его нынешняя роль — выберите другую' : ''],
+      tokens: [{ label: t.name, caption: CARD.youAre, role: inp.r, align: t.align }] } : null; },
+    apply: inp => {
+      const t = P(S, inp.t[0]); S.players.forEach(q => rmTok(q, 'notme', 'cacklejack'));
+      if (off) return log(S, `Хохотун (${p.name}): ${t.name} должен был сменить роль — способность не работает`, 'action');
+      const was = t.role; changeRole(S, t, inp.r); log(S, `Хохотун: ${t.name} теперь ${rname(inp.r)} (был ${rname(was)})`, 'effect');
+      if (actsAs(t) === 'fortuneteller') ensureHerring(S); rebuildRest(S); checkWin(S);
+    },
   },
 
   // Мецефель (вики): в 1-ю ночь узнаёт тайное слово; первый добрый, произнёсший его, ночью становится злым
@@ -4408,6 +4487,7 @@ const BOUNDS = {
   barista: { all: [Y('Любой игрок до заката: либо трезв, здоров и получает верную информацию, либо действует дважды. Он узнаёт, что именно')] },
   bonecollector: { other: [I('1 мёртвого игрока или никого, раз за игру: он восстанавливает способность до заката')] },
   apprentice: { all: [Y('Ученик получает способность Горожанина (если добрый) или Приспешника (если злой) из сценария; лучше роль, которой нет в игре')] },
+  cacklejack: { other: [Y('Кроме 1-й ночи: 1 игрок без метки «НЕ Я» (живой или мёртвый, любой стороны) меняет роль на любую — в игре или нет; сторона прежняя. Можно в любой момент ночи')] },
   amnesiac: { all: [Y('Способность придумываете вы: будите и просите выбрать, только если она этого требует'), Y('Днём он раз в день приватно угадывает её — отвечайте «Холодно», «Тепло», «Горячо» или «В точку»')] },
 };
 function boundsFor(id, first) { const b = BOUNDS[id]; return b ? (b.all || (first ? b.first : b.other) || []) : []; }
@@ -4697,7 +4777,7 @@ function klutzChoose(S, pid) {
 
 const ENGINE = { canBluff, setPrepFlag, ensureHerring, PREP_FLAGS, poolMarExtra, bansheeVotes, fauxPawOn, droisoned, nightDeaths, revive, psychopathKill, exeQuestions, roleWorks, makeMarionette, makeDrunk, setupRole, storytellerRole, gossipPending, setGossip, pithagAdvice, puzzleHit, puzzleGuess, politicianStats, politiciansPending, politicianSide, voteNeeds, ghostSpent, demonSeatNeighbours, generalGuess, choiceCount, newGame, newPlayer, P, nm, rname, realTeam, actsAs, aliveCount, aliveAll, coreCount, isTraveller, exile, exileThreshold, addTraveller, meetingBlocker, isDemon, distribution, setupDistribution, distCheck, unknownSetup, countTeams, randomDeal,
   amnesiacGuess, AMNESIAC_ANSWERS, storytellerKill, voteCount, voteWeight, voudonActive, bishopActive, travellerWorks, executeNow,
-  judgeRuling, gunslingerShot, tinkerDies, doomsayerKill, fiddlerEnd, swapSeats, goonWarn, damselGuess, changeRole, madnessExecute, harpyKill,
+  judgeRuling, gunslingerShot, gnomeAmigo, setGnomeAmigo, gnomeKill, gangsterKill, cacklejackPick, tinkerDies, doomsayerKill, fiddlerEnd, swapSeats, goonWarn, damselGuess, changeRole, madnessExecute, harpyKill,
   finishRoles, autoSetup, setupProblems, drawStart, drawOpen, drawClose, drawCancel, drawShown, drawLocked, drawProblem, distortion,
   randomPool, dealPool, validPool, scriptOutsiders, CARD, jinxesInPlay, startGame, startNight, currentStep, stepSpec, applyStep, skipStep,
   stepInputs, missingInputs, endNight, rpStrip, recPatch, replayNight, editNight, editTarget, acceptEdit,
@@ -5747,8 +5827,9 @@ const markArt = id => {
 // жетон-напоминание: src — роль, положившая жетон (иначе роль по умолчанию, иначе рисованный значок); red — ложная цель (красная полоска)
 const markIcon = (id, src, red) => {
   const m = MARK[id]; if (!m && !src) return '';
-  // пьян — всегда кружка (иконка Пьяницы), кто бы ни напоил: Трактирщик, Моряк… (просьба пользователя 2026-10-14); кто — в подписи
-  const r = id === 'drunk' ? 'drunk' : src && DATA.roles[src] ? src : m && m.role, fab = r && ['fabled', 'loric'].includes(team(r));
+  // пьян — всегда кружка (иконка Пьяницы), кто бы ни напоил: Трактирщик, Моряк… (просьба пользователя 2026-10-14); кто — в подписи.
+  // Исключение — пьяный Головоломщика: его значок (заметка пользователя 2026-10-27 — пьянство на всю игру, его надо узнавать)
+  const r = id === 'drunk' && src !== 'puzzlemaster' ? 'drunk' : src && DATA.roles[src] ? src : m && m.role, fab = r && ['fabled', 'loric'].includes(team(r));
   const inner = r && typeof ICONS !== 'undefined' && ICONS[r] ? ico(r, fab ? 'good' : null, 'rti') : markArt(id);
   return `<span class="rtok ${red || (m && m.red) ? 'red' : ''}">${inner}</span>`;
 };
@@ -5971,9 +6052,11 @@ function showButtons(tokens) {
   return `<div class="showbtns">${groups.map((g, i) => `<button class="btn showbtn" data-act="showOpen" data-arg="${base + i}">${art('eye', 'bg')}${g.label ? 'Показать: ' + esc(g.label) : 'Показать игроку на экране'}</button>`).join('')}</div>`;
 }
 // число — рисованными золотыми цифрами (если они есть в сборке), остальное — шрифтом
+// цифры оформления: витражные у «Витража во тьме», пламя тёмной магии у «Хэллоуина» (если нарисованы), иначе — золотые
+const digPrefix = () => UI.skin === 'glass' && HAS_ART('d_digit0') ? 'd_digit' : UI.skin === 'hallow' && HAS_ART('h_digit0') ? 'h_digit' : 'digit';
 const numText = s => {
   s = String(s);
-  if (/^\d{1,3}$/.test(s) && HAS_ART('digit0')) return `<div class="shdig" role="img" aria-label="${s}">${[...s].map(c => `<img src="${ART['digit' + c]}" alt="">`).join('')}</div>`;
+  if (/^\d{1,3}$/.test(s) && HAS_ART(digPrefix() + '0')) { const pf = digPrefix(); return `<div class="shdig" role="img" aria-label="${s}">${[...s].map(c => `<img src="${ART[pf + c]}" alt="">`).join('')}</div>`; }
   // --lw — самое длинное слово: шрифт не крупнее, чем нужно, чтобы слово влезло в строку целиком
   const lw = Math.max(4, ...s.split(/\s+/).map(w => w.length));
   return `<div class="shtext ${s.length <= 4 ? '' : s.length <= 12 ? 'long l1' : s.length <= 48 ? 'long l2' : 'long'}" style="--lw:${lw}">${esc(s)}</div>`;
@@ -6487,6 +6570,29 @@ function viewDay() {
       ${chipsPlayers('gun', 1, p => p.alive && first.voters.includes(p.id), sel, { act: 'dayPick', noRole: true })}
       <div class="row"><button class="btn danger" data-act="gunShoot" data-arg="${g.id}" ${sel.length ? '' : 'disabled'}>Выстрел</button><button class="btn" data-act="gunSkip">Стрелок не стреляет сегодня</button></div></div>`);
   }
+  // Гном (вики): друг — игрок его стороны, объявлен всем; убить номинировавшего друга — в карточке голосования
+  for (const g of S.players.filter(p => p.role === 'gnome' && p.alive)) {
+    const a = E.gnomeAmigo(S, g);
+    parts.push(`<div class="card"><details><summary class="small"><b>Гном</b> (${esc(g.name)}): друг — ${esc(a ? a.name : 'не выбран')}</summary><div class="field" style="margin-top:8px">
+      ${boundsHtml([{ w: 'Вы решаете', t: 'друг Гнома — игрок его стороны; объявите всем, как только Гном вошёл в игру. Друг сменил сторону — Гном остаётся прежним' },
+        { w: 'Игрок выбирает', t: 'номинировали друга — до голосования Гном может убить номинировавшего (сколько угодно раз за игру; голосование идёт). Не подсказывайте' }])}
+      <div class="flabel"><span>Друг Гнома</span></div>${chipsPlayers('gnome', 1, q => q !== g && q.align === g.align, a ? [a.id] : [], { act: 'gnomeAmigo', noRole: true })}</div></details></div>`);
+  }
+  // Гангстер (вики): раз в день — убить живого соседа, если другой живой сосед согласен
+  for (const g of S.players.filter(p => p.role === 'gangster' && p.alive && !d.gangsterUsed)) {
+    const nb = E.aliveNeighbours(S, g); if (nb.length < 2) continue;
+    parts.push(`<div class="card"><details><summary class="small"><b>Гангстер</b> (${esc(g.name)}): убить соседа — раз в день</summary><div class="field" style="margin-top:8px">
+      ${boundsHtml([{ w: 'Игрок выбирает', t: 'одного из двух живых соседей, если второй живой сосед согласен (согласны оба — решает Гангстер). Согласие было — способность на сегодня потрачена, даже если сосед не умер' }])}
+      <div class="seg">${nb.map((v, i) => `<button data-act="gangKill" data-arg="${g.id}|${v.id}">Умирает ${esc(v.name)} — согласен ${esc(nb[1 - i].name)}</button>`).join('')}</div></div></details></div>`);
+  }
+  // Хохотун (вики): днём выбирает игрока — «НЕ Я»; ночью роль меняет кто-то другой
+  for (const c of S.players.filter(p => p.role === 'cacklejack' && p.alive)) {
+    const sel = picks.cackle || [], cur = S.players.find(q => E.hasTok(q, 'notme', 'cacklejack'));
+    parts.push(`<div class="card"><details ${cur ? '' : 'open'}><summary class="small"><b>Хохотун</b> выбирает игрока${cur ? ` — выбран ${esc(cur.name)}` : ''}</summary><div class="field" style="margin-top:8px">
+      ${boundsHtml([{ w: 'Игрок выбирает', t: 'каждый день, публично или тайно, 1 игрока — «НЕ Я»: этой ночью роль меняет кто-то другой' }])}
+      ${chipsPlayers('cackle', 1, () => true, sel, { act: 'dayPick', noRole: true })}
+      <button class="btn" data-act="cacklePick" data-arg="${c.id}" ${sel.length ? '' : 'disabled'}>Записать «НЕ Я»</button></div></details></div>`);
+  }
   // Механик может умереть в любой момент — по решению рассказчика
   for (const t of S.players.filter(p => p.role === 'tinker' && p.alive))
     parts.push(`<div class="card"><details><summary class="small"><b>Механик</b> может умереть в любой момент</summary><div class="field" style="margin-top:8px">
@@ -6524,6 +6630,10 @@ function viewDay() {
   const judge = S.players.find(p => p.role === 'judge' && p.alive && !S.flags['judge_' + p.id]);
   const judgeHtml = (onId, byId) => judge && byId !== judge.id && !d.executed ? `<div class="field"><label>Судья (${esc(judge.name)}), раз за игру: исход номинации ${esc(E.nm(S, onId))}</label>
     <div class="seg"><button data-act="judge" data-arg="${judge.id}|${onId}|1">Казнь состоится — сейчас</button><button data-act="judge" data-arg="${judge.id}|${onId}|0">Казни не будет</button></div></div>` : '';
+  // Гном: номинирован его друг — до голосования Гном может убить номинировавшего (один раз на номинацию)
+  const gnomeHtml = (onId, byId) => byId && byId !== 'st' && d.gnomeNom !== d.nominated.length ? S.players.filter(g => g.role === 'gnome' && g.alive && (E.gnomeAmigo(S, g) || {}).id === onId)
+    .map(g => `<div class="field"><label>Гном (${esc(g.name)}): номинирован его друг — до голосования Гном может убить номинировавшего (говорит сам игрок — не подсказывайте)</label>
+      <button class="btn danger" data-act="gnomeKill" data-arg="${g.id}|${byId}">Гном убивает ${esc(E.nm(S, byId))}</button></div>`).join('') : '';
   const { vd, bishop, butcherTurn, byOk, onOk, canVote } = nomRules();
   if (nm.stage === 'vote') {
     const on = E.P(S, nm.on), by = nm.by === 'st' ? null : E.P(S, nm.by);
@@ -6538,7 +6648,7 @@ function viewDay() {
       ${tiles('voters', 99, canVote, nm.voters, 'vote', { ghost: !vd, order: voteOrder(nm.on), mark: nm.on })}
       ${(() => { const vn = E.voteNeeds(S); return `<div class="reveal"><div class="lab">Голосов</div><div class="big">${cnt}</div>
         <div class="ln">Для казни нужно — <b>${vn.exec}</b>${vn.cancel ? ` · для отмены (ничья, казни не будет) — <b>${vn.cancel}</b>` : ''}</div>${weighted.map(t => `<div class="ln">${esc(t)}</div>`).join('')}</div>`; })()}
-      ${judgeHtml(nm.on, nm.by)}
+      ${gnomeHtml(nm.on, nm.by)}${judgeHtml(nm.on, nm.by)}
       ${confirmRow('voteDone', 'Подтвердить голоса', true, 'voteCancel', 'Отменить номинацию')}</div>`);
   } else if (!d.executed || butcherTurn) {
     const pv = E.nominationPreview(S, nm.by, nm.on);
@@ -6581,7 +6691,7 @@ function viewDay() {
 function exileHtml(picks) {
   if (!S.players.some(p => E.isTraveller(p) && p.alive)) return '';
   const ex = picks.exile || { pid: null, voters: [] }, eth = E.exileThreshold(S), pass = ex.voters.length >= eth;
-  return `<div class="card"><h3 class="hi">${art('traveller', 'hg')}Изгнание Странника</h3>
+  return `<div class="card"><div class="row ghead"><h3 class="hi">${art('traveller', 'hg')}Изгнание Странника</h3><button class="btn ringbtn" data-act="ringExile">◯ Кругом</button></div>
     ${boundsHtml([{ w: 'Кого', t: 'только Странника; изгнание — не казнь, за день их может быть сколько угодно' },
       { w: 'Голосуют', t: 'все игроки, живые и мёртвые; голос призрака при этом не тратится' },
       { w: 'Изгнан', t: `если голосов не меньше половины всех игроков: ${eth} из ${S.players.length}` }])}
@@ -6839,10 +6949,15 @@ function seatHtml(p, i, g, cls, attrs, extra) {
 }
 const ringStyle = g => `aspect-ratio:100 / ${g.H.toFixed(1)}`;
 // ночной выбор кругом: места с иконкой роли и именем; выбранные — по порядку (1, 2, 3 — важно для Аль-Адихии)
+// Значки состояния (пьян, отравлен, защита…) — под именем, как в Гримуаре (заметка пользователя 2026-10-27: «не увидев, что Мэр пьян,
+// я вручную сымитировал рикошет»)
 function ringPick(key, n, filter, sel) {
   const g = ringGeom(S.players.length, false, 330);
+  const marks = p => { const ms = playerMarks(p, { noNotes: true }); if (!ms.length) return '';
+    const cells = ms.length <= 3 ? ms.map(markSpan) : ms.slice(0, 2).map(markSpan).concat(`<span class="rslot rmore">+${ms.length - 2}</span>`);
+    return `<span class="rmk">${cells.join('')}</span>`; };
   const seats = S.players.map((p, i) => { const k = sel.indexOf(p.id);
-    const extra = `${p.role ? ico(p.role, p.align, 'rsi') : ''}${k >= 0 && n > 1 ? `<span class="rord">${k + 1}</span>` : ''}`;
+    const extra = `${p.role ? ico(p.role, p.align, 'rsi') : ''}${k >= 0 && n > 1 ? `<span class="rord">${k + 1}</span>` : ''}${marks(p)}`;
     return seatHtml(p, i, g, (k >= 0 ? 'on' : '') + ' withicon', `data-act="pickP" data-arg="${key}|${p.id}|${n}" ${filter(p) ? '' : 'disabled'}`, extra); }).join('');
   return `<div class="ring nightring" style="${ringStyle(g)}">${seats}</div>`;
 }
@@ -6934,7 +7049,24 @@ function pickRing() {
       <button class="btn ${r.danger ? 'danger' : 'primary'} wide" data-act="${r.ok}" data-arg="${r.okArg || ''}" ${t ? '' : 'disabled'}>${esc(r.okLabel)}</button>
       <button class="btn wide" data-act="ringClose">Вернуться к экрану дня</button></div></div>`;
 }
+// изгнание Странника кругом (заметка пользователя 2026-10-27): нажать Странника, потом — всех, кто голосует (живые и мёртвые)
+function exileRing() {
+  const ex = S.day.picks.exile || { pid: null, voters: [] }, eth = E.exileThreshold(S), g = ringGeom(S.players.length, false, 330), on = ex.pid && E.P(S, ex.pid);
+  const seats = S.players.map((p, i) => on
+    ? seatHtml(p, i, g, [p.id === ex.pid ? 'on' : '', ex.voters.includes(p.id) ? 'voted' : ''].join(' '), `data-act="exVote" data-arg="exV|${p.id}|99"`)
+    : seatHtml(p, i, g, '', `data-act="exPick" data-arg="exPid|${p.id}|1" ${E.isTraveller(p) && p.alive ? '' : 'disabled'}`)).join('');
+  const n = ex.voters.length, pass = n >= eth;
+  const mid = on ? `<b class="${pass ? 'enough' : ''}">${n}</b><span>нужно — ${eth}</span><span class="small">изгнать: ${esc(on.name)}</span>` : '<span>Кого изгоняют?</span><b class="q">Странник</b>';
+  return `<div class="ov ringov" role="dialog" aria-label="Изгнание Странника по кругу">
+    <div class="ringtop"><span></span><b>Изгнание Странника</b><button class="wbtn" data-act="ringClose" aria-label="Закрыть">×</button></div>
+    <div class="ringbox"><div class="small muted ringhint">${on ? 'Отметьте всех, кто голосует за изгнание, — живых и мёртвых (голос призрака не тратится). Изгнан, если голосов не меньше половины всех игроков.' : 'Нажмите на Странника, которого хотят изгнать.'}</div>
+      <div class="ring" style="${ringStyle(g)}">${seats}<div class="ringmid" style="top:${(g.H / 2).toFixed(2)}cqw">${mid}</div></div>
+      ${on && pass && on.role === 'deviant' ? `<div class="seg"><button class="${S.day.picks.exFunny ? 'on' : ''}" data-act="exFunny">Девиант сегодня был забавным — не умирает</button></div>` : ''}
+      ${on ? confirmRow('exile', pass ? 'Подтвердить: изгнан' : 'Подтвердить: остаётся', true, 'exClear', 'Другой Странник') : ''}
+      <button class="btn wide" data-act="ringClose">Вернуться к экрану дня</button></div></div>`;
+}
 function ringOverlay() {
+  if (UI.ring === 'exile' && S.phase === 'day') return exileRing();
   if (UI.ring === 'pick' && S.phase === 'day') return pickRing();
   if (UI.ring === 'seat' && S.phase === 'setup') return seatRing();
   if (UI.ring === 'nom' && S.phase === 'day') return nomRing();
@@ -7077,13 +7209,15 @@ function hChestVars() {
 // склеп на широком экране альбомом (style.css): 4 столбца до 8 сундуков, дальше 5; ширина сетки — чтобы все ряды влезли по высоте
 // (над сундуками — шапка и подсказка, внизу — свечи: ~210 px; между рядами 20 px, между столбцами 12 px)
 // столбцов — сколько дают самые крупные сундуки на этом экране (по ширине — 92% стены на весь экран, по высоте — без шапки и подсказки)
+// Не меньше 3 в ряд (заметка пользователя 2026-10-27: на iPhone 12 сундуков стояли по 2 — «лучше 3 в ряд»); 2 — только при 4 и меньше.
+// Открытый сундук выше закрытого на 30% (откинутая крышка) — ряды отступают на эту высоту, чтобы крышки не налезали на ряд выше
 function cryptGrid(n) {
   const c = (typeof ART_META !== 'undefined' && ART_META.hallow && ART_META.hallow.chest) || { w: 485, h: 375 }, ar = c.h / c.w;
   const W = ((window.innerWidth || 375) - 28) * .92, H = (window.innerHeight || 700) - 210;
-  const fit = k => { const r = Math.ceil(n / k); return Math.min((W - (k - 1) * 12) / k, (H - (r - 1) * 20) / r / ar); };
-  let cols = 3; for (const k of [2, 4, 5, 6]) if (fit(k) > fit(cols)) cols = k;
-  const rows = Math.ceil(n / cols);
-  return `--wc:${cols};--wmax:calc((100dvh - ${210 + (rows - 1) * 20}px) / ${(rows * ar).toFixed(3)} * ${cols} + ${(cols - 1) * 12}px)`;
+  const size = k => { const r = Math.ceil(n / k); return Math.min((W - (k - 1) * 12) / k, (H - (r - 1) * 6) / (r + .3 * (r - 1)) / ar); };
+  let cols = 3; for (const k of [4, 5, 6].concat(n <= 4 ? [2] : [])) if (size(k) > size(cols)) cols = k;
+  const w = size(cols);
+  return `--wc:${cols};--wmax:${Math.round(cols * w + (cols - 1) * 12)}px;--wgap:${Math.round(.3 * w * ar + 6)}px`;
 }
 // склеп: туман, свечи и тыквы по углам (поверх фона, под сундуками)
 const cryptDecor = () => `<div class="hcrypt" aria-hidden="true"><i class="hfog"></i>
@@ -7959,7 +8093,7 @@ function render() {
     <nav class="tabs">${[['game', S.phase === 'night' ? 'Ночь' : S.phase === 'day' ? 'День' : 'Игра', S.phase === 'night' ? 'night' : S.phase === 'day' ? 'day' : 'setup'], ['table', 'Гримуар'], ['log', 'Журнал'], ['roles', 'Роли'], ['menu', 'Ещё']].map(([k, l, ic]) => `<button class="${UI.tab === k ? 'on' : ''}" data-act="tab" data-arg="${k}">${tabIco(ic || k)}<span class="tl">${l}</span></button>`).join('')}</nav>
     ${legendOverlay()}${wallOverlay()}${grimOverlay()}${ringOverlay()}${sheetOverlay()}${editOverlay()}${fateOverlay()}${statOverlay()}${tipHtml()}${savFactsHtml()}${ghostLostHtml()}${pinAskHtml()}${polOverlay()}${gossipAskHtml()}${prepOverlay()}${prepPickHtml()}${exeAskHtml()}${exeResHtml()}${showOverlay()}${noteViewOverlay()}${testWelcomeHtml()}${splashHtml()}`;
   // круг рассадки — только на подготовке, круг номинации — только днём, Гримуар кругом — во время игры (после смены фазы закрываются сами)
-  if ((UI.ring === 'seat' && S.phase !== 'setup') || ((UI.ring === 'nom' || UI.ring === 'pick') && S.phase !== 'day') || UI.ring === 'grim') UI.ring = null;
+  if ((UI.ring === 'seat' && S.phase !== 'setup') || ((UI.ring === 'nom' || UI.ring === 'pick' || UI.ring === 'exile') && S.phase !== 'day') || UI.ring === 'grim') UI.ring = null;
   // под полноэкранными слоями страница не прокручивается
   if (UI.fate && !(S.phase === 'day' && S.day.picks && S.day.picks.fate)) UI.fate = false; // день кончился — выбор казни закрыт
   if (UI.stat && S.phase !== 'day') UI.stat = false;
@@ -8091,6 +8225,10 @@ const A = {
   dayPick2: arg => { const [key, id] = arg.split('|'); draft(S => { const sel = (S.day.picks[key] || []).slice(); if (sel.includes(id)) sel.splice(sel.indexOf(id), 1); else { if (sel.length >= 2) sel.shift(); sel.push(id); } S.day.picks[key] = sel; }); },
   gunShoot: gid => { const t = S.day.picks.gun[0]; act(S => { E.gunslingerShot(S, gid, t); S.day.picks.gun = []; }); },
   gunSkip: () => act(S => { S.day.gunUsed = true; E.log(S, 'Стрелок сегодня не стреляет', 'day'); }),
+  gnomeAmigo: arg => { const id = arg.split('|')[1], g = S.players.find(p => p.role === 'gnome' && p.alive); if (g) act(S => E.setGnomeAmigo(S, g.id, id), 'Гном: друг'); },
+  gnomeKill: arg => { const [g, by] = arg.split('|'); act(S => E.gnomeKill(S, g, by), 'Гном убивает номинировавшего'); },
+  gangKill: arg => { const [g, v] = arg.split('|'); act(S => E.gangsterKill(S, g, v), 'Гангстер'); },
+  cacklePick: cid => { const t = S.day.picks.cackle[0]; act(S => { E.cacklejackPick(S, cid, t); S.day.picks.cackle = []; }, 'Хохотун: «НЕ Я»'); },
   tinkerDie: id => act(S => E.tinkerDies(S, id), 'Механик умирает'),
   doom: () => { const a = S.day.picks.doomBy[0], v = S.day.picks.doomV[0]; act(S => { E.doomsayerKill(S, a, v); S.day.picks.doomBy = []; S.day.picks.doomV = []; }); },
   fiddler: res => { const ch = S.day.picks.fidCh[0]; act(S => E.fiddlerEnd(S, ch, res), 'Скрипач'); },
@@ -8198,6 +8336,7 @@ const A = {
   // круг игроков: рассадка (подготовка) и номинация (день)
   ringSeat: () => { UI.ring = 'seat'; render(); },
   ringNom: () => { UI.ring = 'nom'; render(); },
+  ringExile: () => { UI.ring = 'exile'; render(); },
   grimGrid: v => { UI.grimGrid = v === '1'; try { localStorage.setItem('botc-grimoire-grimgrid', UI.grimGrid ? '1' : ''); } catch (e) { /* без хранилища — до перезагрузки */ } render(); },
   ringClose: () => { UI.ring = null; render(); },
   seatDir: v => { if ((S.flags.seatDir || 'cw') !== v) act(S => { S.flags.seatDir = v; }, v === 'ccw' ? 'номера против часовой' : 'номера по часовой'); },

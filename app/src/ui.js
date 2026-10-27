@@ -207,8 +207,9 @@ const markArt = id => {
 // жетон-напоминание: src — роль, положившая жетон (иначе роль по умолчанию, иначе рисованный значок); red — ложная цель (красная полоска)
 const markIcon = (id, src, red) => {
   const m = MARK[id]; if (!m && !src) return '';
-  // пьян — всегда кружка (иконка Пьяницы), кто бы ни напоил: Трактирщик, Моряк… (просьба пользователя 2026-10-14); кто — в подписи
-  const r = id === 'drunk' ? 'drunk' : src && DATA.roles[src] ? src : m && m.role, fab = r && ['fabled', 'loric'].includes(team(r));
+  // пьян — всегда кружка (иконка Пьяницы), кто бы ни напоил: Трактирщик, Моряк… (просьба пользователя 2026-10-14); кто — в подписи.
+  // Исключение — пьяный Головоломщика: его значок (заметка пользователя 2026-10-27 — пьянство на всю игру, его надо узнавать)
+  const r = id === 'drunk' && src !== 'puzzlemaster' ? 'drunk' : src && DATA.roles[src] ? src : m && m.role, fab = r && ['fabled', 'loric'].includes(team(r));
   const inner = r && typeof ICONS !== 'undefined' && ICONS[r] ? ico(r, fab ? 'good' : null, 'rti') : markArt(id);
   return `<span class="rtok ${red || (m && m.red) ? 'red' : ''}">${inner}</span>`;
 };
@@ -431,9 +432,11 @@ function showButtons(tokens) {
   return `<div class="showbtns">${groups.map((g, i) => `<button class="btn showbtn" data-act="showOpen" data-arg="${base + i}">${art('eye', 'bg')}${g.label ? 'Показать: ' + esc(g.label) : 'Показать игроку на экране'}</button>`).join('')}</div>`;
 }
 // число — рисованными золотыми цифрами (если они есть в сборке), остальное — шрифтом
+// цифры оформления: витражные у «Витража во тьме», пламя тёмной магии у «Хэллоуина» (если нарисованы), иначе — золотые
+const digPrefix = () => UI.skin === 'glass' && HAS_ART('d_digit0') ? 'd_digit' : UI.skin === 'hallow' && HAS_ART('h_digit0') ? 'h_digit' : 'digit';
 const numText = s => {
   s = String(s);
-  if (/^\d{1,3}$/.test(s) && HAS_ART('digit0')) return `<div class="shdig" role="img" aria-label="${s}">${[...s].map(c => `<img src="${ART['digit' + c]}" alt="">`).join('')}</div>`;
+  if (/^\d{1,3}$/.test(s) && HAS_ART(digPrefix() + '0')) { const pf = digPrefix(); return `<div class="shdig" role="img" aria-label="${s}">${[...s].map(c => `<img src="${ART[pf + c]}" alt="">`).join('')}</div>`; }
   // --lw — самое длинное слово: шрифт не крупнее, чем нужно, чтобы слово влезло в строку целиком
   const lw = Math.max(4, ...s.split(/\s+/).map(w => w.length));
   return `<div class="shtext ${s.length <= 4 ? '' : s.length <= 12 ? 'long l1' : s.length <= 48 ? 'long l2' : 'long'}" style="--lw:${lw}">${esc(s)}</div>`;
@@ -947,6 +950,29 @@ function viewDay() {
       ${chipsPlayers('gun', 1, p => p.alive && first.voters.includes(p.id), sel, { act: 'dayPick', noRole: true })}
       <div class="row"><button class="btn danger" data-act="gunShoot" data-arg="${g.id}" ${sel.length ? '' : 'disabled'}>Выстрел</button><button class="btn" data-act="gunSkip">Стрелок не стреляет сегодня</button></div></div>`);
   }
+  // Гном (вики): друг — игрок его стороны, объявлен всем; убить номинировавшего друга — в карточке голосования
+  for (const g of S.players.filter(p => p.role === 'gnome' && p.alive)) {
+    const a = E.gnomeAmigo(S, g);
+    parts.push(`<div class="card"><details><summary class="small"><b>Гном</b> (${esc(g.name)}): друг — ${esc(a ? a.name : 'не выбран')}</summary><div class="field" style="margin-top:8px">
+      ${boundsHtml([{ w: 'Вы решаете', t: 'друг Гнома — игрок его стороны; объявите всем, как только Гном вошёл в игру. Друг сменил сторону — Гном остаётся прежним' },
+        { w: 'Игрок выбирает', t: 'номинировали друга — до голосования Гном может убить номинировавшего (сколько угодно раз за игру; голосование идёт). Не подсказывайте' }])}
+      <div class="flabel"><span>Друг Гнома</span></div>${chipsPlayers('gnome', 1, q => q !== g && q.align === g.align, a ? [a.id] : [], { act: 'gnomeAmigo', noRole: true })}</div></details></div>`);
+  }
+  // Гангстер (вики): раз в день — убить живого соседа, если другой живой сосед согласен
+  for (const g of S.players.filter(p => p.role === 'gangster' && p.alive && !d.gangsterUsed)) {
+    const nb = E.aliveNeighbours(S, g); if (nb.length < 2) continue;
+    parts.push(`<div class="card"><details><summary class="small"><b>Гангстер</b> (${esc(g.name)}): убить соседа — раз в день</summary><div class="field" style="margin-top:8px">
+      ${boundsHtml([{ w: 'Игрок выбирает', t: 'одного из двух живых соседей, если второй живой сосед согласен (согласны оба — решает Гангстер). Согласие было — способность на сегодня потрачена, даже если сосед не умер' }])}
+      <div class="seg">${nb.map((v, i) => `<button data-act="gangKill" data-arg="${g.id}|${v.id}">Умирает ${esc(v.name)} — согласен ${esc(nb[1 - i].name)}</button>`).join('')}</div></div></details></div>`);
+  }
+  // Хохотун (вики): днём выбирает игрока — «НЕ Я»; ночью роль меняет кто-то другой
+  for (const c of S.players.filter(p => p.role === 'cacklejack' && p.alive)) {
+    const sel = picks.cackle || [], cur = S.players.find(q => E.hasTok(q, 'notme', 'cacklejack'));
+    parts.push(`<div class="card"><details ${cur ? '' : 'open'}><summary class="small"><b>Хохотун</b> выбирает игрока${cur ? ` — выбран ${esc(cur.name)}` : ''}</summary><div class="field" style="margin-top:8px">
+      ${boundsHtml([{ w: 'Игрок выбирает', t: 'каждый день, публично или тайно, 1 игрока — «НЕ Я»: этой ночью роль меняет кто-то другой' }])}
+      ${chipsPlayers('cackle', 1, () => true, sel, { act: 'dayPick', noRole: true })}
+      <button class="btn" data-act="cacklePick" data-arg="${c.id}" ${sel.length ? '' : 'disabled'}>Записать «НЕ Я»</button></div></details></div>`);
+  }
   // Механик может умереть в любой момент — по решению рассказчика
   for (const t of S.players.filter(p => p.role === 'tinker' && p.alive))
     parts.push(`<div class="card"><details><summary class="small"><b>Механик</b> может умереть в любой момент</summary><div class="field" style="margin-top:8px">
@@ -984,6 +1010,10 @@ function viewDay() {
   const judge = S.players.find(p => p.role === 'judge' && p.alive && !S.flags['judge_' + p.id]);
   const judgeHtml = (onId, byId) => judge && byId !== judge.id && !d.executed ? `<div class="field"><label>Судья (${esc(judge.name)}), раз за игру: исход номинации ${esc(E.nm(S, onId))}</label>
     <div class="seg"><button data-act="judge" data-arg="${judge.id}|${onId}|1">Казнь состоится — сейчас</button><button data-act="judge" data-arg="${judge.id}|${onId}|0">Казни не будет</button></div></div>` : '';
+  // Гном: номинирован его друг — до голосования Гном может убить номинировавшего (один раз на номинацию)
+  const gnomeHtml = (onId, byId) => byId && byId !== 'st' && d.gnomeNom !== d.nominated.length ? S.players.filter(g => g.role === 'gnome' && g.alive && (E.gnomeAmigo(S, g) || {}).id === onId)
+    .map(g => `<div class="field"><label>Гном (${esc(g.name)}): номинирован его друг — до голосования Гном может убить номинировавшего (говорит сам игрок — не подсказывайте)</label>
+      <button class="btn danger" data-act="gnomeKill" data-arg="${g.id}|${byId}">Гном убивает ${esc(E.nm(S, byId))}</button></div>`).join('') : '';
   const { vd, bishop, butcherTurn, byOk, onOk, canVote } = nomRules();
   if (nm.stage === 'vote') {
     const on = E.P(S, nm.on), by = nm.by === 'st' ? null : E.P(S, nm.by);
@@ -998,7 +1028,7 @@ function viewDay() {
       ${tiles('voters', 99, canVote, nm.voters, 'vote', { ghost: !vd, order: voteOrder(nm.on), mark: nm.on })}
       ${(() => { const vn = E.voteNeeds(S); return `<div class="reveal"><div class="lab">Голосов</div><div class="big">${cnt}</div>
         <div class="ln">Для казни нужно — <b>${vn.exec}</b>${vn.cancel ? ` · для отмены (ничья, казни не будет) — <b>${vn.cancel}</b>` : ''}</div>${weighted.map(t => `<div class="ln">${esc(t)}</div>`).join('')}</div>`; })()}
-      ${judgeHtml(nm.on, nm.by)}
+      ${gnomeHtml(nm.on, nm.by)}${judgeHtml(nm.on, nm.by)}
       ${confirmRow('voteDone', 'Подтвердить голоса', true, 'voteCancel', 'Отменить номинацию')}</div>`);
   } else if (!d.executed || butcherTurn) {
     const pv = E.nominationPreview(S, nm.by, nm.on);
@@ -1041,7 +1071,7 @@ function viewDay() {
 function exileHtml(picks) {
   if (!S.players.some(p => E.isTraveller(p) && p.alive)) return '';
   const ex = picks.exile || { pid: null, voters: [] }, eth = E.exileThreshold(S), pass = ex.voters.length >= eth;
-  return `<div class="card"><h3 class="hi">${art('traveller', 'hg')}Изгнание Странника</h3>
+  return `<div class="card"><div class="row ghead"><h3 class="hi">${art('traveller', 'hg')}Изгнание Странника</h3><button class="btn ringbtn" data-act="ringExile">◯ Кругом</button></div>
     ${boundsHtml([{ w: 'Кого', t: 'только Странника; изгнание — не казнь, за день их может быть сколько угодно' },
       { w: 'Голосуют', t: 'все игроки, живые и мёртвые; голос призрака при этом не тратится' },
       { w: 'Изгнан', t: `если голосов не меньше половины всех игроков: ${eth} из ${S.players.length}` }])}
@@ -1299,10 +1329,15 @@ function seatHtml(p, i, g, cls, attrs, extra) {
 }
 const ringStyle = g => `aspect-ratio:100 / ${g.H.toFixed(1)}`;
 // ночной выбор кругом: места с иконкой роли и именем; выбранные — по порядку (1, 2, 3 — важно для Аль-Адихии)
+// Значки состояния (пьян, отравлен, защита…) — под именем, как в Гримуаре (заметка пользователя 2026-10-27: «не увидев, что Мэр пьян,
+// я вручную сымитировал рикошет»)
 function ringPick(key, n, filter, sel) {
   const g = ringGeom(S.players.length, false, 330);
+  const marks = p => { const ms = playerMarks(p, { noNotes: true }); if (!ms.length) return '';
+    const cells = ms.length <= 3 ? ms.map(markSpan) : ms.slice(0, 2).map(markSpan).concat(`<span class="rslot rmore">+${ms.length - 2}</span>`);
+    return `<span class="rmk">${cells.join('')}</span>`; };
   const seats = S.players.map((p, i) => { const k = sel.indexOf(p.id);
-    const extra = `${p.role ? ico(p.role, p.align, 'rsi') : ''}${k >= 0 && n > 1 ? `<span class="rord">${k + 1}</span>` : ''}`;
+    const extra = `${p.role ? ico(p.role, p.align, 'rsi') : ''}${k >= 0 && n > 1 ? `<span class="rord">${k + 1}</span>` : ''}${marks(p)}`;
     return seatHtml(p, i, g, (k >= 0 ? 'on' : '') + ' withicon', `data-act="pickP" data-arg="${key}|${p.id}|${n}" ${filter(p) ? '' : 'disabled'}`, extra); }).join('');
   return `<div class="ring nightring" style="${ringStyle(g)}">${seats}</div>`;
 }
@@ -1394,7 +1429,24 @@ function pickRing() {
       <button class="btn ${r.danger ? 'danger' : 'primary'} wide" data-act="${r.ok}" data-arg="${r.okArg || ''}" ${t ? '' : 'disabled'}>${esc(r.okLabel)}</button>
       <button class="btn wide" data-act="ringClose">Вернуться к экрану дня</button></div></div>`;
 }
+// изгнание Странника кругом (заметка пользователя 2026-10-27): нажать Странника, потом — всех, кто голосует (живые и мёртвые)
+function exileRing() {
+  const ex = S.day.picks.exile || { pid: null, voters: [] }, eth = E.exileThreshold(S), g = ringGeom(S.players.length, false, 330), on = ex.pid && E.P(S, ex.pid);
+  const seats = S.players.map((p, i) => on
+    ? seatHtml(p, i, g, [p.id === ex.pid ? 'on' : '', ex.voters.includes(p.id) ? 'voted' : ''].join(' '), `data-act="exVote" data-arg="exV|${p.id}|99"`)
+    : seatHtml(p, i, g, '', `data-act="exPick" data-arg="exPid|${p.id}|1" ${E.isTraveller(p) && p.alive ? '' : 'disabled'}`)).join('');
+  const n = ex.voters.length, pass = n >= eth;
+  const mid = on ? `<b class="${pass ? 'enough' : ''}">${n}</b><span>нужно — ${eth}</span><span class="small">изгнать: ${esc(on.name)}</span>` : '<span>Кого изгоняют?</span><b class="q">Странник</b>';
+  return `<div class="ov ringov" role="dialog" aria-label="Изгнание Странника по кругу">
+    <div class="ringtop"><span></span><b>Изгнание Странника</b><button class="wbtn" data-act="ringClose" aria-label="Закрыть">×</button></div>
+    <div class="ringbox"><div class="small muted ringhint">${on ? 'Отметьте всех, кто голосует за изгнание, — живых и мёртвых (голос призрака не тратится). Изгнан, если голосов не меньше половины всех игроков.' : 'Нажмите на Странника, которого хотят изгнать.'}</div>
+      <div class="ring" style="${ringStyle(g)}">${seats}<div class="ringmid" style="top:${(g.H / 2).toFixed(2)}cqw">${mid}</div></div>
+      ${on && pass && on.role === 'deviant' ? `<div class="seg"><button class="${S.day.picks.exFunny ? 'on' : ''}" data-act="exFunny">Девиант сегодня был забавным — не умирает</button></div>` : ''}
+      ${on ? confirmRow('exile', pass ? 'Подтвердить: изгнан' : 'Подтвердить: остаётся', true, 'exClear', 'Другой Странник') : ''}
+      <button class="btn wide" data-act="ringClose">Вернуться к экрану дня</button></div></div>`;
+}
 function ringOverlay() {
+  if (UI.ring === 'exile' && S.phase === 'day') return exileRing();
   if (UI.ring === 'pick' && S.phase === 'day') return pickRing();
   if (UI.ring === 'seat' && S.phase === 'setup') return seatRing();
   if (UI.ring === 'nom' && S.phase === 'day') return nomRing();
@@ -1537,13 +1589,15 @@ function hChestVars() {
 // склеп на широком экране альбомом (style.css): 4 столбца до 8 сундуков, дальше 5; ширина сетки — чтобы все ряды влезли по высоте
 // (над сундуками — шапка и подсказка, внизу — свечи: ~210 px; между рядами 20 px, между столбцами 12 px)
 // столбцов — сколько дают самые крупные сундуки на этом экране (по ширине — 92% стены на весь экран, по высоте — без шапки и подсказки)
+// Не меньше 3 в ряд (заметка пользователя 2026-10-27: на iPhone 12 сундуков стояли по 2 — «лучше 3 в ряд»); 2 — только при 4 и меньше.
+// Открытый сундук выше закрытого на 30% (откинутая крышка) — ряды отступают на эту высоту, чтобы крышки не налезали на ряд выше
 function cryptGrid(n) {
   const c = (typeof ART_META !== 'undefined' && ART_META.hallow && ART_META.hallow.chest) || { w: 485, h: 375 }, ar = c.h / c.w;
   const W = ((window.innerWidth || 375) - 28) * .92, H = (window.innerHeight || 700) - 210;
-  const fit = k => { const r = Math.ceil(n / k); return Math.min((W - (k - 1) * 12) / k, (H - (r - 1) * 20) / r / ar); };
-  let cols = 3; for (const k of [2, 4, 5, 6]) if (fit(k) > fit(cols)) cols = k;
-  const rows = Math.ceil(n / cols);
-  return `--wc:${cols};--wmax:calc((100dvh - ${210 + (rows - 1) * 20}px) / ${(rows * ar).toFixed(3)} * ${cols} + ${(cols - 1) * 12}px)`;
+  const size = k => { const r = Math.ceil(n / k); return Math.min((W - (k - 1) * 12) / k, (H - (r - 1) * 6) / (r + .3 * (r - 1)) / ar); };
+  let cols = 3; for (const k of [4, 5, 6].concat(n <= 4 ? [2] : [])) if (size(k) > size(cols)) cols = k;
+  const w = size(cols);
+  return `--wc:${cols};--wmax:${Math.round(cols * w + (cols - 1) * 12)}px;--wgap:${Math.round(.3 * w * ar + 6)}px`;
 }
 // склеп: туман, свечи и тыквы по углам (поверх фона, под сундуками)
 const cryptDecor = () => `<div class="hcrypt" aria-hidden="true"><i class="hfog"></i>
@@ -2419,7 +2473,7 @@ function render() {
     <nav class="tabs">${[['game', S.phase === 'night' ? 'Ночь' : S.phase === 'day' ? 'День' : 'Игра', S.phase === 'night' ? 'night' : S.phase === 'day' ? 'day' : 'setup'], ['table', 'Гримуар'], ['log', 'Журнал'], ['roles', 'Роли'], ['menu', 'Ещё']].map(([k, l, ic]) => `<button class="${UI.tab === k ? 'on' : ''}" data-act="tab" data-arg="${k}">${tabIco(ic || k)}<span class="tl">${l}</span></button>`).join('')}</nav>
     ${legendOverlay()}${wallOverlay()}${grimOverlay()}${ringOverlay()}${sheetOverlay()}${editOverlay()}${fateOverlay()}${statOverlay()}${tipHtml()}${savFactsHtml()}${ghostLostHtml()}${pinAskHtml()}${polOverlay()}${gossipAskHtml()}${prepOverlay()}${prepPickHtml()}${exeAskHtml()}${exeResHtml()}${showOverlay()}${noteViewOverlay()}${testWelcomeHtml()}${splashHtml()}`;
   // круг рассадки — только на подготовке, круг номинации — только днём, Гримуар кругом — во время игры (после смены фазы закрываются сами)
-  if ((UI.ring === 'seat' && S.phase !== 'setup') || ((UI.ring === 'nom' || UI.ring === 'pick') && S.phase !== 'day') || UI.ring === 'grim') UI.ring = null;
+  if ((UI.ring === 'seat' && S.phase !== 'setup') || ((UI.ring === 'nom' || UI.ring === 'pick' || UI.ring === 'exile') && S.phase !== 'day') || UI.ring === 'grim') UI.ring = null;
   // под полноэкранными слоями страница не прокручивается
   if (UI.fate && !(S.phase === 'day' && S.day.picks && S.day.picks.fate)) UI.fate = false; // день кончился — выбор казни закрыт
   if (UI.stat && S.phase !== 'day') UI.stat = false;
@@ -2551,6 +2605,10 @@ const A = {
   dayPick2: arg => { const [key, id] = arg.split('|'); draft(S => { const sel = (S.day.picks[key] || []).slice(); if (sel.includes(id)) sel.splice(sel.indexOf(id), 1); else { if (sel.length >= 2) sel.shift(); sel.push(id); } S.day.picks[key] = sel; }); },
   gunShoot: gid => { const t = S.day.picks.gun[0]; act(S => { E.gunslingerShot(S, gid, t); S.day.picks.gun = []; }); },
   gunSkip: () => act(S => { S.day.gunUsed = true; E.log(S, 'Стрелок сегодня не стреляет', 'day'); }),
+  gnomeAmigo: arg => { const id = arg.split('|')[1], g = S.players.find(p => p.role === 'gnome' && p.alive); if (g) act(S => E.setGnomeAmigo(S, g.id, id), 'Гном: друг'); },
+  gnomeKill: arg => { const [g, by] = arg.split('|'); act(S => E.gnomeKill(S, g, by), 'Гном убивает номинировавшего'); },
+  gangKill: arg => { const [g, v] = arg.split('|'); act(S => E.gangsterKill(S, g, v), 'Гангстер'); },
+  cacklePick: cid => { const t = S.day.picks.cackle[0]; act(S => { E.cacklejackPick(S, cid, t); S.day.picks.cackle = []; }, 'Хохотун: «НЕ Я»'); },
   tinkerDie: id => act(S => E.tinkerDies(S, id), 'Механик умирает'),
   doom: () => { const a = S.day.picks.doomBy[0], v = S.day.picks.doomV[0]; act(S => { E.doomsayerKill(S, a, v); S.day.picks.doomBy = []; S.day.picks.doomV = []; }); },
   fiddler: res => { const ch = S.day.picks.fidCh[0]; act(S => E.fiddlerEnd(S, ch, res), 'Скрипач'); },
@@ -2658,6 +2716,7 @@ const A = {
   // круг игроков: рассадка (подготовка) и номинация (день)
   ringSeat: () => { UI.ring = 'seat'; render(); },
   ringNom: () => { UI.ring = 'nom'; render(); },
+  ringExile: () => { UI.ring = 'exile'; render(); },
   grimGrid: v => { UI.grimGrid = v === '1'; try { localStorage.setItem('botc-grimoire-grimgrid', UI.grimGrid ? '1' : ''); } catch (e) { /* без хранилища — до перезагрузки */ } render(); },
   ringClose: () => { UI.ring = null; render(); },
   seatDir: v => { if ((S.flags.seatDir || 'cw') !== v) act(S => { S.flags.seatDir = v; }, v === 'ccw' ? 'номера против часовой' : 'номера по часовой'); },

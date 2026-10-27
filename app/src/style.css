@@ -836,6 +836,10 @@ img.shroud { object-fit: contain; }
 /* ночной выбор кругом: иконка роли над именем, номер выбора */
 .rseat.withicon .rno { order: -2; }
 .rseat .rsi { order: -1; width: 44%; height: auto; max-height: 40%; object-fit: contain; }
+/* ночной выбор кругом: значки состояния под именем (заметка пользователя 2026-10-27) */
+.rseat .rmk { position: absolute; left: 50%; bottom: -14%; transform: translateX(-50%); display: flex; gap: 2px; pointer-events: none; z-index: 1; }
+.rseat .rmk .rtok, .rseat .rmk .rmore { width: 1.6em; height: 1.6em; box-shadow: 0 1px 3px rgba(0, 0, 0, .35); }
+.rseat .rmk .rmore { font-size: .62em; width: 2.6em; height: 2.6em; }
 .rseat .rord { position: absolute; right: -4%; top: -4%; width: 1.7em; height: 1.7em; border-radius: 50%; background: var(--evil); color: #FFFFFF;
   font-weight: 800; display: flex; align-items: center; justify-content: center; font-size: max(.7em, 11px); }
 .nightring { margin: 6px 0; }
@@ -1158,7 +1162,7 @@ html .wallov.crypt .wall.roll { animation: hCryptIn 1.1s ease-out both; }
 @keyframes hCryptIn { from { opacity: 0; filter: brightness(.15); transform: scale(1.06); } to { opacity: 1; filter: none; transform: none; } }
 .crypt .wscroll { position: relative; z-index: 1; padding-bottom: calc(96px + env(safe-area-inset-bottom, 0px)); }
 /* сундуки стоят посреди склепа, между рядами — проход */
-html .wallov.crypt .wgrid { align-content: center; row-gap: 20px; }
+html .wallov.crypt .wgrid { align-content: center; row-gap: var(--wgap, 20px); }
 /* склеп — на весь экран (заметка пользователя 2026-10-25: «на iPad склеп не во весь экран»): столбцов — сколько дают самые крупные сундуки,
    ширина сетки — чтобы все ряды влезли по высоте (--wc, --wmax из cryptGrid) */
 html .wallov.crypt .wall { max-width: none; }

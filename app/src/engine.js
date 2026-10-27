@@ -64,7 +64,7 @@ const TOK_RU = {
   master: 'Хозяин', mad: 'Помешан', hasability: 'Сохранил способность', twin: 'Близнец', grandchild: 'Внук',
   herring: 'Ложная цель', chosen: 'Выбран', note: 'Заметка', know: 'Раскрытый', lunch: 'Обед', shown: 'Показан', guessused: 'Догадка использована', second: 'Второй (Гарпия)',
   votes3: '3 голоса', voteneg: 'Голос против', sober: 'Трезв и здоров', twice: 'Действует дважды', bad: 'Что-то плохое',
-  fauxpaw: 'Кошачья лапка', fear: 'Страх', finalnight: 'Последняя ночь: без атаки',
+  fauxpaw: 'Кошачья лапка', fear: 'Страх', finalnight: 'Последняя ночь: без атаки', amigo: 'Друг Гнома', notme: 'Не я',
 };
 
 function expire(S, when) { // when: 'dusk' | 'dawn'
@@ -852,6 +852,8 @@ function startGame(S) {
     const q = S.flags[flag] && P(S, S.flags[flag]);
     if (q && inPlay(S, rid)) addTok(S, q, tok, rid); else S.flags[flag] = null;
   }
+  // Гном: друг Гнома — игрок его стороны, выбран при входе Гнома; раздача могла поменять стороны — тогда выбирается заново
+  for (const g of S.players.filter(p => p.role === 'gnome')) { const a = gnomeAmigo(S, g); if (a && a !== g && a.align === g.align) addTok(S, a, 'amigo', 'gnome', null, { by: g.id }); else gnomeEnter(S, g); }
   // история для фактов Саванта (2026-10-16): есть только у игр, начатых после обновления (`hist` — признак)
   const tm = countTeams(S);
   S.flags.hist = { teams: { townsfolk: tm.townsfolk, outsider: tm.outsider }, picks: [], exe: [], poison: [], off: [], abn: [] };
@@ -942,8 +944,14 @@ function addFresh(S, pid, role, night) { S.flags.fresh = (S.flags.fresh || []).f
 function rebuildRest(S) {
   const ord = DATA.order[S.n === 1 ? 'first' : 'other'], cur = S.night.steps[S.night.i];
   const done = new Set(S.night.steps.slice(0, S.night.i + 1).map(st => st.key)), k = ord.indexOf(cur.id);
+  // знакомство злых этой ночью (умер Дурманщик) buildSteps не знает — сохраняем его, иначе оно пропадало, когда позже
+  // этой ночью менялась роль (заметка пользователя 2026-10-27: Ловчий превратил Девицу — шага знакомства не было)
+  const meet = S.night.steps.slice(S.night.i + 1).filter(st => st.meet);
   S.night.steps = S.night.steps.slice(0, S.night.i + 1).concat(buildSteps(S).filter(st => !done.has(st.key)
     && (st.fresh || st.fakeCannibal || k < 0 || ord.indexOf(st.id) > k)));
+  for (const st of meet) if (!S.night.steps.some(x => x.key === st.key)) {
+    const at = S.night.steps.findIndex((s, i) => i > S.night.i && s.id === 'dawn'); S.night.steps.splice(at < 0 ? S.night.steps.length : at, 0, st);
+  }
 }
 // шаг на место роли в ночном порядке; роли нет в порядке этой ночи — перед рассветом
 function insertStep(steps, st, order) {
@@ -1311,6 +1319,41 @@ function gunslingerShot(S, gid, tid) {
   if (abilityOff(S, g)) return log(S, 'Ничего не происходит — способность не работает', 'day');
   attemptKill(S, t, 'ability', 'gunslinger');
 }
+// Гном (вики): «AMIGO» — игрок одной с Гномом стороны; рассказчик объявляет его всем, как только Гном вошёл в игру. Номинировали
+// его — до голосования Гном может убить номинировавшего (сколько угодно раз за игру; голосование всё равно идёт; рассказчик не подсказывает).
+// Заметка пользователя 2026-10-27: «Гном не реализован — не даёт выбрать друга Гнома и жетона нет»
+const gnomeAmigo = (S, g) => { const id = S.flags['gnome_' + g.id]; return id ? P(S, id) : null; };
+function setGnomeAmigo(S, gid, pid) {
+  const g = P(S, gid), a = P(S, pid); if (!g || !a) return;
+  S.players.forEach(q => { q.tokens = q.tokens.filter(t => !(t.k === 'amigo' && t.by === gid)); });
+  S.flags['gnome_' + gid] = pid; addTok(S, a, 'amigo', 'gnome', null, { by: gid });
+  log(S, `Гном (${g.name}): объявите всем — ${a.name} одной стороны с Гномом`, 'effect');
+}
+function gnomeEnter(S, g) {
+  const same = S.players.filter(q => q !== g && q.align === g.align), core = same.filter(q => !isTraveller(q));
+  const pool = core.length ? core : same;
+  if (pool.length) setGnomeAmigo(S, g.id, pick(pool).id);
+}
+function gnomeKill(S, gid, byId) {
+  const g = P(S, gid), by = P(S, byId); S.day.gnomeNom = S.day.nominated.length; // на эту номинацию — один раз
+  log(S, `Гном (${g.name}) убивает номинировавшего: ${by.name}`, 'day');
+  if (abilityOff(S, g)) return log(S, 'Ничего не происходит — способность не работает', 'day');
+  attemptKill(S, by, 'ability', 'gnome');
+}
+// Гангстер (вики): раз в день может убить живого соседа, если согласен другой живой сосед (согласны оба — выбирает Гангстер).
+// Согласие уже было — способность на сегодня потрачена, даже если сосед не умер
+function gangsterKill(S, gid, vid) {
+  const g = P(S, gid), v = P(S, vid); S.day.gangsterUsed = true;
+  log(S, `Гангстер (${g.name}) с согласия соседа убивает ${v.name}`, 'day');
+  if (abilityOff(S, g)) return log(S, 'Ничего не происходит — способность не работает', 'day');
+  attemptKill(S, v, 'ability', 'gangster');
+}
+// Хохотун (вики): каждый день выбирает игрока — «НЕ Я»; этой ночью роль меняет кто-то другой (шаг cacklejack, кроме 1-й ночи)
+function cacklejackPick(S, cid, pid) {
+  S.players.forEach(q => rmTok(q, 'notme', 'cacklejack'));
+  addTok(S, P(S, pid), 'notme', 'cacklejack', ['dawn', S.n + 1]); S.day.cackleUsed = true;
+  log(S, `Хохотун (${P(S, cid).name}) выбирает ${nm(S, pid)}: этой ночью роль меняет кто-то другой`, 'day');
+}
 // Механик может умереть в любой момент (решение рассказчика)
 function tinkerDies(S, pid) {
   const t = P(S, pid);
@@ -1359,6 +1402,7 @@ function addTraveller(S, name, roleId, align, afterId) {
   const i = afterId ? S.players.findIndex(q => q.id === afterId) : S.players.length - 1;
   S.players.splice(i + 1, 0, p);
   if (S.phase !== 'setup') log(S, `В игру входит Странник ${name}: ${rname(roleId)} (${p.align === 'evil' ? 'злой' : 'добрый'})`, 'effect');
+  if (roleId === 'gnome') gnomeEnter(S, p);
   return p;
 }
 
@@ -1547,6 +1591,11 @@ function specialSpec(S, step, first) {
     spec.info = () => ({ show: `Блефы: ${S.bluffs.map(rname).join(', ')}`, lines: [minionsLine(), magLine, lunLine],
       tokens: lunCards().concat(demonCards(), bluffCards(S, 'Демону')) });
   }
+  // Гном (вики): «все игроки начинают, зная игрока одной с Гномом стороны» — объявить до первой ночи
+  if (step.id === 'dusk' && first) {
+    const gl = S.players.filter(g => g.role === 'gnome' && gnomeAmigo(S, g)).map(g => `Гном (${g.name}): объявите всем — ${gnomeAmigo(S, g).name} одной стороны с Гномом (если ещё не объявили)`);
+    if (gl.length) spec.info = () => ({ show: null, lines: gl });
+  }
   if (step.id === 'dawn') {
     const pend = [];
     if (S.flags.moonchildPending) pend.push(`Дитя Луны (${nm(S, S.flags.moonchildPending)}) днём выберет игрока`);
@@ -1723,15 +1772,27 @@ function infoPair(team) {
 }
 
 // Повар, Эмпат, Часовщик, Оракул: число. Рекомендация при искажении — на 1 больше или меньше верного
+// сколько игроков могут оказаться злыми для чужой информации: злые, Затворник (может определиться злым), «Кошачья лапка»
+const evilLike = (S, except) => S.players.filter(q => q !== except && (q.align === 'evil' || q.role === 'recluse' || regEvil(S, q))).length;
+// ложь пьяному/отравленному — правдоподобная (заметка пользователя 2026-10-27: «у Эмпата никак не может быть 3!»): только число,
+// которое могло бы выпасть (compute даёт min/max), лучше соседнее с верным
+function plausibleFake(truth, lo, hi) {
+  const near = [truth - 1, truth + 1].filter(v => v >= lo && v <= hi);
+  if (near.length) return pick(near);
+  const far = []; for (let v = lo; v <= Math.min(hi, truth + 4); v++) if (v !== truth) far.push(v);
+  return far.length ? pick(far) : truth;
+}
 function countInfo(compute, label) {
   return (S, p, first, off) => {
     const dist = distortion(S, p), r0 = compute(S, p), truth = r0.n, num = typeof truth === 'number';
-    const fake = stable(S, `count:${p.id}`, () => num ? (truth > 0 && Math.random() < 0.5 ? truth - 1 : truth + 1) : truth);
+    const lo = r0.min ?? 0, hi = r0.max ?? Infinity;
+    const fake = stable(S, `count:${p.id}`, () => num ? plausibleFake(truth, lo, hi) : truth);
     return {
       inputs: num ? [NUM('n', label + ' — что показать')] : [], defaults: num ? { n: dist ? fake : truth } : {},
       info: inp => {
         const v = num ? (inp.n ?? truth) : truth;
-        return { show: String(v), lines: [label, num && v !== truth ? `Верное число: ${truth}` : '', dist && dist.must && v === truth ? 'Вортокс: нужно ЛОЖНОЕ число' : '', ...(r0.lines || [])] };
+        return { show: String(v), lines: [label, num && v !== truth ? `Верное число: ${truth}` : '', num && (v < lo || v > hi) ? `Такого числа быть не может (возможно ${lo}–${hi}) — игрок поймёт, что информация ложная` : '',
+          dist && dist.must && v === truth ? 'Вортокс: нужно ЛОЖНОЕ число' : '', ...(r0.lines || [])] };
       },
       apply: inp => {
         const v = num ? (inp.n ?? truth) : truth;
@@ -1761,11 +1822,11 @@ const LOGIC = {
   chef: countInfo((S) => {
     const ps = S.players, n = ps.length; let c = 0;
     for (let i = 0; i < n; i++) if (regEvil(S, ps[i]) && regEvil(S, ps[(i + 1) % n])) c++; // «Кошачья лапка» Оборотня — тоже злой
-    return { n: c, lines: regNote(S, ps.map(q => q.id)) };
+    return { n: c, max: Math.max(0, evilLike(S) - 1), lines: regNote(S, ps.map(q => q.id)) }; // пар не больше, чем злых минус один
   }, 'Пар соседей-злодеев (покажите пальцами)'),
   empath: countInfo((S, p) => {
     const nb = aliveNeighbours(S, p);
-    return { n: nb.filter(q => regEvil(S, q)).length, lines: [`Соседи: ${nb.map(q => q.name).join(' и ')}`, ...regNote(S, nb.map(q => q.id))] };
+    return { n: nb.filter(q => regEvil(S, q)).length, max: Math.min(nb.length, evilLike(S, p)), lines: [`Соседи: ${nb.map(q => q.name).join(' и ')}`, ...regNote(S, nb.map(q => q.id))] };
   }, 'Злых среди живых соседей'),
   fortuneteller: (S, p, first, off) => {
     const truth = inp => (inp.t || []).map(id => P(S, id)).some(q => q && (isDemon(q) || q.id === S.flags.ftHerring));
@@ -2025,7 +2086,7 @@ const LOGIC = {
     const ps = S.players, n = ps.length, d = ps.findIndex(isDemon); if (d < 0) return { n: '—' };
     let best = n;
     ps.forEach((q, i) => { if (realTeam(q) === 'minion') { const k = Math.abs(i - d); best = Math.min(best, k, n - k); } });
-    return { n: best === n ? '—' : best, lines: regNote(S, ps.map(q => q.id)) };
+    return { n: best === n ? '—' : best, min: 1, max: Math.floor(n / 2), lines: regNote(S, ps.map(q => q.id)) };
   }, 'Шагов от Демона до ближайшего Приспешника'),
   // Сновидец (вики): игрок не он сам и не Странник; 1 добрая и 1 злая роль, одна из них — его. Роли выбирает рассказчик,
   // в списках они уже стоят по умолчанию (заметка пользователя 2026-10-17): роль стороны игрока — настоящая (если Сновидец трезв
@@ -2146,7 +2207,7 @@ const LOGIC = {
     return { inputs: [y.field], info: inp => ({ show: y.shown(inp) ? 'ДА — кивните' : 'НЕТ — покачайте головой', lines: [`Приспешник сегодня ${truth ? 'номинировал' : 'не номинировал'}`, ...y.lines(inp)] }),
       apply: inp => { log(S, `Глашатай (${p.name}): ${y.shown(inp) ? 'да' : 'нет'}`, 'info'); y.record(inp); } };
   },
-  oracle: countInfo(S => ({ n: S.players.filter(q => !q.alive && q.align === 'evil').length }), 'Мёртвых злых игроков'),
+  oracle: countInfo(S => ({ n: S.players.filter(q => !q.alive && q.align === 'evil').length, max: Math.min(S.players.filter(q => !q.alive).length, evilLike(S)) }), 'Мёртвых злых игроков'),
   seamstress: (S, p, first, off) => {
     if (once(S, p, 'seamstress')) return { active: false, reason: 'Способность уже использована' };
     const same = inp => { const ps = (inp.t || []).map(id => P(S, id)); return ps.length === 2 && ps[0].align === ps[1].align; };
@@ -2504,6 +2565,20 @@ const LOGIC = {
         log(S, `Ученик (${p.name}) получает способность: ${rname(inp.r)}`, 'effect'); if (inp.r === 'fortuneteller') ensureHerring(S); rebuildRest(S);
       },
     };
+  },
+  // Хохотун (вики): каждую ночь, кроме 1-й, роль меняет любой игрок без метки «НЕ Я» (живой или мёртвый, злой или добрый); новая роль —
+  // любая, в игре или нет, сторона прежняя; это новая способность (Повар сразу узнаёт своё число). Хохотун сам не просыпается
+  cacklejack: (S, p, first, off) => first ? { active: false, reason: 'В 1-ю ночь роли не меняются' } : {
+    inputs: [PL('t', 1, 'Чья роль меняется (не тот, кого Хохотун выбрал днём, — «НЕ Я»)', q => q !== p && !hasTok(q, 'notme', 'cacklejack')),
+      ROLE('r', 'Новая роль (в игре или нет)', r => ['townsfolk', 'outsider', 'minion', 'demon'].includes(R(r).team))],
+    info: inp => { const t = inp.t && P(S, inp.t[0]); return t && inp.r ? { show: `${t.name}: «ТЕПЕРЬ ВЫ» и жетон ${rname(inp.r)}`, lines: [inp.r === t.role ? 'Это его нынешняя роль — выберите другую' : ''],
+      tokens: [{ label: t.name, caption: CARD.youAre, role: inp.r, align: t.align }] } : null; },
+    apply: inp => {
+      const t = P(S, inp.t[0]); S.players.forEach(q => rmTok(q, 'notme', 'cacklejack'));
+      if (off) return log(S, `Хохотун (${p.name}): ${t.name} должен был сменить роль — способность не работает`, 'action');
+      const was = t.role; changeRole(S, t, inp.r); log(S, `Хохотун: ${t.name} теперь ${rname(inp.r)} (был ${rname(was)})`, 'effect');
+      if (actsAs(t) === 'fortuneteller') ensureHerring(S); rebuildRest(S); checkWin(S);
+    },
   },
 
   // Мецефель (вики): в 1-ю ночь узнаёт тайное слово; первый добрый, произнёсший его, ночью становится злым
@@ -2877,6 +2952,7 @@ const BOUNDS = {
   barista: { all: [Y('Любой игрок до заката: либо трезв, здоров и получает верную информацию, либо действует дважды. Он узнаёт, что именно')] },
   bonecollector: { other: [I('1 мёртвого игрока или никого, раз за игру: он восстанавливает способность до заката')] },
   apprentice: { all: [Y('Ученик получает способность Горожанина (если добрый) или Приспешника (если злой) из сценария; лучше роль, которой нет в игре')] },
+  cacklejack: { other: [Y('Кроме 1-й ночи: 1 игрок без метки «НЕ Я» (живой или мёртвый, любой стороны) меняет роль на любую — в игре или нет; сторона прежняя. Можно в любой момент ночи')] },
   amnesiac: { all: [Y('Способность придумываете вы: будите и просите выбрать, только если она этого требует'), Y('Днём он раз в день приватно угадывает её — отвечайте «Холодно», «Тепло», «Горячо» или «В точку»')] },
 };
 function boundsFor(id, first) { const b = BOUNDS[id]; return b ? (b.all || (first ? b.first : b.other) || []) : []; }
@@ -3166,7 +3242,7 @@ function klutzChoose(S, pid) {
 
 const ENGINE = { canBluff, setPrepFlag, ensureHerring, PREP_FLAGS, poolMarExtra, bansheeVotes, fauxPawOn, droisoned, nightDeaths, revive, psychopathKill, exeQuestions, roleWorks, makeMarionette, makeDrunk, setupRole, storytellerRole, gossipPending, setGossip, pithagAdvice, puzzleHit, puzzleGuess, politicianStats, politiciansPending, politicianSide, voteNeeds, ghostSpent, demonSeatNeighbours, generalGuess, choiceCount, newGame, newPlayer, P, nm, rname, realTeam, actsAs, aliveCount, aliveAll, coreCount, isTraveller, exile, exileThreshold, addTraveller, meetingBlocker, isDemon, distribution, setupDistribution, distCheck, unknownSetup, countTeams, randomDeal,
   amnesiacGuess, AMNESIAC_ANSWERS, storytellerKill, voteCount, voteWeight, voudonActive, bishopActive, travellerWorks, executeNow,
-  judgeRuling, gunslingerShot, tinkerDies, doomsayerKill, fiddlerEnd, swapSeats, goonWarn, damselGuess, changeRole, madnessExecute, harpyKill,
+  judgeRuling, gunslingerShot, gnomeAmigo, setGnomeAmigo, gnomeKill, gangsterKill, cacklejackPick, tinkerDies, doomsayerKill, fiddlerEnd, swapSeats, goonWarn, damselGuess, changeRole, madnessExecute, harpyKill,
   finishRoles, autoSetup, setupProblems, drawStart, drawOpen, drawClose, drawCancel, drawShown, drawLocked, drawProblem, distortion,
   randomPool, dealPool, validPool, scriptOutsiders, CARD, jinxesInPlay, startGame, startNight, currentStep, stepSpec, applyStep, skipStep,
   stepInputs, missingInputs, endNight, rpStrip, recPatch, replayNight, editNight, editTarget, acceptEdit,

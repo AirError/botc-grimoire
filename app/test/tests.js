@@ -1512,6 +1512,47 @@ try {
     ok('8 игроков, Крёстный Отец −1: Изгоев 0 — Девица только сверху (итого 1)', d.choices.find(c => c.id === 'huntsman').opts.join() === '1' && d.outsider === 1 && d.townsfolk === 5);
   }
 
+  // 40. заметки пользователя 2026-10-27: Дурманщик, Странники (Гном, Гангстер, Хохотун), правдоподобная ложь
+  {
+    const G = game(['poppygrower', 'huntsman', 'damsel', 'chef', 'empath', 'soldier', 'poisoner', 'imp'], 'blindhunt'); E.autoSetup(G, true); E.startGame(G);
+    const pg = byRole(G, 'poppygrower'), dm = byRole(G, 'damsel'), ch = byRole(G, 'chef');
+    runNight(G, { poisoner: { t: [ch.id] }, huntsman: { t: [] } }); E.endDay(G);
+    const st = runUntil(G, 'huntsman', { imp: { t: [pg.id] }, poisoner: { t: [ch.id] } }), sp = st && E.stepSpec(G, st);
+    if (st) E.applyStep(G, st, Object.assign({}, sp.defaults, { t: [dm.id] }));
+    const rest = G.night.steps.slice(G.night.i);
+    ok('Дурманщик убит ночью, потом Ловчий превратил Девицу — шаги знакомства злых этой ночью остались', !pg.alive && dm.role !== 'damsel'
+      && rest.some(s => s.meet && s.id === 'minioninfo') && rest.some(s => s.meet && s.id === 'demoninfo'), rest.map(s => s.key).join(','));
+
+    const T = game(['chef', 'empath', 'monk', 'soldier', 'saint', 'poisoner', 'imp'], 'tb');
+    const gn = E.addTraveller(T, 'Гном', 'gnome', 'good'), gg = E.addTraveller(T, 'Гангстер', 'gangster', 'evil'), ck = E.addTraveller(T, 'Хохотун', 'cacklejack', 'good');
+    E.autoSetup(T, true); E.startGame(T);
+    const am = E.gnomeAmigo(T, gn);
+    ok('Гном: друг — игрок его стороны, с жетоном «Друг Гнома»', am && am !== gn && am.align === gn.align && E.hasTok(am, 'amigo', 'gnome'));
+    runNight(T, { poisoner: { t: [byRole(T, 'chef').id] } });
+    const nominator = T.players.find(p => p.alive && p !== am && p !== gn && !E.isTraveller(p) && p.role !== 'soldier');
+    E.nominate(T, nominator.id, am.id); E.gnomeKill(T, gn.id, nominator.id);
+    ok('Гном убивает номинировавшего друга', !nominator.alive);
+    const nb = E.aliveNeighbours(T, gg); E.gangsterKill(T, gg.id, nb[0].id);
+    ok('Гангстер: сосед умирает, способность на сегодня потрачена', !nb[0].alive || /не умирает|защищ/.test(JSON.stringify(T.log.slice(-2))), nb[0].name);
+    const safe = T.players.find(p => p.alive && !E.isTraveller(p)); E.cacklejackPick(T, ck.id, safe.id);
+    ok('Хохотун: выбранный днём получает «НЕ Я»', E.hasTok(safe, 'notme', 'cacklejack'));
+    E.endDay(T);
+    const cst = runUntil(T, 'cacklejack', {}), csp = cst && E.stepSpec(T, cst);
+    const okT = csp && csp.active && !csp.inputs[0].filter(safe) && csp.inputs[0].filter(byRole(T, 'chef') || T.players.find(p => p !== safe && p !== ck));
+    const vic = T.players.find(p => p !== safe && p !== ck && p.role === 'empath') || T.players.find(p => p !== safe && p !== ck && !E.isTraveller(p));
+    if (cst) E.applyStep(T, cst, { t: [vic.id], r: 'washerwoman' });
+    ok('Хохотун: ночью роль меняет не «НЕ Я»; новая роль, сторона прежняя', okT && vic.role === 'washerwoman' && !E.hasTok(safe, 'notme', 'cacklejack'), vic.role);
+
+    // Эмпат отравлен, оба соседа злые: ложь — не 3 (возможно 0–2)
+    let bad = 0;
+    for (let k = 0; k < 30; k++) {
+      const Q = game(['poisoner', 'empath', 'imp', 'chef', 'monk', 'soldier', 'saint'], 'tb'); E.autoSetup(Q, true); E.startGame(Q);
+      const qs = runUntil(Q, 'empath', { poisoner: { t: [byRole(Q, 'empath').id] } }), qsp = qs && E.stepSpec(Q, qs);
+      if (!qsp || qsp.defaults.n > 2 || qsp.defaults.n < 0) bad++;
+    }
+    ok('Отравленный Эмпат: ложное число — только возможное (0–2)', bad === 0, `плохих: ${bad}`);
+  }
+
   for (const k of Object.keys(DATA.scripts)) ok('сценарий ' + k + ' — все роли в данных', DATA.scripts[k].roles.every(r => DATA.roles[r]));
 } catch (e) { results.push('ERROR ' + e.message + '\n' + e.stack); }
 

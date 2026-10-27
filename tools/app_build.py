@@ -39,6 +39,8 @@ ART = {
 ART.update({f"rune{i}": (CUT / f"rune{i}.png", 128) for i in range(24)})
 # рисованные цифры 0–9 для показа чисел игрокам (prep_art.digits)
 ART.update({f"digit{i}": (CUT / f"digit{i}.png", 150) for i in range(10)})
+# свои цифры оформлений «Витраж во тьме» (d_digits) и «Хэллоуин» (h_digits) — по желанию (заметка пользователя 2026-10-27)
+ART.update({f"{p}{i}": (CUT / f"{p}{i}.png", 150) for p in ("d_digit", "h_digit") for i in range(10)})
 # значки Гримуара: саван и 20 значков-напоминаний (prep_art.marks)
 ART["shroud"] = (CUT / "shroud.png", 120)
 ART.update({f"mark{i}": (CUT / f"mark{i}.png", 72) for i in range(20)})
@@ -113,7 +115,7 @@ art = {k: webp_uri(p, w, 70 if lossy(k) else 100, quality(k)) for k, (p, w) in A
 meta = json.loads((CUT / "meta.json").read_text(encoding="utf-8")) if (CUT / "meta.json").exists() else {}
 art_js = ("const ART = " + json.dumps(art, separators=(",", ":")) + ";\n"
           + "const ART_META = " + json.dumps(meta) + ";\n")
-missing = [k for k, (p, _) in ART.items() if not p.exists() and not k.startswith(("d_pane", "d_nave", "d_reveal", "d_arch", "d_crack", "d_beams", "d_impact"))]  # витраж — по желанию
+missing = [k for k, (p, _) in ART.items() if not p.exists() and not k.startswith(("d_pane", "d_nave", "d_reveal", "d_arch", "d_crack", "d_beams", "d_impact", "d_digit", "h_digit"))]  # витраж — по желанию
 if missing:
     print("нет графики:", ", ".join(missing))
 

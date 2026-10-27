@@ -198,6 +198,7 @@ def beauty():
     meta["cards"] = cards()
     meta["marks"] = marks()
     meta["digits"] = digits()
+    meta["d_digits"] = digits("d_digits", "d_digit"); meta["h_digits"] = digits("h_digits", "h_digit", light=True)  # цифры оформлений
     meta["skins"] = skins()
     meta["hallow"] = halloween()
     meta["vitr"] = vitrage()
@@ -712,11 +713,17 @@ def skins():
     return out
 
 
-def digits():
-    """Цифры 0–9 (digits.png, 2 строки по 5): каждая — по своей клетке; высота — по строке, чтобы все цифры были одного роста."""
-    if not (SRC / "digits.png").exists():
+def digits(name="digits", prefix="digit", light=False):
+    """Цифры 0–9 (digits.png, 2 строки по 5): каждая — по своей клетке; высота — по строке, чтобы все цифры были одного роста.
+    Свои цифры оформлений: d_digits — витражные (на белом, как основные), h_digits — пламя тёмной магии на чёрном (light: свет →
+    прозрачность, клетки ровной сеткой — свечение соседних цифр может слипаться)."""
+    if not (SRC / f"{name}.png").exists():
         return 0
-    im = white_alpha(SRC / "digits.png", edge_thr=215, inner_thr=205)  # в золотых цифрах белого нет — режем и светлую кайму в «дырках»
+    if light:
+        ps = grid_pieces(light_rgba(SRC / f"{name}.png", lift=12), 5, 2, thr=30)
+        for k, d in enumerate(ps): d.resize((round(d.width * 220 / d.height), 220), Image.LANCZOS).save(OUT / f"{prefix}{k}.png")
+        return len(ps)
+    im = white_alpha(SRC / f"{name}.png", edge_thr=215, inner_thr=205)  # в золотых цифрах белого нет — режем и светлую кайму в «дырках»
     al = np.asarray(im)[..., 3] > 40
     h, w = al.shape
     on = al.any(axis=1); runs, start = [], None
@@ -737,8 +744,8 @@ def digits():
     for k, (x0, x1) in sorted(cols.items()):
         y0, y1 = runs[k // 5]
         d = im.crop((x0 - 4, y0 - 4, x1 + 4, y1 + 4)); d = d.resize((round(d.width * 220 / d.height), 220), Image.LANCZOS)
-        d.save(OUT / f"digit{k}.png")
-    print("цифр:", len(cols))
+        d.save(OUT / f"{prefix}{k}.png")
+    print(f"цифр ({name}):", len(cols))
     return len(cols)
 
 
