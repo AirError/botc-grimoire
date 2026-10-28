@@ -168,6 +168,12 @@ scripts = {
         "drunk", "klutz",
         "scarletwoman", "baron",
         "imp"]},
+    # The Dead Don't Sleep (by Alex, 2026-10-28) — состав и порядок с листа пользователя «The Dead Don't Sleep — роли.pdf», роли коробки
+    "deaddontsleep": {"name": "The Dead Don't Sleep", "roles": [
+        "innkeeper", "dreamer", "empath", "slayer", "savant", "professor",
+        "klutz", "moonchild",
+        "pithag", "godfather",
+        "vigormortis", "zombuul"]},
     # Catfishing 11.1 by Emily (botcscripts.com/script/3/11.1.0); Странники — рекомендованные сценарием
     "catfishing": {"name": "Catfishing", "roles": [
         "investigator", "chef", "grandmother", "balloonist", "dreamer", "fortuneteller", "snakecharmer",

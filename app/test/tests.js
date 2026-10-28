@@ -1336,13 +1336,13 @@ try {
   // 32. Teensyville (2026-10-20): раздачи на 5–6 игроков, Пиявица и джинкс с Истребителем
   {
     const bad = [];
-    for (const key of ['leech', 'overtheriver', 'nogreaterjoy']) for (let k = 0; k < 60; k++) {
+    for (const key of ['leech', 'overtheriver', 'nogreaterjoy', 'deaddontsleep']) for (let k = 0; k < 60; k++) {
       const n = 5 + (k % 2), Q = E.newGame(key); for (let i = 0; i < n; i++) Q.players.push(E.newPlayer('И' + i));
       E.randomDeal(Q);
       if (Q.flags.marionetteNeed) { const nb = E.demonSeatNeighbours(Q).find(p => DATA.roles[p.role].team === 'townsfolk' || DATA.roles[p.role].team === 'outsider'); if (nb) E.makeMarionette(Q, nb.id); }
       const pr = E.setupProblems(Q); if (pr.length) bad.push(`${key} ${n}: ${pr.join('; ')}`);
     }
-    ok('Teensyville: 180 случайных раздач на 5–6 игроков без проблем', !bad.length, [...new Set(bad)].slice(0, 3).join(' | '));
+    ok('Teensyville: 240 случайных раздач на 5–6 игроков без проблем', !bad.length, [...new Set(bad)].slice(0, 3).join(' | '));
     ok('Пиявица: ночная подсказка без «The»', !/The/.test(DATA.roles.lleech.other || '') && DATA.scripts.leech.names.oracle === 'Пророк');
     let G = game(['oracle', 'undertaker', 'exorcist', 'drunk', 'devilsadvocate', 'lleech'], 'leech');
     E.autoSetup(G, true); E.startGame(G);

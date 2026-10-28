@@ -613,7 +613,7 @@ function fabledZone() {
 /* ------------------------------------------------------------ экраны */
 // сценарий — выпадающим списком (решение пользователя: везде списком)
 function scriptSelect() {
-  const groups = [['Ваши сценарии', ['ecbe', 'blindhunt']], ['Сценарии Ильи', ['bonappetit', 'nachtmahr']], ['Teensyville (5–6 игроков)', ['leech', 'overtheriver', 'nogreaterjoy']], ['Базовая коробка', ['tb', 'bmr', 'snv']], ['Сообщество', ['catfishing', 'reptiles2', 'oasis', 'pies', 'uncertain']]];
+  const groups = [['Ваши сценарии', ['ecbe', 'blindhunt']], ['Сценарии Ильи', ['bonappetit', 'nachtmahr']], ['Teensyville (5–6 игроков)', ['leech', 'overtheriver', 'nogreaterjoy', 'deaddontsleep']], ['Базовая коробка', ['tb', 'bmr', 'snv']], ['Сообщество', ['catfishing', 'reptiles2', 'oasis', 'pies', 'uncertain']]];
   const known = new Set(groups.flatMap(g => g[1])), rest = Object.keys(DATA.scripts).filter(k => !known.has(k));
   const opt = k => `<option value="${k}" ${S.script.key === k ? 'selected' : ''}>${esc(DATA.scripts[k].name)}</option>`;
   return `<select class="scriptsel" data-act="script" aria-label="Сценарий">${S.script.key === 'custom' ? `<option value="custom" selected>Свой: ${esc(S.script.name)}</option>` : ''}
