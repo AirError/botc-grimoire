@@ -152,28 +152,29 @@ scripts = {
     # Teensyville — сценарии на 5–6 игроков (2026-10-20; группа «Teensyville» в приложении). A Leech of Distrust (OJ) — состав из
     # leech_of_distrust/src/script.json: Пикси пользователь заменил Пророком — это Оракул, и в этом сценарии он так и называется
     # (names — названия ролей только для этого сценария, как на листе пользователя). Over the River — Andrew Nathenson,
-    # No Greater Joy — Steven Medway (составы — с листов пользователя, роли коробки)
+    # No Greater Joy — Steven Medway (составы — с листов пользователя, роли коробки). max — на сколько игроков рассчитан: больше —
+    # приложение предупреждает (заметка пользователя 2026-10-28), а если ролей не хватит — не даёт раздать
     "leech": {"name": "A Leech of Distrust", "roles": [
         "oracle", "undertaker", "exorcist", "fisherman", "slayer", "juggler",
         "lunatic", "drunk",
         "devilsadvocate", "marionette",
-        "lleech"], "names": {"oracle": "Пророк"}},
+        "lleech"], "names": {"oracle": "Пророк"}, "max": 6},
     "overtheriver": {"name": "Over the River", "roles": [
         "grandmother", "clockmaker", "innkeeper", "snakecharmer", "professor", "slayer",
         "lunatic", "recluse",
         "godfather", "spy",
-        "imp"]},
+        "imp"], "max": 6},
     "nogreaterjoy": {"name": "No Greater Joy", "roles": [
         "clockmaker", "investigator", "empath", "chambermaid", "artist", "sage",
         "drunk", "klutz",
         "scarletwoman", "baron",
-        "imp"]},
+        "imp"], "max": 6},
     # The Dead Don't Sleep (by Alex, 2026-10-28) — состав и порядок с листа пользователя «The Dead Don't Sleep — роли.pdf», роли коробки
     "deaddontsleep": {"name": "The Dead Don't Sleep", "roles": [
         "innkeeper", "dreamer", "empath", "slayer", "savant", "professor",
         "klutz", "moonchild",
         "pithag", "godfather",
-        "vigormortis", "zombuul"]},
+        "vigormortis", "zombuul"], "max": 6},
     # Catfishing 11.1 by Emily (botcscripts.com/script/3/11.1.0); Странники — рекомендованные сценарием
     "catfishing": {"name": "Catfishing", "roles": [
         "investigator", "chef", "grandmother", "balloonist", "dreamer", "fortuneteller", "snakecharmer",

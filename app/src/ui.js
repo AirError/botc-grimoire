@@ -667,6 +667,7 @@ function viewSetup() {
   const probs = E.setupProblems(S), jinx = E.jinxesInPlay(S);
   const exp = sc.roles.filter(r => DATA.roles[r] && !DATA.roles[r].box);
   return `${notesHtml()}<div class="card"><h3>Сценарий</h3>${presets}<div class="small muted">«${esc(sc.name)}» — ${counts}</div>
+      ${E.scriptShort(S) ? `<div class="warn">${esc(E.scriptShort(S))}</div>` : overMaxHtml()}
       ${exp.length ? `<div class="small muted">Не из базовой коробки (жетонов нет, механику ведёте вы): ${exp.map(E.rname).map(esc).join(', ')}</div>` : ''}
       ${(S.fabled || []).length ? `<div class="small muted">Сказочники сценария: ${S.fabled.map(E.rname).map(esc).join(', ')}</div>` : ''}
       <details><summary class="small">Загрузить свой сценарий (JSON из конструктора)</summary>
@@ -1546,8 +1547,10 @@ function drawCard() {
         ${waiting.length ? `<div class="flabel"><span>Ещё не открыли — нажмите, чтобы назначить роль или тип</span></div><div class="seg">${waiting.map(p => `<button data-act="openP" data-arg="${p.id}">${esc(p.name)}${!hid && (S.assign || {})[p.id] ? ' → ' + esc(assignLabel(S.assign[p.id])) : ''}</button>`).join('')}</div>` : ''}
         <div class="row"><button class="btn primary" data-act="wallShow">Продолжить жребий</button><button class="btn danger" data-act="drawCancel">Отменить жребий</button>${hideBtn}</div>`
       : prob ? `<div class="warn">${esc(prob)}</div>`
-      : `<button class="btn primary wide" data-act="drawStart">${cr ? 'Открыть склеп' : vt ? 'Зажечь витраж' : 'Выкатить стену'}</button>`}</div>`;
+      : `${overMaxHtml()}<button class="btn primary wide" data-act="drawStart">${cr ? 'Открыть склеп' : vt ? 'Зажечь витраж' : 'Выкатить стену'}</button>`}</div>`;
 }
+// Teensyville на 7+ игроков: ролей может и хватить, но сценарий задуман для 5–6 (заметка пользователя 2026-10-28)
+const overMaxHtml = () => { const t = !E.scriptShort(S) && E.scriptOverMax(S); return t ? `<div class="warn">${esc(t)}. Ролей хватает, но сценарий задуман для маленькой игры.</div>` : ''; };
 
 // сдвиг числа Изгоев, который выбирает рассказчик (Крёстный Отец, Аэронавт, Привратник, Ловчий) — в «Ролях» и в «Ролях на игру»;
 // почему варианта нет — мелко под кнопками. Ловчий: Девица — один из Изгоев (например, тот, кого добавил Крёстный Отец) или сверху
@@ -1604,6 +1607,9 @@ function assignHtml(p) {
 // идеи пользователя 2026-10-25 (этап 6 prompts_halloween.md), без своих картинок не вылетают
 const HFX = ['ghost', 'bats', 'skull', 'wisps', 'spiders', 'balloon', 'girl', 'hugger'];
 const HFX_ART = { spiders: ['h_spider_strip'], balloon: ['h_balloon', 'h_clown'], girl: ['h_girl1', 'h_girl2'], hugger: ['h_hugger1', 'h_hugger2'] };
+// надпись на табличке девочки — одна из двух, случайно (заметка пользователя 2026-10-28: вместо «7 ДНЕЙ»); строки и кегль в cqw девочки:
+// табличка ≈ 88 × 33 cqw — самая длинная строка и все строки по высоте должны в неё влезть
+const H_SIGNS = [{ lines: ['Девочки,', 'записываемся', 'на ноготочки 💅'], fs: 8.5 }, { lines: ['Продам', 'кобылу'], fs: 15 }];
 const hfxOk = k => (HFX_ART[k] || []).every(HAS_ART);
 const cryptOn = () => drawKind() === 'crypt';
 const hChest = () => '<span class="hchest" aria-hidden="true"><i class="hbox"></i><i class="hlid"></i><i class="hopen"></i></span>';
@@ -1663,10 +1669,12 @@ function cryptFx() {
     extra = `<i class="hbal" style="height:${bh}px;margin:${-Math.round(bm.cy * bh)}px 0 0 -32px;transform-origin:50% ${(bm.cy * 100).toFixed(1)}%"><img src="${ART.h_balloon}" alt=""></i>`
       + `<i class="hclown"><img src="${ART.h_clown}" alt=""></i>`;
   } else if (fx === 'girl') {
-    // табличка (meta.hallow.sign — в долях картинки второй позы): надпись пишет приложение
+    // табличка (meta.hallow.sign — в долях картинки второй позы): надпись пишет приложение; какая из H_SIGNS — от UI.openAt
+    // (перерисовка посреди раскрытия не меняет надпись)
     hNoise(); const sg = hm.sign || { l: .075, t: .44, w: .846, h: .238 }, pc = v => (v * 100).toFixed(2) + '%';
+    const sn = H_SIGNS[Math.floor(hRand((UI.openAt || 1) ^ 0x5167)() * H_SIGNS.length)];
     extra = `<i class="hstat"></i><i class="hgclip"><img class="hg1" src="${ART.h_girl1}" alt=""></i>`
-      + `<i class="hgirl"><img src="${ART.h_girl2}" alt=""><b class="hsign" style="left:${pc(sg.l)};top:${pc(sg.t)};width:${pc(sg.w)};height:${pc(sg.h)}">7 ДНЕЙ</b></i>`;
+      + `<i class="hgirl"><img src="${ART.h_girl2}" alt=""><b class="hsign" style="left:${pc(sg.l)};top:${pc(sg.t)};width:${pc(sg.w)};height:${pc(sg.h)};--fs:${sn.fs}cqw">${sn.lines.map(l => `<span>${esc(l)}</span>`).join('')}</b></i>`;
   } else if (fx === 'hugger') extra = `<i class="hhug"><img class="hh1" src="${ART.h_hugger1}" alt=""><img class="hh2" src="${ART.h_hugger2}" alt=""></i>`;
   const body = extra ? extra
     : fx === 'ghost' ? `<i class="hcre"><i class="hflip">${ghosts.map(i => `<img class="hgp" src="${ART['h_ghost' + i]}" alt="">`).join('')}</i></i>`
@@ -1861,7 +1869,7 @@ function cryptFly(fx) {
     hShake(pop + 60, 7); hShake(pop + 420, 4); hShake(pop + 780, 4);
   } else if (kind === 'girl') {
     // помехи старого телевизора; из-за края сундука показываются пальцы и мокрые волосы — она медленно поднимается; помехи вспыхивают —
-    // и она уже прямо перед вами, с табличкой «7 ДНЕЙ», подплывает и дёргается помехами; в конце гаснет, как кинескоп
+    // и она уже прямо перед вами, с табличкой (H_SIGNS), подплывает и дёргается помехами; в конце гаснет, как кинескоп
     const clip = fx.querySelector('.hgclip'), g1 = fx.querySelector('.hg1'), g2 = fx.querySelector('.hgirl'), st = fx.querySelector('.hstat'), T1 = 950, T2 = 2050;
     const a1 = hm.h_girl1 || [639, 266], a2 = hm.h_girl2 || [642, 993];
     const w1 = Math.min(cw * 1.35, W * .6), h1 = w1 * a1[1] / a1[0]; // пальцы — на краю короба
@@ -2413,6 +2421,10 @@ function viewMenu() {
     ${UI.confirm === 'new' ? `<div class="warn">Начать новую игру? Текущая будет удалена.</div><div class="row"><button class="btn danger" data-act="newGame">Да, новая игра</button><button class="btn" data-act="cancelConfirm">Отмена</button></div>`
       : `<button class="btn" data-act="askNew">Новая игра</button>`}
     <div class="small muted">${UI.save === 'cloud' ? 'Игра сохраняется после каждого действия: на этом устройстве и в вашем аккаунте claude.ai.' : 'Игра сохраняется после каждого действия на этом устройстве.'}</div></div>
+    <div class="card"><h3>Показать текст игроку</h3>
+      <div class="small muted">Напишите что угодно — текст крупно на весь экран, как жетоны на ночных шагах. Число покажется рисованными цифрами.</div>
+      <textarea id="ownShow" data-act="ownShowText" placeholder="Например: Вы проснулись от шума за окном" aria-label="Текст для игрока">${esc(UI.ownShow || '')}</textarea>
+      <button class="btn primary" data-act="ownShow">${art('eye', 'bg')}Показать на весь экран</button></div>
     <div class="card"><h3>Оформление</h3>
       <div class="seg skinseg" role="group" aria-label="Оформление">${SKINS.map(([k, l]) => `<button class="${UI.skin === k ? 'on' : ''}" data-act="skin" data-arg="${k}" aria-pressed="${UI.skin === k}">${l}</button>`).join('')}</div>
       <div class="small muted">Basic — как было. «Лунная гравюра» — книжные гравюры: днём тушью, ночью серебром. «Витраж во тьме» — витражи в тёмной оправе, Гримуар на витражной розе. «Хэллоуин» — тыквы, паутина и склеп с сундуками, из которых вылетает нечисть. Выбор запоминается на этом устройстве.</div></div>
@@ -2548,7 +2560,7 @@ const A = {
   rename: (id, el) => act(S => { E.P(S, id).name = el.value.trim() || E.P(S, id).name; }, 'имя игрока'),
   move: arg => { const [id, d] = arg.split('|'); act(S => { const i = S.players.findIndex(p => p.id === id), j = i + (+d); if (j >= 0 && j < S.players.length) [S.players[i], S.players[j]] = [S.players[j], S.players[i]]; }, 'порядок мест'); },
   delP: id => act(S => { S.players = S.players.filter(p => p.id !== id); }, 'удалён игрок'),
-  deal: () => { if (S.draw) return alertNote('Роли выдаются или выданы жребием — случайная раздача недоступна.'); act(S => E.randomDeal(S), 'случайная раздача ролей'); },
+  deal: () => { if (S.draw) return alertNote('Роли выдаются или выданы жребием — случайная раздача недоступна.'); if (E.scriptShort(S)) return alertNote(E.scriptShort(S)); act(S => E.randomDeal(S), 'случайная раздача ролей'); },
   outMod: arg => { const [id, v] = arg.split('|'); act(S => { S.flags.mods = Object.assign({}, S.flags.mods, { [id]: +v }); }, `${E.rname(id)}: ${(MOD_RU_ROLE[id] || { '-1': '−1 Изгой', 0: 'Изгоев без изменений', 1: '+1 Изгой' })[v]}`); },
   setRole: (id, el) => act(S => E.setupRole(S, E.P(S, id), el.value), 'роль ' + E.P(S, id).name),
   setDrunk: (a, el) => act(S => E.makeDrunk(S, el.value), 'Пьяница'),
@@ -2918,6 +2930,10 @@ const A = {
     catch (e) { UI.importText = text; UI.copied = 'Текст игры в поле ниже — выделите и скопируйте его.'; render(); }
   },
   importText: (a, el) => { UI.importText = el.value; },
+  // свой текст игроку крупно (заметка пользователя 2026-10-28: «написать текст и крупно показать игроку — во вкладке Ещё под блоком Игра»)
+  ownShowText: (a, el) => { UI.ownShow = el.value; },
+  ownShow: () => { const t = (UI.ownShow || '').trim(); if (!t) return alertNote('Напишите текст, который показать игроку.');
+    UI.show = { screens: [{ caption: '', items: [{ text: t }] }], i: 0 }; render(); },
   importJson: () => { try { const s = JSON.parse(UI.importText); if (!s.players || !s.script) throw 0; if (s.id !== S.id) gameArchive(S); HISTORY.push({ s: JSON.stringify(S), label: 'загрузка игры' }); S = upgrade(s); S.updated = Date.now(); UI.importText = ''; UI.copied = ''; UI.tab = 'game'; persist(); render(); } catch (e) { alertNote('Это не похоже на сохранённую игру.'); } },
 };
 Object.assign(A, NOTE_ACTS); // заметки «что доработать» (notes.js)

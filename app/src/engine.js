@@ -602,7 +602,7 @@ function demonSeatNeighbours(S) {
 // случайная раздача: выбранный набор ролей (если он полный) или случайный по раскладке.
 // Если роли уже выдаются или выданы стеной — раздавать заново нельзя (возвращает false)
 function randomDeal(S) {
-  if (S.draw) return false;
+  if (S.draw || scriptShort(S)) return false;
   dealPool(S, validPool(S) ? S.pool : randomPool(S));
   autoSetup(S, true);
   return true;
@@ -701,10 +701,29 @@ function puzzleGuess(S, pmId, guessId, toldId) {
    назначенным (содержимое ячейки так же меняется местами с подходящей). Роль, выданная игроку до стены, остаётся за ним:
    ячеек столько, сколько игроков, лишние — пустые. Пьяница видит роль, которой себя считает, Безумец — своего «Демона». */
 const RUNE_COLORS = ['green', 'violet', 'red', 'gold'];
+// хватит ли ролей сценария на n игроков: добрых (Горожане и Изгои — сдвиги Изгоев меняют только их долю) и Приспешников — по таблице.
+// Заметка пользователя 2026-10-28: The Dead Don't Sleep (Teensyville) на 12 игроков — последнюю ячейку стены не взять: добрых ролей
+// в сценарии 8, а нужно 9. Сценарии Teensyville рассчитаны на 5–6 игроков (max у сценария в данных) — об этом предупреждаем
+const scriptMax = S => (DATA.scripts[S.script.key] || {}).max || 0;
+function scriptFits(S, n) {
+  const base = BASE_DIST[n]; if (!base) return true;
+  // Атеист, Казали и раскладки, которых приложение не знает (Легион, Призыватель…), — числа решает рассказчик: не проверяем
+  if (S.script.roles.some(r => r === 'atheist' || r === 'kazali' || (R(r) && R(r).setup && !KNOWN_SETUP.has(r)))) return true;
+  const cnt = t => S.script.roles.filter(r => R(r) && R(r).team === t && r !== 'atheist').length;
+  return cnt('townsfolk') + cnt('outsider') >= base[0] + base[1] && cnt('minion') >= base[2] && cnt('demon') >= 1;
+}
+function scriptShort(S) {
+  const n = coreOf(S).length; if (n < 5 || n > 15 || scriptFits(S, n)) return '';
+  let k = n; while (k > 5 && !scriptFits(S, k)) k--;
+  const mx = scriptMax(S);
+  return `В сценарии «${S.script.name}» не хватает ролей на ${n} игроков — хватит не больше чем на ${k}${mx ? ` (рассчитан он на 5–${mx})` : ''}. Уберите игроков или выберите другой сценарий`;
+}
+const scriptOverMax = S => { const mx = scriptMax(S), n = coreOf(S).length; return mx && n > mx ? `Сценарий «${S.script.name}» рассчитан на 5–${mx} игроков, а игроков ${n}` : ''; };
 // почему стену нельзя выкатить (или пусто)
 function drawProblem(S) {
   const n = coreOf(S).length;
   if (n < 5 || n > 15) return 'Нужно от 5 до 15 игроков (без Странников)';
+  const short = scriptShort(S); if (short) return short;
   if (S.pool && S.pool.length && !validPool(S)) return `В «Ролях на игру» отмечено ${S.pool.length}, а игроков ${n}: отметьте ровно ${n} ролей${S.pool.includes('marionette') ? ` (с Марионеткой можно ${n + 1}: лишний Горожанин — вместо её жетона)` : ''} — или очистите выбор, тогда роли наберутся случайно по раскладке`;
   // Ловчий без Девицы (вики: Девицу добавляют) — иначе после жребия игру не начать (заметка пользователя 2026-10-24)
   if (S.pool && S.pool.includes('huntsman') && !S.pool.includes('damsel')) return 'В «Ролях на игру» есть Ловчий, а Девицы нет: с Ловчим Девица в игре обязательно (вики) — отметьте её';
@@ -805,6 +824,7 @@ function setupProblems(S) {
   const out = [];
   const core = S.players.filter(p => !isTraveller(p));
   if (core.length < 5) out.push('Нужно хотя бы 5 игроков (не считая Странников)');
+  const short = scriptShort(S); if (short) out.push(short);
   if (S.draw && !S.draw.finished) out.push('Жребий не закончен: не все игроки открыли ячейки стены');
   else if (S.players.some(p => !p.role)) out.push('Не всем игрокам выданы роли');
   if (core.length >= 5 && S.players.every(p => p.role)) {
@@ -3285,7 +3305,7 @@ function klutzChoose(S, pid) {
 const ENGINE = { canBluff, setPrepFlag, ensureHerring, PREP_FLAGS, poolMarExtra, bansheeVotes, fauxPawOn, droisoned, nightDeaths, revive, psychopathKill, exeQuestions, roleWorks, makeMarionette, makeDrunk, setupRole, storytellerRole, gossipPending, setGossip, pithagAdvice, puzzleHit, puzzleGuess, politicianStats, politiciansPending, politicianSide, voteNeeds, ghostSpent, demonSeatNeighbours, generalGuess, choiceCount, newGame, newPlayer, P, nm, rname, realTeam, actsAs, aliveCount, aliveAll, coreCount, isTraveller, exile, exileThreshold, addTraveller, meetingBlocker, isDemon, distribution, setupDistribution, distCheck, unknownSetup, countTeams, randomDeal,
   amnesiacGuess, AMNESIAC_ANSWERS, storytellerKill, voteCount, voteWeight, voudonActive, bishopActive, travellerWorks, executeNow,
   judgeRuling, gunslingerShot, gnomeAmigo, setGnomeAmigo, gnomeKill, travReveal, travDone, gangsterKill, cacklejackPick, tinkerDies, doomsayerKill, fiddlerEnd, swapSeats, goonWarn, damselGuess, changeRole, madnessExecute, harpyKill,
-  finishRoles, autoSetup, setupProblems, drawStart, drawOpen, drawClose, drawCancel, drawShown, drawLocked, drawProblem, distortion,
+  finishRoles, autoSetup, setupProblems, drawStart, drawOpen, drawClose, drawCancel, drawShown, drawLocked, drawProblem, scriptShort, scriptOverMax, distortion,
   randomPool, dealPool, validPool, scriptOutsiders, CARD, jinxesInPlay, startGame, startNight, currentStep, stepSpec, applyStep, skipStep,
   stepInputs, missingInputs, endNight, rpStrip, recPatch, replayNight, editNight, editTarget, acceptEdit,
   nominate, nominationPreview, recordVote, block, execute, endDay, slayerShot, voteThreshold, situation, moonchildChoose, klutzChoose,

@@ -1590,6 +1590,16 @@ try {
     ok('Гном: выбран игрок другой стороны — друг подбирается случайно из его стороны', a2 && a2.align === 'good' && a2 !== g2, a2 && a2.name);
   }
 
+  // 42. заметка пользователя 2026-10-28: Teensyville на 12 игроков — ролей не хватает (последняя ячейка стены пустая)
+  {
+    const mk = n => { const Q = E.newGame('deaddontsleep'); for (let i = 0; i < n; i++) Q.players.push(E.newPlayer('И' + i)); return Q; };
+    const Q12 = mk(12), Q8 = mk(8), Q6 = mk(6);
+    ok('The Dead Don\'t Sleep на 12: стена не выкатывается — не хватает ролей, хватит на 11', /не хватает ролей на 12 игроков.*на 11/.test(E.drawProblem(Q12)) && !E.randomDeal(Q12), E.drawProblem(Q12));
+    ok('The Dead Don\'t Sleep на 8: ролей хватает, но предупреждение «рассчитан на 5–6»', !E.drawProblem(Q8) && /рассчитан на 5–6/.test(E.scriptOverMax(Q8)));
+    ok('The Dead Don\'t Sleep на 6: ни проблем, ни предупреждения', !E.drawProblem(Q6) && !E.scriptOverMax(Q6) && !E.scriptShort(Q6));
+    E.randomDeal(Q8); ok('The Dead Don\'t Sleep на 8: случайная раздача без проблем', !E.setupProblems(Q8).length, E.setupProblems(Q8).join('; '));
+  }
+
   for (const k of Object.keys(DATA.scripts)) ok('сценарий ' + k + ' — все роли в данных', DATA.scripts[k].roles.every(r => DATA.roles[r]));
 } catch (e) { results.push('ERROR ' + e.message + '\n' + e.stack); }
 
