@@ -1540,7 +1540,8 @@ try {
     ok('Хохотун: выбранный днём получает «НЕ Я»', E.hasTok(safe, 'notme', 'cacklejack'));
     E.endDay(T);
     const cst = runUntil(T, 'cacklejack', {}), csp = cst && E.stepSpec(T, cst);
-    const okT = csp && csp.active && !csp.inputs[0].filter(safe) && csp.inputs[0].filter(byRole(T, 'chef') || T.players.find(p => p !== safe && p !== ck));
+    // любой другой игрок, кроме «НЕ Я» и самого Хохотуна (раньше брался Повар — а «НЕ Я» по жребию мог достаться ему же)
+    const okT = csp && csp.active && !csp.inputs[0].filter(safe) && csp.inputs[0].filter(T.players.find(p => p !== safe && p !== ck && !E.isTraveller(p)));
     const vic = T.players.find(p => p !== safe && p !== ck && p.role === 'empath') || T.players.find(p => p !== safe && p !== ck && !E.isTraveller(p));
     if (cst) E.applyStep(T, cst, { t: [vic.id], r: 'washerwoman' });
     ok('Хохотун: ночью роль меняет не «НЕ Я»; новая роль, сторона прежняя', okT && vic.role === 'washerwoman' && !E.hasTok(safe, 'notme', 'cacklejack'), vic.role);
@@ -1598,6 +1599,27 @@ try {
     ok('The Dead Don\'t Sleep на 8: ролей хватает, но предупреждение «рассчитан на 5–6»', !E.drawProblem(Q8) && /рассчитан на 5–6/.test(E.scriptOverMax(Q8)));
     ok('The Dead Don\'t Sleep на 6: ни проблем, ни предупреждения', !E.drawProblem(Q6) && !E.scriptOverMax(Q6) && !E.scriptShort(Q6));
     E.randomDeal(Q8); ok('The Dead Don\'t Sleep на 8: случайная раздача без проблем', !E.setupProblems(Q8).length, E.setupProblems(Q8).join('; '));
+  }
+
+  // 43. заметка пользователя 2026-10-29: Дитя Луны (Яга сварила из Сновидца) казнено — выбор до ночи; пьяные Дитя Луны и Растяпа
+  // тоже выбирают, но ничего не происходит
+  {
+    const G = game(['innkeeper', 'dreamer', 'empath', 'slayer', 'savant', 'pithag', 'zombuul'], 'deaddontsleep'); E.autoSetup(G, true); E.startGame(G);
+    runNight(G, {}); E.endDay(G);
+    const dr = byRole(G, 'dreamer');
+    runNight(G, { pithag: { t: [dr.id], r: 'moonchild' }, zombuul: { t: [] } });
+    E.nominate(G, byRole(G, 'empath').id, dr.id); E.recordVote(G, dr.id, G.players.filter(p => p.alive).map(p => p.id)); E.endDay(G);
+    ok('Дитя Луны от Яги казнено — день держится до его выбора', G.phase === 'day' && G.day.holdForChoice && G.flags.moonchildPending === dr.id && !G.flags.moonchildOff);
+    const goodT = G.players.find(p => p.alive && p.align === 'good'); E.moonchildChoose(G, goodT.id);
+    ok('Дитя Луны выбрало — цель записана', G.flags.moonchildTarget === goodT.id && !G.flags.moonchildPending);
+
+    const Q = game(['innkeeper', 'dreamer', 'empath', 'slayer', 'moonchild', 'klutz', 'pithag', 'zombuul'], 'deaddontsleep'); E.autoSetup(Q, true); E.startGame(Q);
+    const mc = byRole(Q, 'moonchild'), kl = byRole(Q, 'klutz'), ev = byRole(Q, 'pithag');
+    mc.tokens.push({ k: 'drunk', src: 'innkeeper', exp: 'dusk', n: 99 }); kl.tokens.push({ k: 'drunk', src: 'innkeeper', exp: 'dusk', n: 99 });
+    E.storytellerKill(Q, mc.id); E.storytellerKill(Q, kl.id);
+    ok('Пьяные Дитя Луны и Растяпа всё равно выбирают (способность не работает)', Q.flags.moonchildPending === mc.id && !!Q.flags.moonchildOff && Q.flags.klutzPending === kl.id && !!Q.flags.klutzOff);
+    E.moonchildChoose(Q, byRole(Q, 'empath').id); E.klutzChoose(Q, ev.id);
+    ok('Пьяное Дитя Луны: выбор без цели; пьяный Растяпа выбрал злого — игра идёт', !Q.flags.moonchildTarget && !Q.result);
   }
 
   for (const k of Object.keys(DATA.scripts)) ok('сценарий ' + k + ' — все роли в данных', DATA.scripts[k].roles.every(r => DATA.roles[r]));

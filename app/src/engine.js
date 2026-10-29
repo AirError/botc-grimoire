@@ -323,8 +323,11 @@ function afterDeath(S, p, cause, fake, aliveBefore, opts) {
   // actsAs: и Пьяница, считающий себя Смотрителем, и Философ/Каннибал с его способностью
   if (S.phase === 'night' && actsAs(p) === 'ravenkeeper') S.flags.ravenWake = p.id;
   if (actsAs(p) === 'sage' && cause === 'demon') S.flags.sageWake = p.id;
-  if (actsAs(p) === 'moonchild' && !abilityOff(S, p)) S.flags.moonchildPending = p.id;
-  if (actsAs(p) === 'klutz' && !abilityOff(S, p)) S.flags.klutzPending = p.id;
+  // Дитя Луны и Растяпа выбирают и пьяными/отравленными (и Пьяница, считающий себя ими): игрок не знает, что способность не работает,
+  // и выбирает публично, просто ничего не происходит (вики, «Пьян»: рассказчик подыгрывает). Заметка пользователя 2026-10-29: «после
+  // смерти Дитя Луны не дало выбрать игрока» — пьяному (Трактирщик) выбор раньше не предлагался вовсе. *Off — почему не сработает
+  if (actsAs(p) === 'moonchild') { S.flags.moonchildPending = p.id; S.flags.moonchildOff = abilityOff(S, p) || null; }
+  if (actsAs(p) === 'klutz') { S.flags.klutzPending = p.id; S.flags.klutzOff = abilityOff(S, p) || null; }
   if (actsAs(p) === 'barber' && !abilityOff(S, p)) S.flags.haircuts = true;
   if (p.role === 'sweetheart' || (actsAs(p) === 'sweetheart' && !abilityOff(S, p))) S.flags.sweetheartPending = p.id;
   if (p.role === 'widow') S.players.forEach(q => rmTok(q, 'poisoned', 'widow')); // яд Вдовы — пока она жива
@@ -3294,10 +3297,15 @@ function amnesiacGuess(S, pid, guess, answer) {
   log(S, `Амнезиак (${p.name}) угадывает способность${guess ? `: «${guess}»` : ''} — ${AMNESIAC_ANSWERS[answer]}`, 'day');
 }
 
-function moonchildChoose(S, pid) { S.flags.moonchildTarget = pid; log(S, `Дитя Луны выбирает ${nm(S, pid)}`, 'day'); S.flags.moonchildPending = null; }
+function moonchildChoose(S, pid) {
+  const off = S.flags.moonchildOff; S.flags.moonchildPending = null; S.flags.moonchildOff = null;
+  log(S, `Дитя Луны выбирает ${nm(S, pid)}${off ? ` — способность не работает (${off}): ночью ничего не произойдёт` : ''}`, 'day');
+  if (!off) S.flags.moonchildTarget = pid;
+}
 function klutzChoose(S, pid) {
-  const k = P(S, S.flags.klutzPending), t = P(S, pid); S.flags.klutzPending = null;
-  log(S, `Растяпа (${k.name}) выбирает ${t.name}`, 'day');
+  const k = P(S, S.flags.klutzPending), t = P(S, pid), off = S.flags.klutzOff; S.flags.klutzPending = null; S.flags.klutzOff = null;
+  log(S, `Растяпа (${k.name}) выбирает ${t.name}${off ? ` — способность не работает (${off}): ничего не происходит` : ''}`, 'day');
+  if (off) return;
   if (t.align === 'evil') endGame(S, k.align === 'evil' ? 'good' : 'evil', `Растяпа выбрал злого игрока (${t.name})`);
 }
 

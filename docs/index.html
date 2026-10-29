@@ -1860,8 +1860,11 @@ function afterDeath(S, p, cause, fake, aliveBefore, opts) {
   // actsAs: и Пьяница, считающий себя Смотрителем, и Философ/Каннибал с его способностью
   if (S.phase === 'night' && actsAs(p) === 'ravenkeeper') S.flags.ravenWake = p.id;
   if (actsAs(p) === 'sage' && cause === 'demon') S.flags.sageWake = p.id;
-  if (actsAs(p) === 'moonchild' && !abilityOff(S, p)) S.flags.moonchildPending = p.id;
-  if (actsAs(p) === 'klutz' && !abilityOff(S, p)) S.flags.klutzPending = p.id;
+  // Дитя Луны и Растяпа выбирают и пьяными/отравленными (и Пьяница, считающий себя ими): игрок не знает, что способность не работает,
+  // и выбирает публично, просто ничего не происходит (вики, «Пьян»: рассказчик подыгрывает). Заметка пользователя 2026-10-29: «после
+  // смерти Дитя Луны не дало выбрать игрока» — пьяному (Трактирщик) выбор раньше не предлагался вовсе. *Off — почему не сработает
+  if (actsAs(p) === 'moonchild') { S.flags.moonchildPending = p.id; S.flags.moonchildOff = abilityOff(S, p) || null; }
+  if (actsAs(p) === 'klutz') { S.flags.klutzPending = p.id; S.flags.klutzOff = abilityOff(S, p) || null; }
   if (actsAs(p) === 'barber' && !abilityOff(S, p)) S.flags.haircuts = true;
   if (p.role === 'sweetheart' || (actsAs(p) === 'sweetheart' && !abilityOff(S, p))) S.flags.sweetheartPending = p.id;
   if (p.role === 'widow') S.players.forEach(q => rmTok(q, 'poisoned', 'widow')); // яд Вдовы — пока она жива
@@ -4831,10 +4834,15 @@ function amnesiacGuess(S, pid, guess, answer) {
   log(S, `Амнезиак (${p.name}) угадывает способность${guess ? `: «${guess}»` : ''} — ${AMNESIAC_ANSWERS[answer]}`, 'day');
 }
 
-function moonchildChoose(S, pid) { S.flags.moonchildTarget = pid; log(S, `Дитя Луны выбирает ${nm(S, pid)}`, 'day'); S.flags.moonchildPending = null; }
+function moonchildChoose(S, pid) {
+  const off = S.flags.moonchildOff; S.flags.moonchildPending = null; S.flags.moonchildOff = null;
+  log(S, `Дитя Луны выбирает ${nm(S, pid)}${off ? ` — способность не работает (${off}): ночью ничего не произойдёт` : ''}`, 'day');
+  if (!off) S.flags.moonchildTarget = pid;
+}
 function klutzChoose(S, pid) {
-  const k = P(S, S.flags.klutzPending), t = P(S, pid); S.flags.klutzPending = null;
-  log(S, `Растяпа (${k.name}) выбирает ${t.name}`, 'day');
+  const k = P(S, S.flags.klutzPending), t = P(S, pid), off = S.flags.klutzOff; S.flags.klutzPending = null; S.flags.klutzOff = null;
+  log(S, `Растяпа (${k.name}) выбирает ${t.name}${off ? ` — способность не работает (${off}): ничего не происходит` : ''}`, 'day');
+  if (off) return;
   if (t.align === 'evil') endGame(S, k.align === 'evil' ? 'good' : 'evil', `Растяпа выбрал злого игрока (${t.name})`);
 }
 
@@ -6531,6 +6539,9 @@ function viewDay() {
     ${S.night && (S.night.revived || []).some(id => E.P(S, id) && E.P(S, id).alive) ? `<div class="small">Снова жив: ${S.night.revived.filter(id => E.P(S, id) && E.P(S, id).alive).map(id => esc(E.nm(S, id))).join(', ')}</div>` : ''}
     ${S.night ? `<details><summary class="small">Слова для утра</summary>${morningHtml(false)}</details>` : ''}
     ${dayStatusBtn()}</div>`);
+  // Дитя Луны / Растяпа умерли ночью — выбор вверху экрана дня (утром); умерли днём (казнь) — над кнопкой «Начать ночь» (там же, где
+  // рассказчик только что завершал день; заметка пользователя 2026-10-29: карточка была посреди экрана — «ушло в ночь без выбора»)
+  if (!d.holdForChoice) parts.push(deathChoiceHtml(picks));
   // Странник вошёл днём — сразу узнаёт свою сторону (злой — и Демона); не показали — шаг этой ночью (заметка пользователя 2026-10-28)
   for (const p of S.players.filter(q => E.isTraveller(q) && (S.flags.travShown || {})[q.id] === false)) {
     const r = E.travReveal(S, p), g = p.role === 'gnome' && E.gnomeAmigo(S, p);
@@ -6594,15 +6605,6 @@ function viewDay() {
     parts.push(`<div class="card"><details ${tgt ? '' : ''}><summary class="small"><b>Мецефель:</b> тайное слово «${esc(S.flags.mezWord)}»${tgt ? ` — произнёс ${esc(tgt.name)}` : ''}</summary><div class="field" style="margin-top:8px">
       ${tgt ? `<div class="note-ok">${esc(tgt.name)} первым из добрых произнёс слово — ночью станет злым (если Мецефель будет трезв и здоров).</div><button class="btn" data-act="mezClear">Отменить отметку</button>`
         : `<div class="flabel"><span>Кто из добрых первым произнёс слово (вы должны услышать сами)</span></div>${chipsPlayers('mez', 1, p => p.align === 'good' && p.id !== mez.id, [], { act: 'mezPick', noRole: true })}`}</div></details></div>`);
-  }
-  // публичный выбор (Дитя Луны, Растяпа, Истребитель) — кнопкой; выбирают на круге с именами, без ролей и значков:
-  // экран дня могут увидеть игроки (просьба пользователя 2026-10-12)
-  for (const [flag, label, actName] of [['moonchildPending', 'Дитя Луны выбирает живого игрока', 'moonchild'], ['klutzPending', 'Растяпа выбирает живого игрока', 'klutz']]) {
-    if (!S.flags[flag]) continue;
-    const t = (picks[actName] || [])[0] && E.P(S, picks[actName][0]);
-    parts.push(`<div class="card"><h3>${label}</h3>${boundsHtml([{ w: 'Выбирает игрок', t: 'публично, 1 живого игрока' }])}
-      ${t ? `<div class="small">Выбран: <b>${esc(t.name)}</b></div>` : ''}${pickRingBtn(actName, '', !!t)}
-      ${t ? `<button class="btn primary wide" data-act="${actName}">Записать выбор</button>` : ''}</div>`);
   }
   // Психопат (вики): раз в день, до номинаций, публично выбирает игрока — тот умирает (заметка пользователя 2026-10-14: «нет кнопки»)
   for (const ps of S.players.filter(p => E.actsAs(p) === 'psychopath' && p.alive && !(d.psychoUsed || {})[p.id] && !d.nominated.length)) {
@@ -6757,7 +6759,11 @@ function viewDay() {
   const endLabel = d.holdForChoice ? 'Начать ночь' : d.executed ? (second ? `Завершить день и казнить: ${esc(E.nm(S, second.on))} (Мясник)` : 'Завершить день') : blk ? `Завершить день и казнить: ${esc(E.nm(S, blk))}` : 'Завершить день без казни';
   const dead = S.players.filter(p => !p.alive);
   parts.push(fateCard(second ? second.on : d.executed || blk)); // казнь на выбор — над «Завершить день», когда есть казнь
-  parts.push(`<div class="card"><button class="btn primary wide" data-act="endDay">${art('execute', 'bg')}${endLabel}</button>
+  if (d.holdForChoice) parts.push(deathChoiceHtml(picks));
+  parts.push(`<div class="card">${UI.confirm === 'nightNoChoice' && (S.flags.moonchildPending || S.flags.klutzPending)
+      ? `<div class="warn">${S.flags.moonchildPending ? 'Дитя Луны ещё не выбрало' : 'Растяпа ещё не выбрал'} игрока. По правилам выбор — сразу после смерти. Начать ночь без выбора?</div>
+        <div class="row"><button class="btn danger" data-act="endDayForce">Начать ночь без выбора</button><button class="btn" data-act="cancelConfirm">Отмена</button></div>`
+      : `<button class="btn primary wide" data-act="endDay">${art('execute', 'bg')}${endLabel}</button>`}
     ${blk && !d.executed && E.travellerWorks(S, 'butcher') ? `<button class="btn wide" data-act="executeNow">Казнить ${esc(E.nm(S, blk))} сейчас — Мясник номинирует ещё раз</button>` : ''}
     ${scapegoat ? `<div class="seg"><button class="${picks.scapegoat ? 'on' : ''}" data-act="scapegoat" data-arg="${scapegoat.id}">Козёл Отпущения (${esc(scapegoat.name)}) казнён вместо ${esc(E.nm(S, blk))}</button></div>` : ''}
     <details><summary class="small">${d.executed ? 'Воскресить игрока' : 'Казнить другого игрока или воскресить'} (решение рассказчика)</summary><div style="margin-top:8px">
@@ -6973,18 +6979,27 @@ function grimCircle(opts) {
   const boxes = opts.names ? seats.map(s => ({ x0: s.x - s.lw / 2, x1: s.x + s.lw / 2, y0: s.y + t / 2, y1: s.y + t / 2 + L + 0.6 })) : [];
   const free = (x, y, r) => x - r >= 0 && x + r <= 100 && y - r >= 0 && y + r <= H
     && discs.every(o => Math.hypot(o.x - x, o.y - y) >= o.r + r) && boxes.every(b => x + r <= b.x0 || x - r >= b.x1 || y + r <= b.y0 || y - r >= b.y1);
-  // напоминания — по лучу от жетона к центру, как кладут на стол; если на луче занято — в сторону (на полшага или шаг).
-  // Раскладываем по кругу: сначала первое напоминание каждого игрока, потом второе и т. д.
-  const r2 = rr / 2, side = rr * 0.6 + gap;
+  // напоминания — у своего жетона, со стороны центра, как кладут на стол: ближайшее свободное место на кольцах вокруг жетона
+  // (кольцо дальше — дороже, отклонение от луча к центру — тоже). Место должно быть ближе к своему жетону, чем к чужим: раньше у верхних
+  // игроков значки уходили за табличку с именем к центру и смешивались с соседскими (заметка пользователя 2026-10-29: «значки
+  // статусов располагаются далеко от роли»). Раскладываем по кругу: сначала первое напоминание каждого игрока, потом второе и т. д.
+  const r2 = rr / 2, ANG = [[0, 0], [25, .3], [-25, .3], [50, .6], [-50, .6], [75, 1.1], [-75, 1.1], [100, 1.6], [-100, 1.6], [125, 2.2], [-125, 2.2]];
+  // «свой» — ближе к своему жетону или своей табличке с именем, чем к чужим жетонам (у верхних игроков место под табличкой — их)
+  const near = (s, c) => Math.min(Math.hypot(c.x - s.x, c.y - s.y), opts.names ? Math.hypot(c.x - s.x, c.y - (s.y + t / 2 + L / 2)) : Infinity);
+  const own = (s, c) => { const d = near(s, c); return seats.every(o => o === s || Math.hypot(c.x - o.x, c.y - o.y) > d); };
   for (let k = 0, most = Math.max(0, ...seats.map(s => s.ms.length)); k < most; k++) {
     for (const s of seats) {
       if (s.ms.length <= k || s.pos.length < k) continue; // прошлое не поместилось — дальше не ищем
-      const start = t / 2 + gap + r2 + L * Math.max(0, s.uy); // табличка с именем под жетоном мешает, когда луч идёт вниз (верх круга)
-      for (let j = s.j; ; j++) {
-        const d = start + j * (rr + gap); if (d > s.len) break;
-        const spot = [0, side, -side, 2 * side, -2 * side].map(o => ({ x: s.x + s.ux * d - s.uy * o, y: s.y + s.uy * d + s.ux * o })).find(c => free(c.x, c.y, r2));
-        if (spot) { s.pos.push(spot); discs.push({ x: spot.x, y: spot.y, r: r2 + gap / 2 }); s.j = j; break; }
+      let best = null;
+      for (let ring = 0; ring < 5; ring++) {
+        const d = t / 2 + gap + r2 + ring * (rr + gap); if (d > s.len) break;
+        for (const [deg, cost] of ANG) {
+          const a = deg * Math.PI / 180, dx = s.ux * Math.cos(a) - s.uy * Math.sin(a), dy = s.ux * Math.sin(a) + s.uy * Math.cos(a);
+          const c = { x: s.x + dx * d, y: s.y + dy * d, cost: ring + cost };
+          if ((!best || c.cost < best.cost) && free(c.x, c.y, r2) && own(s, c)) best = c;
+        }
       }
+      if (best) { s.pos.push(best); discs.push({ x: best.x, y: best.y, r: r2 + gap / 2 }); }
     }
   }
   const cells = seats.map(s => {
@@ -7059,6 +7074,17 @@ function seatRing() {
       <button class="btn primary wide" data-act="ringClose">Готово</button></div></div>`;
 }
 // номинация кругом: нажать, кто номинирует, потом — кого; голосование — отметить поднявших руку по кругу
+// публичный выбор после смерти (Дитя Луны, Растяпа) — кнопкой; выбирают на круге с именами, без ролей и значков: экран дня могут
+// увидеть игроки (просьба пользователя 2026-10-12). Пьян/отравлен — выбирает всё равно, но ничего не произойдёт (подсказка свёрнута)
+function deathChoiceHtml(picks) {
+  return [['moonchildPending', 'Дитя Луны выбирает живого игрока', 'moonchild'], ['klutzPending', 'Растяпа выбирает живого игрока', 'klutz']].filter(([flag]) => S.flags[flag]).map(([, label, actName]) => {
+    const t = (picks[actName] || [])[0] && E.P(S, picks[actName][0]), off = S.flags[actName + 'Off'];
+    return `<div class="card ask"><h3>${label}</h3>${boundsHtml([{ w: 'Выбирает игрок', t: 'публично, 1 живого игрока — сразу, как узнал о своей смерти' }])}
+      ${off ? `<details><summary class="small">Только для вас</summary><div class="small">Способность не работает — ${esc(off)}. Игрок выбирает как обычно, но ничего не произойдёт; не говорите ему.</div></details>` : ''}
+      ${t ? `<div class="small">Выбран: <b>${esc(t.name)}</b></div>` : ''}${pickRingBtn(actName, '', !!t)}
+      ${t ? `<button class="btn primary wide" data-act="${actName}">Записать выбор</button>` : ''}</div>`;
+  }).join('');
+}
 // Гном: номинирован его друг — до голосования Гном может убить номинировавшего (один раз на номинацию). В карточке голосования
 // и в голосовании кругом (заметка пользователя 2026-10-28: номинировал друга Гнома кругом — кнопки не было)
 function gnomeKillHtml(onId, byId) {
@@ -8373,7 +8399,9 @@ const A = {
   pacifist: () => draft(S => { S.day.picks.pacifist = !S.day.picks.pacifist; }),
   // «Завершить день»: если казнят доброго при Пацифисте или Психопата — сначала окно с решением (заметка пользователя 2026-10-14),
   // после казни — окно «Казнён: умирает / не умирает» и «Продолжить»
-  endDay: () => {
+  endDay: (a, el, force) => {
+    // день держат до выбора Дитя Луны / Растяпы — без выбора ночь только после подтверждения (заметка пользователя 2026-10-29)
+    if (!force && S.day.holdForChoice && (S.flags.moonchildPending || S.flags.klutzPending)) { UI.confirm = 'nightNoChoice'; render(); return; }
     // Сплетница: сначала — было ли сегодня публичное заявление (заметка пользователя 2026-10-15)
     const gp = E.gossipPending(S);
     if (gp.length && !S.day.holdForChoice) { UI.gossipAsk = { pid: gp[0].id }; render(); return; }
@@ -8392,6 +8420,9 @@ const A = {
     act(S => E.setGossip(S, a.pid, v === 'yes', t), 'Сплетница: ' + (v === 'yes' ? 'заявление' : 'без заявления')); A.endDay(); },
   gossipClose: () => { UI.gossipAsk = null; render(); },
   exeResClose: () => { UI.exeRes = null; render(); },
+  endDayForce: () => { UI.confirm = null; A.endDay(null, null, true); },
+  // из окна итога казни — сразу к выбору Дитя Луны / Растяпы кругом
+  exeResPick: kind => { UI.exeRes = null; A.ringPickOpen(kind + '|'); },
   // воскрешение по решению рассказчика (экран дня): жив, причина смерти снята, голос призрака возвращается
   revive: () => { const id = (S.day.picks.revive || [])[0], p = id && E.P(S, id); if (!p || p.alive) return;
     act(S => { E.revive(S, E.P(S, id), 'Рассказчик воскрешает'); S.day.picks.revive = []; }, 'воскрешение: ' + p.name); }, // ожил — выбора «после смерти» нет
@@ -8702,7 +8733,10 @@ function exeResHtml() {
     <div class="exeverd ${r.died || r.dead ? 'die' : 'live'}">${r.died ? 'Умирает' : r.dead ? 'Уже мёртв' : 'Не умирает'}</div>
     ${r.dead ? '<div class="small muted">Казнён мёртвый игрок: казнь дня состоялась, он остаётся мёртвым.</div>'
       : r.died ? '' : `<div class="small muted">Только для вас: ${esc(r.why || 'защита')}. Объявите «казнён, но жив» — не говорите почему.</div>`}
-    <button class="btn primary wide" data-act="exeResClose">Продолжить</button></div></div>`;
+    ${(() => { const k = S.flags.moonchildPending === p.id ? 'moonchild' : S.flags.klutzPending === p.id ? 'klutz' : null; // казнённый сразу выбирает
+      return k ? `<div class="warn">${k === 'moonchild' ? 'Дитя Луны' : 'Растяпа'}: сейчас же публично выбирает живого игрока</div>
+        <button class="btn primary wide" data-act="exeResPick" data-arg="${k}">◯ Выбрать кругом</button><button class="btn wide" data-act="exeResClose">Позже</button>`
+        : '<button class="btn primary wide" data-act="exeResClose">Продолжить</button>'; })()}</div></div>`;
 }
 // стена «выкатывается» сверху один раз при показе, дальше перерисовки идут без анимации
 function wallIn() { UI.wall = true; UI.wallAnim = true; render(); setTimeout(() => { UI.wallAnim = false; }, 1200); }
