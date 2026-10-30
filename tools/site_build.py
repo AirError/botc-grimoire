@@ -24,7 +24,7 @@ SITE = ROOT / "out" / "site"
 SITE.mkdir(parents=True, exist_ok=True)
 for f in SITE.iterdir():  # папку (rec) Windows иногда ненадолго держит — пустая остаётся, не страшно
     shutil.rmtree(f, ignore_errors=True) if f.is_dir() else f.unlink()
-VERSION = "75"
+VERSION = "76"
 
 body = (ROOT / "app" / "dist" / "grimoire.html").read_text(encoding="utf-8")
 # хэш страницы — в имени кэша: изменилась страница → изменился sw.js → телефоны получат обновление, даже если VERSION забыли поднять
@@ -88,11 +88,13 @@ manifest = {
 const CACHE = 'grimoire-v{VERSION}-{PAGE_HASH}';
 const FONTS = 'grimoire-fonts'; // шрифты Google не меняются — переживают обновления приложения
 const CORE = ['./index.html', './manifest.webmanifest', './icon-180.png', './icon-192.png', './icon-512.png'];
-const REC = {json.dumps(REC_FILES)}; // записи на утро — по возможности (не скачалась — установка всё равно проходит)
+// записи на утро — по возможности (не скачалась — установка всё равно проходит); в имени файла хэш содержимого, поэтому копия
+// из кэша прошлой версии верна — берём её, а не качаем заново (записей ~17 МБ)
+const REC = {json.dumps(REC_FILES)};
 // no-cache: сверяемся с сервером (если страница не менялась — 304, ничего не качаем), но не берём устаревшую копию
 self.addEventListener('install', e => {{
   e.waitUntil(caches.open(CACHE).then(c => c.addAll(CORE.map(u => new Request(u, {{ cache: 'no-cache' }})))
-    .then(() => Promise.all(REC.map(u => c.add(new Request(u, {{ cache: 'no-cache' }})).catch(() => {{}}))))).then(() => self.skipWaiting()));
+    .then(() => Promise.all(REC.map(u => caches.match(u).then(hit => hit ? c.put(u, hit) : c.add(new Request(u, {{ cache: 'no-cache' }}))).catch(() => {{}}))))).then(() => self.skipWaiting()));
 }});
 self.addEventListener('activate', e => {{
   e.waitUntil(caches.keys().then(keys => Promise.all(keys.filter(k => k !== CACHE && k !== FONTS).map(k => caches.delete(k)))).then(() => self.clients.claim()));

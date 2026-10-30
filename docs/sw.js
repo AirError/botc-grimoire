@@ -1,13 +1,15 @@
 // Кэш: приложение открывается сразу из памяти телефона, без ожидания сети (страница ~6 МБ).
 // Новая версия = новое имя кэша (номер + хэш страницы): sw.js меняется, телефон ставит его и один раз скачивает страницу в фоне.
-const CACHE = 'grimoire-v75-6c25e1fc';
+const CACHE = 'grimoire-v76-dc1b8f6d';
 const FONTS = 'grimoire-fonts'; // шрифты Google не меняются — переживают обновления приложения
 const CORE = ['./index.html', './manifest.webmanifest', './icon-180.png', './icon-192.png', './icon-512.png'];
-const REC = []; // записи на утро — по возможности (не скачалась — установка всё равно проходит)
+// записи на утро — по возможности (не скачалась — установка всё равно проходит); в имени файла хэш содержимого, поэтому копия
+// из кэша прошлой версии верна — берём её, а не качаем заново (записей ~17 МБ)
+const REC = ["./rec/0a48020b85-e6675fe2.mp3", "./rec/12fbcdaa6f-2aee4db4.mp3", "./rec/334cb93404-74a5af68.mp3", "./rec/35b07eb711-5ea93416.mp3", "./rec/3df7eed37a-f8f681c3.mp3", "./rec/4afb20e6de-89bb78d9.mp3", "./rec/4d1e470925-afe1dfd5.mp3", "./rec/68aa43bd23-6c1ccbde.mp3", "./rec/6f8e35931d-2e722b4c.mp3", "./rec/7d57eb4f7c-302aeabf.mp3", "./rec/7eae2d6b37-60a981c6.mp3", "./rec/962fa76afb-ee447d20.mp3", "./rec/b3e63cf012-4540e17d.mp3", "./rec/c55d11457c-b69e3f33.mp3"];
 // no-cache: сверяемся с сервером (если страница не менялась — 304, ничего не качаем), но не берём устаревшую копию
 self.addEventListener('install', e => {
   e.waitUntil(caches.open(CACHE).then(c => c.addAll(CORE.map(u => new Request(u, { cache: 'no-cache' })))
-    .then(() => Promise.all(REC.map(u => c.add(new Request(u, { cache: 'no-cache' })).catch(() => {}))))).then(() => self.skipWaiting()));
+    .then(() => Promise.all(REC.map(u => caches.match(u).then(hit => hit ? c.put(u, hit) : c.add(new Request(u, { cache: 'no-cache' }))).catch(() => {}))))).then(() => self.skipWaiting()));
 });
 self.addEventListener('activate', e => {
   e.waitUntil(caches.keys().then(keys => Promise.all(keys.filter(k => k !== CACHE && k !== FONTS).map(k => caches.delete(k)))).then(() => self.clients.claim()));

@@ -118,7 +118,9 @@ art_js = ("const ART = " + json.dumps(art, separators=(",", ":")) + ";\n"
 # записи на утро (Хэллоуин; просьба пользователя 2026-10-30): audio/morning/<папка, начинается с 0, 1 или 2> — ночь без смертей, с одной
 # и с двумя смертями. Звук в страницу не встраиваем (каждое обновление качало бы его заново): файлы — рядом, app/dist/rec/<id>.<расширение>;
 # id — от папки и имени файла, поэтому «прослушано» на устройстве переживает пересборку. Имя записи в приложении — имя файла
+# (без номера в начале и «_монтаж» в конце); порядок — по имени файла
 import hashlib
+import re
 import shutil
 AUDIO = {".mp3", ".m4a", ".aac", ".wav", ".ogg", ".opus"}
 REC_SRC, REC_OUT = ROOT / "audio" / "morning", DIST / "rec"
@@ -136,9 +138,13 @@ for folder in sorted(REC_SRC.iterdir()) if REC_SRC.is_dir() else []:
         if f.suffix.lower() not in AUDIO:
             continue
         rid = hashlib.sha1(f"{cat}/{f.stem}".encode("utf-8")).hexdigest()[:10]
+        # в имени файла — ещё и хэш содержимого: service worker берёт прежнюю копию из кэша по адресу, а заменённая запись — новый адрес
+        out = f"{rid}-{hashlib.sha1(f.read_bytes()).hexdigest()[:8]}{f.suffix.lower()}"
         REC_OUT.mkdir(parents=True, exist_ok=True)
-        shutil.copy2(f, REC_OUT / f"{rid}{f.suffix.lower()}")
-        rec.append({"id": rid, "c": cat, "n": f.stem, "src": f"rec/{rid}{f.suffix.lower()}"})
+        shutil.copy2(f, REC_OUT / out)
+        # «01_Звонок_монтаж» → «Звонок»: номер (порядок файлов) и «монтаж» в названии не нужны, «_» — пробел
+        name = re.sub(r"[ _]+монтаж$", "", re.sub(r"^\d+[ _.\-]+", "", f.stem), flags=re.I).replace("_", " ").strip() or f.stem
+        rec.append({"id": rid, "c": cat, "n": name, "src": f"rec/{out}"})
 art_js += "const MORNING_REC = " + json.dumps(rec, ensure_ascii=False) + ";\n"
 print("записей на утро:", len(rec), *[f"{c}: {sum(r['c'] == c for r in rec)}" for c in (0, 1, 2)])
 missing = [k for k, (p, _) in ART.items() if not p.exists() and not k.startswith(("d_pane", "d_nave", "d_reveal", "d_arch", "d_crack", "d_beams", "d_impact", "d_digit", "h_digit"))]  # витраж — по желанию

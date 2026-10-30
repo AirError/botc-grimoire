@@ -32,10 +32,10 @@ for src, name in FILES:
 site = OUT / "site"
 if site.exists():
     dst = DL / "Сайт для GitHub Pages"
-    # чистим содержимое, а не саму папку: Windows иногда не даёт удалить пустую папку
+    # чистим содержимое, а не саму папку: Windows иногда не даёт удалить пустую папку (rec) — остаётся пустой, copytree её заполнит
     dst.mkdir(exist_ok=True)
     for f in dst.iterdir():
-        shutil.rmtree(f) if f.is_dir() else f.unlink()
+        shutil.rmtree(f, ignore_errors=True) if f.is_dir() else f.unlink()
     shutil.copytree(site, dst, dirs_exist_ok=True)
     print("   Сайт для GitHub Pages/")
 else:
