@@ -935,9 +935,9 @@ function buildSteps(S) {
     }
     // Кукольник отдельного шага не имеет: знакомство злых при 5–6 игроках и «ночь без нападения» — в шагах злых и Демона
     if (R(id) && R(id).team === 'fabled') { if ((S.fabled || []).includes(id) && id !== 'toymaker') steps.push({ key: 'fab:' + id, id, pid: null, fabled: true }); continue; }
-    // Девица в последующие ночи — только если Приспешники о ней ещё не знают (заметка пользователя 2026-10-24: «почему шаг Девицы
-    // на 2-ю ночь?» — раньше шаг стоял в каждой ночи карточкой «Не просыпается»)
-    if (id === 'damsel' && !first && S.flags.damselShown) continue;
+    // Девица в последующие ночи (заметки пользователя 2026-10-24 и 2026-10-31: «почему шаг Девицы на 2-ю ночь?»): вики велит показать
+    // её Приспешникам только в 1-ю ночь — дальше шаг, лишь если Девица вошла в игру позже и Приспешники о ней ещё не знают
+    if (id === 'damsel' && !first && (S.flags.damselShown || !damselLate(S))) continue;
     let actors = S.players.filter(p => actsAs(p) === id);
     if (id === 'marionette') actors = S.players.filter(p => p.role === 'marionette'); // она просыпается как «своя» роль, а этот шаг — Демону
     if (id === 'scarletwoman' && S.flags.swBecame) actors = actors.concat([P(S, S.flags.swBecame)]);
@@ -948,11 +948,14 @@ function buildSteps(S) {
     const at = steps.map(s => s.id).lastIndexOf('lunatic'), dawn = steps.findIndex(s => s.id === 'dawn');
     steps.splice(at >= 0 ? at + 1 : dawn >= 0 ? dawn : steps.length, 0, { key: 'demoninfo:lunatic', id: 'demoninfo', pid: null, lunatic: true });
   }
-  // Девица при Дурманщике (злые не знакомятся): Приспешников будят по одному — сразу после блефов Демону (заметка пользователя 2026-10-15)
-  if (first && meetingBlocker(S)) {
+  // Девица в 1-ю ночь — сразу после «Информации Приспешникам» (лист ночи: «во время шага «Информация для Приспешников» покажите
+  // Приспешникам жетон Девицы» — они ещё не спят; в порядке ночи её шаг далеко в конце, его пропускали как уже сделанный).
+  // При Дурманщике (злые не знакомятся) Приспешников будят по одному — сразу после блефов Демону (заметка пользователя 2026-10-15)
+  const apart = first && meetingBlocker(S), after = apart ? 'demoninfo' : 'minioninfo';
+  if (first && (apart || steps.some(s => s.id === 'minioninfo'))) {
     const k = steps.findIndex(s => s.id === 'damsel');
     if (k >= 0) {
-      const [dam] = steps.splice(k, 1), ord = order.indexOf('demoninfo'), di = steps.findIndex(s => s.id === 'demoninfo');
+      const [dam] = steps.splice(k, 1), ord = order.indexOf(after), di = steps.findIndex(s => s.id === after);
       const at = di >= 0 ? di + 1 : steps.findIndex(s => order.indexOf(s.id) > ord);
       steps.splice(at >= 0 ? at : steps.length, 0, dam);
     }
@@ -1110,7 +1113,7 @@ function nominate(S, byId, onId, opts) {
     const tf = realTeam(by) === 'townsfolk' || (by.role === 'spy' && opts.spyTownsfolk);
     if (!abilityOff(S, on) && tf && by.alive) {
       log(S, `Девственница: ${by.name} — Горожанин, его немедленно казнят`, 'effect');
-      execute(S, byId); res.ended = true; res.notes.push(`${by.name} казнён немедленно (Девственница)`);
+      execute(S, byId, { noNom: true }); res.ended = true; res.notes.push(`${by.name} казнён немедленно (Девственница)`);
     } else {
       if (tf && by.alive) recordAbn(S, on, 'не сработала', abnSource(S, on));
       res.notes.push('Девственница: казни нет, способность потрачена');
@@ -1164,8 +1167,10 @@ function execute(S, pid, opts) {
   log(S, `Казнь: ${p.name}`, 'day');
   if (S.flags.goodTwin === pid && S.players.some(q => q.role === 'eviltwin' && q.alive && !abilityOff(S, q)))
     return endGame(S, 'evil', 'казнён добрый близнец');
-  // Страшила (вики): номинировал выбранного им игрока, и того казнили — его команда проигрывает, даже если он не умер
-  const by = S.day.nomBy && S.day.nomBy[pid] && P(S, S.day.nomBy[pid]);
+  // Страшила (вики): номинировал выбранного им игрока, и того казнили — его команда проигрывает, даже если он не умер.
+  // noNom — казнь не по номинации (Девственница казнит номинатора, безумие, «казнить другого» рассказчиком): прежняя номинация
+  // Страшилы в этот день не в счёт (вики: «номинация закончилась казнью»; проверка пользователя 2026-10-31)
+  const by = !opts.noNom && S.day.nomBy && S.day.nomBy[pid] && P(S, S.day.nomBy[pid]);
   if (fearTarget(S, by, p)) return endGame(S, p.align === 'good' ? 'evil' : 'good', `Страшила номинировал выбранного им игрока (${p.name}), его казнили — команда ${p.align === 'good' ? 'добрых' : 'злых'} проигрывает`);
   if (S.flags.mastermindDay && S.flags.mastermindDay === S.n) {
     return endGame(S, p.align === 'good' ? 'evil' : 'good', `Кукловод: в дополнительный день казнён ${p.align === 'good' ? 'добрый' : 'злой'} игрок`);
@@ -1216,6 +1221,8 @@ function cannibalEats(S, ex) {
   }
 }
 
+// Девица вошла в игру после начала (Яга, Философ, Каннибал…): её обладатель начинал другой ролью
+function damselLate(S) { return S.players.some(p => actsAs(p) === 'damsel' && ((S.flags.startRoles || {})[p.id] || {}).role !== 'damsel'); }
 // Девица (вики): Приспешник публично называет игрока Девицей — одна догадка на всех Приспешников за игру.
 // Угадал живую Девицу (её способность работает) — победа зла; не угадал — догадок больше нет (жетон «Угадать использованное»)
 function damselGuess(S, byId, onId) {
@@ -1234,7 +1241,7 @@ function damselGuess(S, byId, onId) {
 function madnessExecute(S, pid, src) {
   if (S.phase !== 'day' || S.day.executed || !P(S, pid)) return false;
   log(S, `${nm(S, pid)}: безумие нарушено — рассказчик казнит (${rname(src)})`, 'day');
-  execute(S, pid);
+  execute(S, pid, { noNom: true });
   if (!S.result) endDay(S, { skipExecution: true });
   return true;
 }
@@ -2534,21 +2541,21 @@ const LOGIC = {
       },
     };
   },
-  // Девица (вики): в 1-ю ночь Приспешники узнают, что Девица в игре (появилась позже — «если ещё не сделали, сделайте сейчас»)
+  // Девица (вики, How to Run): в 1-ю ночь разбудить Приспешников и показать жетон Девицы — и только. Вошла в игру позже (Яга, Философ…) —
+  // вики не разбирает: шаг в ближайшую ночь, показать ли — решение рассказчика
   damsel: (S, p, first) => {
-    if (S.flags.damselShown && !first) return { active: false, reason: 'Приспешники уже знают, что Девица в игре', deadOk: true };
+    if (!first && S.flags.damselShown) return { active: false, reason: 'Приспешники уже знают, что Девица в игре', deadOk: true };
+    if (!first && !damselLate(S)) return { active: false, reason: 'Жетон Девицы Приспешникам показывают только в 1-ю ночь (вики)', deadOk: true };
     const ms = S.players.filter(q => realTeam(q) === 'minion' && q.role !== 'marionette'); // Марионетку не будят (вики)
-    // не 1-я ночь: почему шаг здесь — Девица была с начала, но в 1-ю ночь шаг пропустили, или она появилась позже (вики: «сделайте сейчас»)
-    const why = S.n > 1 ? (((S.flags.startRoles || {})[p.id] || {}).role === 'damsel'
-      ? 'В 1-ю ночь этот шаг пропущен — Приспешники ещё не знают, что Девица в игре. Покажите им жетон сейчас или пропустите: тогда шаг больше не появится.'
-      : 'Девица появилась в игре позже — Приспешники о ней ещё не знают (вики: покажите им жетон в ближайшую ночь). Пропустите — шаг больше не появится.') : '';
+    const why = first ? '' : 'Девица вошла в игру после 1-й ночи — Приспешники о ней ещё не знают. Вики этот случай не разбирает: показать им жетон — решение рассказчика. Пропустите — шаг больше не появится.';
+    const awake = first && S.night.steps.some(s => s.id === 'minioninfo') && !meetingBlocker(S); // шаг сразу после «Информации Приспешникам»
     // Дурманщик (злые не знакомятся): будить вместе нельзя — каждому Приспешнику по очереди (вики: «wake each Minion»)
     const apart = meetingBlocker(S);
     if (apart) return { deadOk: true, text: `${why ? why + ' ' : ''}Злые не знакомятся (${rname(apart.role)}): будите Приспешников по одному и каждому покажите жетон Девицы.`,
       info: () => ({ show: 'Каждому Приспешнику по очереди — жетон Девицы', lines: [ms.length ? `Приспешники: ${ms.map(q => q.name).join(', ')}` : 'Приспешников нет'],
         tokens: ms.map(q => ({ label: q.name, role: 'damsel', sub: 'Эта роль в игре' })) }),
       apply: () => { S.flags.damselShown = true; log(S, `Приспешники по одному узнают, что Девица в игре (${rname(apart.role)})`, 'info'); } };
-    return { deadOk: true, text: why || undefined, info: () => ({ show: 'Разбудите Приспешников и покажите жетон Девицы', lines: [ms.length ? `Приспешники: ${ms.map(q => q.name).join(', ')}` : 'Приспешников нет'],
+    return { deadOk: true, text: why || undefined, info: () => ({ show: awake ? 'Приспешники ещё не спят — покажите им жетон Девицы' : 'Разбудите Приспешников и покажите жетон Девицы', lines: [ms.length ? `Приспешники: ${ms.map(q => q.name).join(', ')}` : 'Приспешников нет'],
         tokens: [{ label: 'Приспешникам', role: 'damsel', sub: 'Эта роль в игре' }] }),
       apply: () => { S.flags.damselShown = true; log(S, 'Приспешники узнают, что Девица в игре', 'info'); } };
   },
@@ -3028,7 +3035,7 @@ const BOUNDS = {
   nodashii: { other: [I('любого игрока. Соседи-Горожане Но Даши отравлены всё время')] },
   vortox: { other: [I('любого игрока. Информация Горожан всегда ложная')] },
   huntsman: { all: [I('1 живого игрока, раз за игру; может отказаться — способность останется'), Y('Если это Девица — каким Горожанином не из игры она станет; она узнаёт новую роль')] },
-  damsel: { first: [Y('Покажите Приспешникам жетон Девицы')], other: [Y('Если Девица появилась позже и Приспешники о ней ещё не знают — покажите им жетон')] },
+  damsel: { first: [Y('Покажите Приспешникам жетон Девицы')], other: [Y('Девица вошла в игру позже — показать ли Приспешникам её жетон (вики не разбирает)')] },
   widow: { first: [Y('Покажите Гримуар столько, сколько нужно'), I('любого игрока: он отравлен, пока Вдова жива'), Y('1 доброго игрока: он узнаёт, что Вдова в игре (но не кто она и кого отравила)')] },
   balloonist: { first: [Y('Любой игрок: живой или мёртвый, добрый или злой')], other: [Y('Игрок с типом роли не как у показанного прошлой ночью. Пьяному или отравленному Аэронавту можно тот же тип')] },
   tinker: { other: [Y('Можете решить, что Механик умирает (днём — кнопкой на экране дня). Не заканчивайте этим игру')] },
@@ -3112,8 +3119,8 @@ function skipStep(S, how) {
     log(S, `Пропущен шаг: ${spec.title}${spec.who ? ` (${spec.who})` : ''}`, 'skip');
     // По (вики): «покачал головой» — следующей ночью атакует троих; пропуск шага По = никого не выбрал (заметка пользователя 2026-10-14)
     if (st.id === 'po' && !S.flags.poCharged && !abilityOff(S, P(S, st.pid))) { S.flags.poCharged = true; log(S, 'По никого не выбрал — следующей ночью атакует троих', 'action'); }
-    // Девица: пропуск в последующую ночь — рассказчик решил не показывать, больше не напоминаем (в 1-ю ночь — напомним в следующую)
-    if (st.id === 'damsel' && S.n > 1) S.flags.damselShown = true;
+    // Девица: пропустил — показал иначе или решил не показывать, больше не напоминаем (заметка пользователя 2026-10-31)
+    if (st.id === 'damsel') S.flags.damselShown = true;
     // Странник: пропустили — сторону показали иначе (шепнули днём), больше не напоминаем
     if (st.trav) S.flags.travShown = Object.assign({}, S.flags.travShown, { [st.pid]: true });
     rpTag(S, l0, k);

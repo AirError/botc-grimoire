@@ -35,10 +35,10 @@ for f in ("package.json", "main.js"):
     shutil.copy2(ROOT / "app" / "desktop" / f, DESK / f)
 shutil.copy2(ROOT / "app" / "dist" / "preview.html", DESK / "index.html")
 # записи на утро — папкой rec рядом со страницей (app_build.py → app/dist/rec)
-if (DESK / "rec").exists():
-    shutil.rmtree(DESK / "rec")
+if (DESK / "rec").exists():  # пустую папку Windows иногда ненадолго держит — она остаётся, copytree её заполнит
+    shutil.rmtree(DESK / "rec", ignore_errors=True)
 if (ROOT / "app" / "dist" / "rec").is_dir():
-    shutil.copytree(ROOT / "app" / "dist" / "rec", DESK / "rec")
+    shutil.copytree(ROOT / "app" / "dist" / "rec", DESK / "rec", dirs_exist_ok=True)
 REC_FILES = [f"rec/{f.name}" for f in sorted((DESK / "rec").iterdir())] if (DESK / "rec").is_dir() else []
 
 # 2. иконки: Windows — квадрат со слегка скруглёнными углами, macOS — по сетке Apple (824 из 1024, радиус ~185)

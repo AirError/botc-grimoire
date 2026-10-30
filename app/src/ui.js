@@ -3058,7 +3058,7 @@ function doEndDay(opts) {
 }
 function doManualExe(id, opts) {
   const before = exeMark();
-  act(S => { E.execute(S, id, opts); if (!S.result) E.endDay(S, { skipExecution: true }); }); window.scrollTo(0, 0);
+  act(S => { E.execute(S, id, Object.assign({ noNom: true }, opts)); if (!S.result) E.endDay(S, { skipExecution: true }); }); window.scrollTo(0, 0); // не по номинации (Страшила)
   showExeResult(before);
 }
 // окно до казни: Пацифист (помиловать или казнить — вики: «примерно раз за игру») или «камень-ножницы-бумага» Психопата

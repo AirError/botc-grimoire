@@ -1331,6 +1331,30 @@ try {
     ok('Страшила: подсказка при номинации', E.nominationPreview(G, byRole(G, 'fearmonger').id, byRole(G, 'chef').id).notes.some(t => /Страшила/.test(t)));
     E.nominate(G, byRole(G, 'fearmonger').id, byRole(G, 'chef').id); E.execute(G, byRole(G, 'chef').id);
     ok('Страшила: казнь выбранного — победа зла', G.result && G.result.winner === 'evil', G.result && G.result.reason);
+    // проверка пользователя 2026-10-31 (вики, Страшила): объявляют только новый выбор; действует последний; казнь — только по номинации Страшилы
+    const fg = (extra) => { const Q = game(['chef', 'investigator', 'monk', 'soldier', 'virgin', 'pacifist', 'fearmonger', 'imp'].concat(extra || []), 'nachtmahr'); E.autoSetup(Q, true); E.startGame(Q); return Q; };
+    const fearOn = (Q, r) => ({ fearmonger: { t: [byRole(Q, r).id] } }), annN = Q => Q.log.filter(l => /объявлено: «Страшила выбрал игрока»/.test(l.t)).length;
+    let F = fg(); runNight(F, fearOn(F, 'chef')); E.endDay(F); runNight(F, fearOn(F, 'chef'));
+    ok('Страшила: тот же игрок во 2-ю ночь — ничего не объявляют', annN(F) === 1 && F.log.some(l => /\(тот же игрок\)/.test(l.t)));
+    E.endDay(F); runNight(F, fearOn(F, 'soldier'));
+    E.nominate(F, byRole(F, 'fearmonger').id, byRole(F, 'chef').id); E.execute(F, byRole(F, 'chef').id);
+    ok('Страшила выбрал другого — объявлено, казнь прежнего выбора игру не заканчивает', annN(F) === 2 && !F.result && !E.hasTok(byRole(F, 'chef'), 'fear', 'fearmonger'));
+    F = fg(); runNight(F, fearOn(F, 'chef'));
+    E.nominate(F, byRole(F, 'investigator').id, byRole(F, 'chef').id); E.execute(F, byRole(F, 'chef').id);
+    ok('Страшила: выбранного номинировал другой — казнь игру не заканчивает', !F.result);
+    F = fg(); runNight(F, fearOn(F, 'chef'));
+    E.nominate(F, byRole(F, 'fearmonger').id, byRole(F, 'chef').id); E.execute(F, byRole(F, 'chef').id, { pacifist: true });
+    ok('Страшила: казнён, но не умер (Пацифист) — команда всё равно проигрывает', F.result && F.result.winner === 'evil' && byRole(F, 'chef').alive, F.result && F.result.reason);
+    F = fg(); runNight(F, fearOn(F, 'chef'));
+    E.nominate(F, byRole(F, 'fearmonger').id, byRole(F, 'chef').id); // голосов не хватило
+    E.nominate(F, byRole(F, 'chef').id, byRole(F, 'virgin').id);
+    ok('Страшила: выбранного потом казнила Девственница — не номинация Страшилы, игра идёт', F.day.executed === byRole(F, 'chef').id && !F.result, F.result && F.result.reason);
+    F = fg(); runNight(F, fearOn(F, 'chef'));
+    E.nominate(F, byRole(F, 'fearmonger').id, byRole(F, 'chef').id); E.madnessExecute(F, byRole(F, 'chef').id, 'cerenovus');
+    ok('Страшила: выбранного потом казнили за безумие — игра идёт', !F.result, F.result && F.result.reason);
+    F = fg(['poisoner']); runNight(F, Object.assign(fearOn(F, 'chef'), { poisoner: { t: [byRole(F, 'fearmonger').id] } }));
+    E.nominate(F, byRole(F, 'fearmonger').id, byRole(F, 'chef').id); E.execute(F, byRole(F, 'chef').id);
+    ok('Страшила отравлен — казнь выбранного игру не заканчивает', !F.result && !!E.abilityOff(F, byRole(F, 'fearmonger')), F.result && F.result.reason);
   }
 
   // 32. Teensyville (2026-10-20): раздачи на 5–6 игроков, Пиявица и джинкс с Истребителем
@@ -1443,11 +1467,19 @@ try {
       const r = E.applyStep(G, st, Object.assign({}, sp.defaults)); if (!r.ok) E.skipStep(G); } };
     let G = game(roles, 'bonappetit'); E.autoSetup(G, true); E.startGame(G); runNight(G); E.endDay(G);
     ok('Девица: показана в 1-ю ночь — во 2-ю шага нет', G.phase === 'night' && !G.night.steps.some(s => s.id === 'damsel'));
-    G = game(roles, 'bonappetit'); E.autoSetup(G, true); E.startGame(G); nightSkipDamsel(G); E.endDay(G);
-    const ds = G.night.steps.find(s => s.id === 'damsel'), dsp = ds && E.stepSpec(G, ds);
-    ok('Девица: пропущена в 1-ю ночь — во 2-ю напомнит и объяснит', dsp && dsp.active && /пропущен/.test(dsp.text || ''), dsp && dsp.text);
+    // заметка пользователя 2026-10-31 (снова «почему Девица на 2-ю ночь?»): вики — только 1-я ночь; пропустили — больше не напоминаем
+    G = game(roles, 'bonappetit'); E.autoSetup(G, true); E.startGame(G);
+    const sk1 = G.night.steps.map(s => s.id), dmI = sk1.indexOf('damsel');
+    ok('Девица: в 1-ю ночь — сразу после «Информации Приспешникам» (лист ночи), Приспешники ещё не спят',
+      dmI > 0 && dmI === sk1.indexOf('minioninfo') + 1 && /не спят/.test(E.stepSpec(G, G.night.steps[dmI]).info({}).show), sk1.join(','));
     nightSkipDamsel(G); E.endDay(G);
-    ok('Девица: пропущена и во 2-ю — дальше шага нет', G.phase === 'night' && !G.night.steps.some(s => s.id === 'damsel'));
+    ok('Девица: пропущена в 1-ю ночь — во 2-ю шага нет', G.phase === 'night' && !G.night.steps.some(s => s.id === 'damsel'), G.night.steps.map(s => s.id).join(','));
+    G = game(roles.map(r => r === 'damsel' ? 'saint' : r === 'huntsman' ? 'washerwoman' : r), 'bonappetit'); E.autoSetup(G, true); E.startGame(G); runNight(G);
+    E.changeRole(G, byRole(G, 'saint'), 'damsel'); E.endDay(G);
+    const ds = G.night.steps.find(s => s.id === 'damsel'), dsp = ds && E.stepSpec(G, ds);
+    ok('Девица вошла в игру позже — шаг в ближайшую ночь, «решение рассказчика»', dsp && dsp.active && /решение рассказчика/.test(dsp.text || ''), dsp && dsp.text);
+    nightSkipDamsel(G); E.endDay(G);
+    ok('Девица вошла позже, шаг пропущен — дальше шага нет', G.phase === 'night' && !G.night.steps.some(s => s.id === 'damsel'));
 
     const Q = E.newGame('bonappetit'); for (let i = 0; i < 8; i++) Q.players.push(E.newPlayer('Х' + i));
     Q.pool = ['huntsman', 'chef', 'empath', 'monk', 'soldier', 'saint', 'poisoner', 'imp'];
