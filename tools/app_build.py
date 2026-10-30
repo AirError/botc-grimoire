@@ -115,6 +115,32 @@ art = {k: webp_uri(p, w, 70 if lossy(k) else 100, quality(k)) for k, (p, w) in A
 meta = json.loads((CUT / "meta.json").read_text(encoding="utf-8")) if (CUT / "meta.json").exists() else {}
 art_js = ("const ART = " + json.dumps(art, separators=(",", ":")) + ";\n"
           + "const ART_META = " + json.dumps(meta) + ";\n")
+# записи на утро (Хэллоуин; просьба пользователя 2026-10-30): audio/morning/<папка, начинается с 0, 1 или 2> — ночь без смертей, с одной
+# и с двумя смертями. Звук в страницу не встраиваем (каждое обновление качало бы его заново): файлы — рядом, app/dist/rec/<id>.<расширение>;
+# id — от папки и имени файла, поэтому «прослушано» на устройстве переживает пересборку. Имя записи в приложении — имя файла
+import hashlib
+import shutil
+AUDIO = {".mp3", ".m4a", ".aac", ".wav", ".ogg", ".opus"}
+REC_SRC, REC_OUT = ROOT / "audio" / "morning", DIST / "rec"
+for _ in range(10):  # папку бывает ненадолго держит OneDrive или сервер просмотра — повторяем
+    shutil.rmtree(REC_OUT, ignore_errors=True)
+    if not REC_OUT.exists() or not any(REC_OUT.iterdir()):
+        break
+    __import__("time").sleep(0.5)
+rec = []
+for folder in sorted(REC_SRC.iterdir()) if REC_SRC.is_dir() else []:
+    if not folder.is_dir() or folder.name[:1] not in "012":
+        continue
+    cat = int(folder.name[0])
+    for f in sorted(folder.iterdir()):
+        if f.suffix.lower() not in AUDIO:
+            continue
+        rid = hashlib.sha1(f"{cat}/{f.stem}".encode("utf-8")).hexdigest()[:10]
+        REC_OUT.mkdir(parents=True, exist_ok=True)
+        shutil.copy2(f, REC_OUT / f"{rid}{f.suffix.lower()}")
+        rec.append({"id": rid, "c": cat, "n": f.stem, "src": f"rec/{rid}{f.suffix.lower()}"})
+art_js += "const MORNING_REC = " + json.dumps(rec, ensure_ascii=False) + ";\n"
+print("записей на утро:", len(rec), *[f"{c}: {sum(r['c'] == c for r in rec)}" for c in (0, 1, 2)])
 missing = [k for k, (p, _) in ART.items() if not p.exists() and not k.startswith(("d_pane", "d_nave", "d_reveal", "d_arch", "d_crack", "d_beams", "d_impact", "d_digit", "h_digit"))]  # витраж — по желанию
 if missing:
     print("нет графики:", ", ".join(missing))

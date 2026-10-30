@@ -545,8 +545,69 @@ function morningHtml(withNext) {
   const back = (S.night.revived || []).filter(id => E.P(S, id) && E.P(S, id).alive).map(id => `<b>${esc(E.nm(S, id))}</b>`);
   const seed = [...(S.id + ':' + S.n)].reduce((h, ch) => (h * 31 + ch.charCodeAt(0)) >>> 0, 7);
   const m = morningText(names, S.n === 1, S.night.data.morn ?? seed, back);
-  return `<div class="tale"><div class="lab">Слова для утра</div><p>${m.text}</p>
+  const tale = `<div class="tale"><div class="lab">Слова для утра</div><p>${m.text}</p>
     ${withNext ? `<button class="linkish" data-act="mornNext" data-arg="${m.i}">Другой вариант · ${m.i + 1} из ${m.total}</button>` : ''}</div>`;
+  // записи на утро вместо текста — есть непрослушанные под число смертей; все прослушаны — подсказка и обычный текст
+  const rec = morningRecHtml();
+  return !rec ? tale : rec.left ? `${rec.html}<details><summary class="small">Обычный текст вместо записи</summary>${tale}</details>` : rec.html + tale;
+}
+
+/* ---------- записи на утро (Хэллоуин; просьба пользователя 2026-10-30) ---------- */
+// MORNING_REC (app_build.py: audio/morning/0…, 1…, 2… — ночь без смертей, с одной, с двумя смертями): {id, c, n, src}.
+// Утром — только записи под число смертей этой ночи (три и больше — обычный текст). Прослушанные — на этом устройстве, во всех играх
+// (localStorage): из списка утром убираются, в «Ещё» вычеркнуты; вернуть — нажать и снять вычёркивание; «Сбросить все прослушивания»
+const RECS = typeof MORNING_REC === 'undefined' ? [] : MORNING_REC;
+const REC_CAT = ['Без смертей', 'Одна смерть', 'Две смерти'];
+const recPlayed = () => { try { return JSON.parse(localStorage.getItem('botc-grimoire-recplayed') || '{}') || {}; } catch (e) { return {}; } };
+const recSave = m => { try { localStorage.setItem('botc-grimoire-recplayed', JSON.stringify(m)); } catch (e) { /* без хранилища — только до перезагрузки */ } };
+const recOn = () => { try { return localStorage.getItem('botc-grimoire-recon') !== '0'; } catch (e) { return true; } };
+// звук — не в разметке (перерисовка его не обрывает). Safari с service worker надёжнее играет из blob, чем по адресу (просит файл
+// кусками), поэтому записи заранее подгружаются в память; программа на компьютере (file://) — по адресу
+const REC_PLAY = { audio: null, id: null }, REC_BLOB = {};
+function recPrefetch(list) {
+  if (location.protocol === 'file:') return;
+  for (const r of list) if (!REC_BLOB[r.id]) REC_BLOB[r.id] = fetch(r.src).then(x => x.ok ? x.blob() : Promise.reject(new Error(x.status)))
+    .then(b => { REC_BLOB[r.id] = URL.createObjectURL(b); }).catch(() => { delete REC_BLOB[r.id]; });
+}
+function recStop() { if (REC_PLAY.audio) REC_PLAY.audio.pause(); REC_PLAY.audio = null; REC_PLAY.id = null; }
+// mark — утром: запись считается прослушанной, как только её включили; «▶» в «Ещё» — прослушать, не вычёркивая
+function recPlay(id, mark) {
+  const r = RECS.find(x => x.id === id); if (!r) return;
+  recStop();
+  const b = REC_BLOB[r.id], a = new Audio(typeof b === 'string' ? b : r.src), done = () => { if (REC_PLAY.audio === a) { REC_PLAY.audio = null; REC_PLAY.id = null; render(); } };
+  REC_PLAY.audio = a; REC_PLAY.id = id;
+  a.addEventListener('ended', done);
+  a.play().catch(() => { done(); alertNote(`Не удалось воспроизвести запись «${r.n}»`); });
+  if (mark) { const m = recPlayed(); m[id] = Date.now(); recSave(m); }
+  render();
+}
+function morningRecHtml() {
+  if (!RECS.length || !recOn()) return null;
+  const n = E.nightDeaths(S).length, all = RECS.filter(r => r.c === n); if (!all.length) return null;
+  const played = recPlayed(), left = all.filter(r => !played[r.id]), sel = left.find(r => r.id === UI.recSel);
+  const now = REC_PLAY.id && RECS.find(r => r.id === REC_PLAY.id);
+  recPrefetch(left);
+  return { left: left.length, html: `<div class="tale recbox"><div class="lab">Запись на утро · ${REC_CAT[n].toLowerCase()}</div>
+    ${now ? `<div class="recnow"><span>▶ Играет: <b>${esc(now.n)}</b></span><button class="btn" data-act="recStop">■ Стоп</button></div>` : ''}
+    ${left.length ? `<div class="reclist">${left.map(r => `<button class="btn ${sel === r ? 'on' : ''}" data-act="recSel" data-arg="${r.id}" aria-pressed="${sel === r}">${esc(r.n)}</button>`).join('')}</div>
+      <button class="btn primary wide" data-act="recGo" ${sel ? '' : 'disabled'}>${sel ? `▶ Воспроизвести: ${esc(sel.n)}` : 'Выберите запись'}</button>`
+      : `<div class="small muted">Все записи «${REC_CAT[n].toLowerCase()}» уже прослушаны — вернуть можно в «Ещё» → «Записи на утро».</div>`}</div>` };
+}
+// блок в самом низу «Ещё»: все записи по числу смертей, прослушанные вычеркнуты (нажатие — вычеркнуть / вернуть), ▶ — прослушать
+function recCard() {
+  const played = recPlayed();
+  if (RECS.length) recPrefetch(RECS);
+  const groups = [0, 1, 2].map(c => { const rs = RECS.filter(r => r.c === c);
+    return `<div class="recgrp"><div class="flabel"><span>${REC_CAT[c]}</span><span>${rs.filter(r => !played[r.id]).length} из ${rs.length}</span></div>
+      ${rs.map(r => `<div class="recrow ${played[r.id] ? 'done' : ''}"><button class="rectog" data-act="recToggle" data-arg="${r.id}" aria-pressed="${!!played[r.id]}">${esc(r.n)}</button>
+        <button class="btn rectry" data-act="recTry" data-arg="${r.id}" aria-label="${REC_PLAY.id === r.id ? 'Остановить' : 'Прослушать'}: ${esc(r.n)}">${REC_PLAY.id === r.id ? '■' : '▶'}</button></div>`).join('') || '<div class="small muted">нет записей</div>'}</div>`; }).join('');
+  return `<div class="card"><h3>Записи на утро</h3>
+    <div class="small muted">На рассвете вместо слов для утра — запись на выбор, только под число смертей этой ночи: без смертей, одна или две (при трёх и больше — обычный текст). Включённая утром запись вычёркивается здесь и больше не предлагается; нажмите на неё, чтобы вернуть. ▶ — прослушать, не вычёркивая. Прослушивания помнит это устройство.</div>
+    ${RECS.length ? `<div class="seg"><button class="${recOn() ? 'on' : ''}" data-act="recOnOff" data-arg="1">Утром — записи</button><button class="${recOn() ? '' : 'on'}" data-act="recOnOff" data-arg="0">Утром — обычный текст</button></div>
+      ${groups}
+      ${UI.confirm === 'recReset' ? `<div class="warn">Сбросить все прослушивания? Все записи снова будут предлагаться утром.</div><div class="row"><button class="btn danger" data-act="recReset">Сбросить</button><button class="btn" data-act="cancelConfirm">Отмена</button></div>`
+        : `<button class="btn" data-act="recResetAsk" ${Object.keys(played).some(id => RECS.some(r => r.id === id)) ? '' : 'disabled'}>Сбросить все прослушивания</button>`}`
+      : '<div class="small muted">Записей пока нет — они появятся здесь, когда их добавят в приложение.</div>'}</div>`;
 }
 function boundsHtml(list) {
   return `<div class="bounds"><div class="lab">Рамки выбора</div>${list.map(b => `<div><b>${esc(b.w)}:</b> ${esc(b.t)}</div>`).join('')}</div>`;
@@ -2468,7 +2529,8 @@ function viewMenu() {
       <input type="password" id="pinNew" autocomplete="off" placeholder="Новый пароль (не короче 4 символов)" aria-label="Новый пароль">
       <input type="password" id="pinNew2" autocomplete="off" placeholder="Новый пароль ещё раз" aria-label="Повтор нового пароля">
       <button class="btn" data-act="pinChange">Сменить пароль</button>
-      ${UI.pinMsg ? `<div class="${UI.pinMsg.ok ? 'note-ok' : 'warn'}">${esc(UI.pinMsg.t)}</div>` : ''}</div>`;
+      ${UI.pinMsg ? `<div class="${UI.pinMsg.ok ? 'note-ok' : 'warn'}">${esc(UI.pinMsg.t)}</div>` : ''}</div>
+    ${recCard()}`;
 }
 
 function viewOver() {
@@ -2969,6 +3031,15 @@ const A = {
     catch (e) { UI.importText = text; UI.copied = 'Текст игры в поле ниже — выделите и скопируйте его.'; render(); }
   },
   importText: (a, el) => { UI.importText = el.value; },
+  // записи на утро: выбор и воспроизведение (утром — вычёркивается), «Ещё» — вычеркнуть/вернуть, прослушать, сбросить
+  recSel: id => { UI.recSel = UI.recSel === id ? null : id; render(); },
+  recGo: () => { const id = UI.recSel; UI.recSel = null; if (id) recPlay(id, true); },
+  recStop: () => { recStop(); render(); },
+  recTry: id => { if (REC_PLAY.id === id) { recStop(); render(); } else recPlay(id, false); },
+  recToggle: id => { const m = recPlayed(); if (m[id]) delete m[id]; else m[id] = Date.now(); recSave(m); render(); },
+  recOnOff: v => { try { localStorage.setItem('botc-grimoire-recon', v === '0' ? '0' : '1'); } catch (e) { /* без хранилища — по умолчанию записи */ } render(); },
+  recResetAsk: () => { UI.confirm = 'recReset'; render(); },
+  recReset: () => { recSave({}); UI.confirm = null; render(); },
   // свой текст игроку крупно (заметка пользователя 2026-10-28: «написать текст и крупно показать игроку — во вкладке Ещё под блоком Игра»)
   ownShowText: (a, el) => { UI.ownShow = el.value; },
   ownShow: () => { const t = (UI.ownShow || '').trim(); if (!t) return alertNote('Напишите текст, который показать игроку.');

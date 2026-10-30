@@ -14,6 +14,12 @@
       "port": 8766
     },
     {
+      "name": "siteout",
+      "runtimeExecutable": "python",
+      "runtimeArgs": ["-m", "http.server", "8768", "--directory", "out/site"],
+      "port": 8768
+    },
+    {
       "name": "test",
       "runtimeExecutable": "python",
       "runtimeArgs": ["-m", "http.server", "8767", "--directory", "out/test"],

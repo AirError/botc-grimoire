@@ -1,11 +1,13 @@
 // Кэш: приложение открывается сразу из памяти телефона, без ожидания сети (страница ~6 МБ).
 // Новая версия = новое имя кэша (номер + хэш страницы): sw.js меняется, телефон ставит его и один раз скачивает страницу в фоне.
-const CACHE = 'grimoire-v74-60613d1c';
+const CACHE = 'grimoire-v75-6c25e1fc';
 const FONTS = 'grimoire-fonts'; // шрифты Google не меняются — переживают обновления приложения
 const CORE = ['./index.html', './manifest.webmanifest', './icon-180.png', './icon-192.png', './icon-512.png'];
+const REC = []; // записи на утро — по возможности (не скачалась — установка всё равно проходит)
 // no-cache: сверяемся с сервером (если страница не менялась — 304, ничего не качаем), но не берём устаревшую копию
 self.addEventListener('install', e => {
-  e.waitUntil(caches.open(CACHE).then(c => c.addAll(CORE.map(u => new Request(u, { cache: 'no-cache' })))).then(() => self.skipWaiting()));
+  e.waitUntil(caches.open(CACHE).then(c => c.addAll(CORE.map(u => new Request(u, { cache: 'no-cache' })))
+    .then(() => Promise.all(REC.map(u => c.add(new Request(u, { cache: 'no-cache' })).catch(() => {}))))).then(() => self.skipWaiting()));
 });
 self.addEventListener('activate', e => {
   e.waitUntil(caches.keys().then(keys => Promise.all(keys.filter(k => k !== CACHE && k !== FONTS).map(k => caches.delete(k)))).then(() => self.clients.claim()));

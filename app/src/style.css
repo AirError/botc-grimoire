@@ -272,6 +272,15 @@ details > .tale { margin-top: 10px; }
 .field.ask { background: var(--warnbg); border-radius: 9px; padding: 9px 11px; }
 .field.ask > label { color: var(--warn); font-weight: 700; }
 .card.ask { outline: 2px solid var(--warn); outline-offset: -2px; } /* ждёт рассказчика: Странник вошёл — показать сторону */
+/* записи на утро: выбор на рассвете и список в «Ещё» (прослушанные — вычеркнуты) */
+.reclist { display: flex; flex-wrap: wrap; gap: 6px; margin: 8px 0; }
+.reclist .btn.on { border-color: var(--gold); background: var(--goldbg); font-weight: 700; }
+.recnow { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin: 6px 0; }
+.recgrp { margin-top: 10px; }
+.recrow { display: flex; align-items: center; gap: 8px; border-bottom: 1px solid var(--line); }
+.rectog { flex: 1; text-align: left; background: none; border: none; color: inherit; font: inherit; padding: 10px 0; cursor: pointer; }
+.recrow.done .rectog { text-decoration: line-through; opacity: .5; }
+.btn.rectry { min-width: 44px; padding: 6px 10px; }
 
 /* панель вкладок */
 .tabs { position: fixed; left: 0; right: 0; bottom: 0; z-index: 6; background: var(--card); border-top: 1px solid var(--line);

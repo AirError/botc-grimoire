@@ -34,6 +34,12 @@ APP_FILES = ["package.json", "main.js", "index.html"]
 for f in ("package.json", "main.js"):
     shutil.copy2(ROOT / "app" / "desktop" / f, DESK / f)
 shutil.copy2(ROOT / "app" / "dist" / "preview.html", DESK / "index.html")
+# записи на утро — папкой rec рядом со страницей (app_build.py → app/dist/rec)
+if (DESK / "rec").exists():
+    shutil.rmtree(DESK / "rec")
+if (ROOT / "app" / "dist" / "rec").is_dir():
+    shutil.copytree(ROOT / "app" / "dist" / "rec", DESK / "rec")
+REC_FILES = [f"rec/{f.name}" for f in sorted((DESK / "rec").iterdir())] if (DESK / "rec").is_dir() else []
 
 # 2. иконки: Windows — квадрат со слегка скруглёнными углами, macOS — по сетке Apple (824 из 1024, радиус ~185)
 src = Image.open(ROOT / "art" / "src" / "app_icon.png").convert("RGBA").resize((1024, 1024), Image.LANCZOS)
@@ -114,7 +120,7 @@ def build_mac(arch, label):
             new = zipfile.ZipInfo(f"{NAME}.app/{rest}", info.date_time)
             new.external_attr, new.create_system, new.compress_type = info.external_attr, 3, info.compress_type
             zout.writestr(new, data)
-        for f in APP_FILES:
+        for f in APP_FILES + REC_FILES:
             new = zipfile.ZipInfo(f"{NAME}.app/Contents/Resources/app/{f}", (2026, 10, 4, 12, 0, 0))
             new.external_attr, new.create_system, new.compress_type = 0o100644 << 16, 3, zipfile.ZIP_DEFLATED
             zout.writestr(new, (DESK / f).read_bytes())

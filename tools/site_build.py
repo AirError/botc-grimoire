@@ -22,9 +22,9 @@ ROOT = Path(__file__).resolve().parent.parent
 SITE = ROOT / "out" / "site"
 # чистим содержимое, а не саму папку: OneDrive иногда держит пустую папку и не даёт её удалить
 SITE.mkdir(parents=True, exist_ok=True)
-for f in SITE.iterdir():
-    shutil.rmtree(f) if f.is_dir() else f.unlink()
-VERSION = "74"
+for f in SITE.iterdir():  # папку (rec) Windows иногда ненадолго держит — пустая остаётся, не страшно
+    shutil.rmtree(f, ignore_errors=True) if f.is_dir() else f.unlink()
+VERSION = "75"
 
 body = (ROOT / "app" / "dist" / "grimoire.html").read_text(encoding="utf-8")
 # хэш страницы — в имени кэша: изменилась страница → изменился sw.js → телефоны получат обновление, даже если VERSION забыли поднять
@@ -61,6 +61,12 @@ if ('serviceWorker' in navigator) {
 </script>"""
 (SITE / "index.html").write_text(head + body + register + "</body></html>", encoding="utf-8")
 
+# записи на утро (app_build.py → app/dist/rec): рядом со страницей; service worker кладёт их в кэш при установке — утром без сети играют
+REC = ROOT / "app" / "dist" / "rec"
+if REC.is_dir():
+    shutil.copytree(REC, SITE / "rec", dirs_exist_ok=True)
+REC_FILES = ["./rec/" + f.name for f in sorted((SITE / "rec").iterdir())] if (SITE / "rec").is_dir() else []
+
 # иконки: iOS сама скругляет углы — отдаём полный квадрат без прозрачности
 src = Image.open(ROOT / "art" / "src" / "app_icon.png").convert("RGB")
 for size in (180, 192, 512):
@@ -82,9 +88,11 @@ manifest = {
 const CACHE = 'grimoire-v{VERSION}-{PAGE_HASH}';
 const FONTS = 'grimoire-fonts'; // шрифты Google не меняются — переживают обновления приложения
 const CORE = ['./index.html', './manifest.webmanifest', './icon-180.png', './icon-192.png', './icon-512.png'];
+const REC = {json.dumps(REC_FILES)}; // записи на утро — по возможности (не скачалась — установка всё равно проходит)
 // no-cache: сверяемся с сервером (если страница не менялась — 304, ничего не качаем), но не берём устаревшую копию
 self.addEventListener('install', e => {{
-  e.waitUntil(caches.open(CACHE).then(c => c.addAll(CORE.map(u => new Request(u, {{ cache: 'no-cache' }})))).then(() => self.skipWaiting()));
+  e.waitUntil(caches.open(CACHE).then(c => c.addAll(CORE.map(u => new Request(u, {{ cache: 'no-cache' }})))
+    .then(() => Promise.all(REC.map(u => c.add(new Request(u, {{ cache: 'no-cache' }})).catch(() => {{}}))))).then(() => self.skipWaiting()));
 }});
 self.addEventListener('activate', e => {{
   e.waitUntil(caches.keys().then(keys => Promise.all(keys.filter(k => k !== CACHE && k !== FONTS).map(k => caches.delete(k)))).then(() => self.clients.claim()));
