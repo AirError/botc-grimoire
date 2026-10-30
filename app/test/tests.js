@@ -1622,6 +1622,47 @@ try {
     ok('Пьяное Дитя Луны: выбор без цели; пьяный Растяпа выбрал злого — игра идёт', !Q.flags.moonchildTarget && !Q.result);
   }
 
+  // 44. заметки пользователя 2026-10-30: «Роли на игру» с неверными типами не раздаются; Трактирщик — пьян тот, кого выбрали
+  {
+    const mk = pool => { const Q = E.newGame('deaddontsleep'); for (let i = 0; i < 6; i++) Q.players.push(E.newPlayer('И' + i)); Q.pool = pool; return Q; };
+    const bad = mk(['innkeeper', 'dreamer', 'empath', 'slayer', 'klutz', 'moonchild', 'pithag'].slice(0, 5).concat(['zombuul'])); // 4 Горожанина, 1 Изгой, без Приспешника
+    ok('«Роли на игру» с неверными типами: стена и раздача не идут, понятно почему', /не сходятся с раскладкой/.test(E.drawProblem(bad)) && !E.randomDeal(bad) && bad.players.every(p => !p.role), E.drawProblem(bad));
+    const good = mk(['innkeeper', 'dreamer', 'empath', 'klutz', 'pithag', 'zombuul']); // 6 игроков: 3/1/1/1
+    ok('«Роли на игру» по таблице — раздаются', !E.poolProblem(good) && E.randomDeal(good) && !E.setupProblems(good).length, E.poolProblem(good) + ' | ' + E.setupProblems(good).join('; '));
+    const vg = mk(['innkeeper', 'dreamer', 'empath', 'slayer', 'pithag', 'vigormortis']); // Вигормортис: −1 Изгой → 4/0/1/1
+    ok('«Роли на игру» с Вигормортисом (−1 Изгой) — сдвиг учтён', !E.poolProblem(vg), E.poolProblem(vg));
+    const gf = mk(['innkeeper', 'dreamer', 'empath', 'klutz', 'godfather', 'zombuul']); gf.flags.mods = {};
+    ok('«Роли на игру» с Крёстным Отцом без выбора сдвига — просит выбрать', /выберите/.test(E.poolProblem(gf)) || !E.poolProblem(gf), E.poolProblem(gf));
+
+    const G = game(['innkeeper', 'dreamer', 'empath', 'slayer', 'savant', 'pithag', 'zombuul'], 'deaddontsleep'); E.autoSetup(G, true); E.startGame(G);
+    runNight(G, {}); E.endDay(G);
+    const ph = byRole(G, 'pithag'), dr = byRole(G, 'dreamer');
+    const st = runUntil(G, 'innkeeper', {}), sp = E.stepSpec(G, st), more = sp.more({ t: [dr.id, ph.id] });
+    ok('Трактирщик: «кто пьян» — кнопки с именами', more.length === 1 && more[0].options.map(o => o.l).join() === [dr.name, ph.name].join());
+    E.applyStep(G, st, { t: [dr.id, ph.id], drunk: '1' });
+    ok('Трактирщик: пьян выбранный (второй нажатый) — Яга, не Сновидец', !!E.abilityOff(G, ph) && !E.abilityOff(G, dr));
+  }
+
+  // 45. проверка Банши по вики (просьба пользователя 2026-10-30)
+  {
+    const G = game(['banshee', 'chef', 'empath', 'monk', 'soldier', 'poisoner', 'imp'], 'nachtmahr'); E.autoSetup(G, true); E.startGame(G);
+    const b = byRole(G, 'banshee'), imp = byRole(G, 'imp');
+    ok('Живая Банши голосует и номинирует как все (вес 1)', E.voteWeight(G, b) === 1 && !E.bansheeVotes(G, b));
+    runNight(G, { poisoner: { t: [byRole(G, 'chef').id] } }); E.endDay(G);
+    runNight(G, { imp: { t: [b.id] }, poisoner: { t: [byRole(G, 'chef').id] } });
+    ok('Банши убита Демоном: «есть способность», объявление на рассвете, голос мёртвой — 2', !b.alive && E.hasTok(b, 'hasability', 'banshee') && E.bansheeVotes(G, b) && E.voteWeight(G, b) === 2);
+    ok('Банши подняла одну руку — 1 голос', E.voteCount(G, [b.id], [b.id]) === 1 && E.voteCount(G, [b.id], []) === 2);
+    const on = G.players.find(p => p.alive && p !== imp); E.nominate(G, b.id, on.id); E.recordVote(G, on.id, [b.id], []);
+    ok('Мёртвая Банши голосует без траты голоса призрака', b.ghost === true);
+    E.revive(G, b, 'Рассказчик воскрешает');
+    ok('Воскрешённая Банши — как обычный живой игрок (метки нет, вес 1)', b.alive && !E.hasTok(b, 'hasability', 'banshee') && E.voteWeight(G, b) === 1);
+
+    const Q = game(['banshee', 'chef', 'empath', 'monk', 'soldier', 'poisoner', 'imp'], 'nachtmahr'); E.autoSetup(Q, true); E.startGame(Q);
+    const qb = byRole(Q, 'banshee'); runNight(Q, { poisoner: { t: [byRole(Q, 'chef').id] } });
+    E.nominate(Q, byRole(Q, 'chef').id, qb.id); E.recordVote(Q, qb.id, Q.players.filter(p => p.alive).map(p => p.id)); E.endDay(Q);
+    ok('Казнённая Банши — без способности, голос призрака тратится', !qb.alive && !E.hasTok(qb, 'hasability', 'banshee') && E.voteWeight(Q, qb) === 1);
+  }
+
   for (const k of Object.keys(DATA.scripts)) ok('сценарий ' + k + ' — все роли в данных', DATA.scripts[k].roles.every(r => DATA.roles[r]));
 } catch (e) { results.push('ERROR ' + e.message + '\n' + e.stack); }
 

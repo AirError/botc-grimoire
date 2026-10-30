@@ -841,6 +841,8 @@ img.shroud { object-fit: contain; }
 .rseat .rmk { position: absolute; left: 50%; bottom: -14%; transform: translateX(-50%); display: flex; gap: 2px; pointer-events: none; z-index: 1; }
 .rseat .rmk .rtok, .rseat .rmk .rmore { width: 1.6em; height: 1.6em; box-shadow: 0 1px 3px rgba(0, 0, 0, .35); }
 .rseat .rmk .rmore { font-size: .62em; width: 2.6em; height: 2.6em; }
+/* Банши голосует: ×2 — обе руки, ×1 — одна */
+.rseat .rhands { position: absolute; right: -6%; top: -6%; padding: .1em .4em; border-radius: 1em; background: var(--good, #2E7D32); color: #fff; font-weight: 800; font-size: .8em; pointer-events: none; z-index: 1; }
 .rseat .rord { position: absolute; right: -4%; top: -4%; width: 1.7em; height: 1.7em; border-radius: 50%; background: var(--evil); color: #FFFFFF;
   font-weight: 800; display: flex; align-items: center; justify-content: center; font-size: max(.7em, 11px); }
 .nightring { margin: 6px 0; }

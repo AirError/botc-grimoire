@@ -627,7 +627,7 @@ function dealButtons() {
   if (d && d.finished) return '<div class="note-ok">Роли выданы жребием (стена). Заново не раздаются; роль можно сменить только на роль сценария, которой нет в игре.</div>';
   if (d) return '<div class="small muted">Идёт жребий (карточка «Выдача ролей» выше): роли закреплены за игроками — случайная раздача недоступна.</div>';
   const prob = E.drawProblem(S);
-  return `<div class="row"><button class="btn" data-act="deal">${E.validPool(S) ? 'Раздать выбранные роли случайно' : 'Раздать роли случайно'}</button><button class="btn" data-act="drawStart" ${prob ? 'disabled' : ''}>Жребий: ${cryptOn() ? 'склеп' : vitrOn() ? 'витраж' : 'каменная стена'}</button></div>
+  return `<div class="row"><button class="btn" data-act="deal" ${E.poolProblem(S) || E.scriptShort(S) ? 'disabled' : ''}>${E.validPool(S) ? 'Раздать выбранные роли случайно' : 'Раздать роли случайно'}</button><button class="btn" data-act="drawStart" ${prob ? 'disabled' : ''}>Жребий: ${cryptOn() ? 'склеп' : vitrOn() ? 'витраж' : 'каменная стена'}</button></div>
     ${prob && S.pool && S.pool.length ? `<div class="small muted">${esc(prob)}</div>` : ''}`;
 }
 // подсказки (ideas.js): нажатие подставляет текст в поле
@@ -1030,8 +1030,8 @@ function viewDay() {
   const { vd, bishop, butcherTurn, byOk, onOk, canVote } = nomRules();
   if (nm.stage === 'vote') {
     const on = E.P(S, nm.on), by = nm.by === 'st' ? null : E.P(S, nm.by);
-    const cnt = E.voteCount(S, nm.voters);
-    const weighted = nm.voters.map(id => E.P(S, id)).filter(v => E.voteWeight(S, v) !== 1).map(v => `${v.name}: ${E.voteWeight(S, v) === 3 ? 'голос за троих (Бюрократ)' : E.voteWeight(S, v) === -3 ? 'три голоса против (Бюрократ и Вор)' : 'голос против (Вор)'}`);
+    const cnt = E.voteCount(S, nm.voters, nm.oneHand);
+    const weighted = nm.voters.map(id => E.P(S, id)).filter(v => E.voteWeight(S, v, (nm.oneHand || []).includes(v.id)) !== 1 || E.bansheeVotes(S, v)).map(v => voteNote(v, nm.oneHand));
     const rules = [vd ? { w: 'Голосуют', t: 'только Шаман Вуду и мёртвые; жетон голоса не нужен и не тратится' } : { w: 'Голосуют', t: 'все живые; мёртвые — только если у них остался голос призрака (тратится при голосовании)' },
       { w: 'Казнь', t: `на плаху попадает тот, у кого не меньше ${th} голос. и больше, чем у остальных; при равенстве — никто` }];
     if (S.players.some(p => p.role === 'butler' && p.alive)) rules.push({ w: 'Дворецкий', t: 'голосует, только если голосует его хозяин' });
@@ -1395,6 +1395,15 @@ function deathChoiceHtml(picks) {
 }
 // Гном: номинирован его друг — до голосования Гном может убить номинировавшего (один раз на номинацию). В карточке голосования
 // и в голосовании кругом (заметка пользователя 2026-10-28: номинировал друга Гнома кругом — кнопки не было)
+// вес голоса словами: Бюрократ (×3), Вор (против), Банши (мёртвая со способностью: две руки или одна). Раньше Банши (вес 2) попадала
+// в «голос против (Вор)» — проверка Банши 2026-10-30
+function voteNote(v, oneHand) {
+  const one = (oneHand || []).includes(v.id), w = E.voteWeight(S, v, one), why = [];
+  if (E.hasTok(v, 'votes3', 'bureaucrat') && E.travellerWorks(S, 'bureaucrat')) why.push('Бюрократ');
+  if (E.hasTok(v, 'voteneg', 'thief') && E.travellerWorks(S, 'thief')) why.push('Вор');
+  if (E.bansheeVotes(S, v)) why.push(one ? 'Банши, одна рука — нажмите ещё раз, чтобы снять голос' : 'Банши, обе руки — нажмите ещё раз, если подняла одну');
+  return `${v.name}: ${w < 0 ? `против, ${-w}` : `голосов — ${w}`} (${why.join('; ')})`;
+}
 function gnomeKillHtml(onId, byId) {
   const d = S.day; if (!byId || byId === 'st' || d.gnomeNom === d.nominated.length) return '';
   return S.players.filter(g => g.role === 'gnome' && g.alive && (E.gnomeAmigo(S, g) || {}).id === onId)
@@ -1409,7 +1418,9 @@ function nomRing() {
   const seats = S.players.map((p, i) => {
     const cls = [p.id === nm.by ? 'by' : '', p.id === nm.on ? 'on' : '', vote && nm.voters.includes(p.id) ? 'voted' : '', vote && first && p.id === first.id && p.id !== nm.on ? 'first' : ''].join(' ');
     const ok = !open ? false : vote ? canVote(p) : (p.id === nm.by || p.id === nm.on || (!bishop && !nm.by ? byOk(p) : onOk(p)));
-    return seatHtml(p, i, g, cls, `data-act="${vote ? 'vote' : 'ringPick'}" data-arg="${vote ? 'voters|' + p.id + '|99' : p.id}" ${ok ? '' : 'disabled'}`);
+    // мёртвая Банши проголосовала: сколько рук (нажатие переключает обе → одна → снять)
+    const hands = vote && nm.voters.includes(p.id) && E.bansheeVotes(S, p) ? `<span class="rhands">${(nm.oneHand || []).includes(p.id) ? '×1' : '×2'}</span>` : '';
+    return seatHtml(p, i, g, cls, `data-act="${vote ? 'vote' : 'ringPick'}" data-arg="${vote ? 'voters|' + p.id + '|99' : p.id}" ${ok ? '' : 'disabled'}`, hands);
   }).join('');
   // стрелка «кто → кого»
   const bi = S.players.findIndex(p => p.id === nm.by), oi = S.players.findIndex(p => p.id === nm.on);
@@ -1427,7 +1438,7 @@ function nomRing() {
   }
   const by = nm.by === 'st' ? null : nm.by && E.P(S, nm.by), on = nm.on && E.P(S, nm.on);
   // сколько голосов нужно для казни, а если кто-то уже на плахе — и для отмены (ничья) (заметка пользователя 2026-10-16)
-  const vn = vote ? E.voteNeeds(S) : null, vc = vote ? E.voteCount(S, nm.voters) : 0;
+  const vn = vote ? E.voteNeeds(S) : null, vc = vote ? E.voteCount(S, nm.voters, nm.oneHand) : 0;
   const mid = vote ? `<b class="${vc >= vn.exec ? 'enough' : vn.cancel && vc === vn.cancel ? 'tie' : ''}">${vc}</b><span>для казни — ${vn.exec}</span>${vn.cancel ? `<span>для отмены — ${vn.cancel}</span>` : ''}<span class="small">за: ${esc(on ? on.name : '')}</span>`
     : !open ? '<span>Казнь сегодня уже была</span>'
       : !bishop && !by ? '<span>Кто номинирует?</span>'
@@ -1599,6 +1610,7 @@ function poolCard() {
     <div class="pstats">${stat}</div>${choices}${d.notes.length ? `<div class="small muted">${d.notes.map(esc).join('<br>')}</div>` : ''}
     ${mar ? `<div class="small muted">Марионетка: её жетон в мешочек не кладут — вместо него Горожанин. Можно отметить ещё одного Горожанина (всего ${n + 1} ролей) — его роль и достанется будущей Марионетке; не отмечен — Горожанин подберётся случайно. Кто из соседей Демона станет Марионеткой — выберете в «Подготовке».</div>` : ''}
     ${pool.length && !E.validPool(S) ? `<div class="warn">Нужно ${mar ? `${n} ролей или ${n + 1} с лишним Горожанином под Марионетку` : `ровно ${n} ролей`} — по числу игроков (без Странников).</div>` : ''}
+    ${E.poolProblem(S) ? `<div class="warn">${esc(E.poolProblem(S))}. Раздать роли и выкатить стену можно, когда раскладка сойдётся.</div>` : ''}
     ${pool.includes('huntsman') && !pool.includes('damsel') ? '<div class="warn">Ловчий в игре — добавьте Девицу.</div>' : ''}
     ${groups}<div class="row"><button class="btn" data-act="poolRandom">Случайный набор</button>${pool.length ? '<button class="btn" data-act="poolClear">Очистить</button>' : ''}</div></details></div>`;
 }
@@ -2578,7 +2590,7 @@ const A = {
   rename: (id, el) => act(S => { E.P(S, id).name = el.value.trim() || E.P(S, id).name; }, 'имя игрока'),
   move: arg => { const [id, d] = arg.split('|'); act(S => { const i = S.players.findIndex(p => p.id === id), j = i + (+d); if (j >= 0 && j < S.players.length) [S.players[i], S.players[j]] = [S.players[j], S.players[i]]; }, 'порядок мест'); },
   delP: id => act(S => { S.players = S.players.filter(p => p.id !== id); }, 'удалён игрок'),
-  deal: () => { if (S.draw) return alertNote('Роли выдаются или выданы жребием — случайная раздача недоступна.'); if (E.scriptShort(S)) return alertNote(E.scriptShort(S)); act(S => E.randomDeal(S), 'случайная раздача ролей'); },
+  deal: () => { if (S.draw) return alertNote('Роли выдаются или выданы жребием — случайная раздача недоступна.'); if (E.scriptShort(S)) return alertNote(E.scriptShort(S)); if (E.poolProblem(S)) return alertNote(E.poolProblem(S)); act(S => E.randomDeal(S), 'случайная раздача ролей'); },
   outMod: arg => { const [id, v] = arg.split('|'); act(S => { S.flags.mods = Object.assign({}, S.flags.mods, { [id]: +v }); }, `${E.rname(id)}: ${(MOD_RU_ROLE[id] || { '-1': '−1 Изгой', 0: 'Изгоев без изменений', 1: '+1 Изгой' })[v]}`); },
   setRole: (id, el) => act(S => E.setupRole(S, E.P(S, id), el.value), 'роль ' + E.P(S, id).name),
   setDrunk: (a, el) => act(S => E.makeDrunk(S, el.value), 'Пьяница'),
@@ -2698,9 +2710,13 @@ const A = {
     UI.notes = res ? res.notes : []; render();
     showExeResult(before); // Девственница: номинировавший Горожанин казнён
   },
-  vote: arg => { const id = arg.split('|')[1]; draft(S => { const v = S.day.draft.voters; if (v.includes(id)) v.splice(v.indexOf(id), 1); else v.push(id); }); },
+  // мёртвая Банши со способностью: нажатие — обе руки (2 голоса), ещё раз — одна рука, ещё раз — не голосует
+  vote: arg => { const id = arg.split('|')[1]; draft(S => { const d = S.day.draft, v = d.voters, one = d.oneHand || (d.oneHand = []);
+    if (!v.includes(id)) v.push(id);
+    else if (E.bansheeVotes(S, E.P(S, id)) && !one.includes(id)) one.push(id);
+    else { v.splice(v.indexOf(id), 1); if (one.includes(id)) one.splice(one.indexOf(id), 1); } }); },
   voteDone: () => { const d0 = clone(S.day.draft), lost = E.ghostSpent(S, d0.voters).map(p => p.name);
-    act(S => { E.recordVote(S, d0.on, d0.voters); S.day.draft = { by: null, on: null, voters: [], stage: 'pick', spy: false }; });
+    act(S => { E.recordVote(S, d0.on, d0.voters, d0.oneHand || []); S.day.draft = { by: null, on: null, voters: [], stage: 'pick', spy: false }; });
     if (lost.length) { UI.ghostLost = lost; render(); } }, // окно: кто лишился последнего голоса (заметка пользователя 2026-10-16)
   ghostLostClose: () => { UI.ghostLost = null; render(); },
   voteCancel: () => act(S => { S.day.draft = { by: null, on: null, voters: [], stage: 'pick', spy: false }; }, 'номинация отменена'),
