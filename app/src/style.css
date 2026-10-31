@@ -88,6 +88,14 @@ textarea { min-height: 96px; resize: vertical; }
 .reveal .lab { font-family: var(--f-sc); font-size: 13px; letter-spacing: .1em; color: var(--gold); }
 .reveal .big { font-size: 24px; font-weight: 700; line-height: 1.2; overflow-wrap: anywhere; }
 .reveal .big.alive { margin-top: 6px; color: var(--ok); } /* рассвет: «Снова жив» — крупно, как смерти */
+/* знакомство злых: кого будить и на кого указывать — крупно, жирно, красным; рассвет: объявления всем (Банши, Страшила) — плашкой
+   (заметка пользователя 2026-11-01: «мелкую информацию выискивать нужно», «легко не заметить») */
+.reveal .evrow { display: flex; flex-direction: column; gap: 0; margin: 2px 0 4px; }
+.reveal .evl { font-size: 14px; font-weight: 700; color: var(--muted); }
+.reveal .evname { font-size: 30px; font-weight: 800; line-height: 1.15; color: var(--evil); overflow-wrap: anywhere; }
+html.oled .reveal .evname { color: #FF5A5A; }
+.reveal .annbig { margin-top: 8px; padding: 10px 12px; border: 2px solid var(--warn); border-radius: 10px; background: var(--warnbg);
+  font-size: 21px; font-weight: 800; line-height: 1.25; color: var(--ink); }
 .tipbox p { margin: 0 0 10px; } /* окно советов вики (Яга создала Демона) */
 .reveal .ln { font-size: 14.5px; }
 /* только для рассказчика — не показывать игроку */
@@ -768,6 +776,17 @@ img.shroud { object-fit: contain; }
 .prow-edit { transition: transform .12s ease; background: var(--card); }
 .prow-edit.dragging { transition: none; position: relative; z-index: 3; box-shadow: 0 6px 18px rgba(0, 0, 0, .25); border-radius: 10px; }
 .pooldet summary { cursor: pointer; padding: 4px 0; }
+/* «Роли на игру» — заметная карточка (заметка пользователя 2026-11-01: «трудно найти»): рамка золотом, крупный заголовок, счётчик */
+.card.poolcard { border: 2px solid var(--gold); background: linear-gradient(var(--goldbg), var(--card) 70px); }
+.card.poolcard.pok { border-color: var(--ok); } .card.poolcard.pbad { border-color: var(--evil); }
+.poolcard .pooldet > summary { list-style: none; display: flex; align-items: center; flex-wrap: wrap; gap: 6px 10px; padding: 6px 2px; }
+.poolcard .pooldet > summary::-webkit-details-marker { display: none; }
+.poolcard .ptitle { font-size: 22px; font-weight: 800; letter-spacing: .01em; }
+.poolcard .pcount { font-size: 14px; font-weight: 800; border-radius: 999px; padding: 3px 11px; background: var(--gold); color: var(--card); }
+.poolcard.pok .pcount { background: var(--ok); } .poolcard.pbad .pcount { background: var(--evil); }
+.poolcard .pchev { margin-left: auto; font-size: 20px; line-height: 1; transition: transform .2s; }
+.poolcard .pooldet[open] .pchev { transform: rotate(180deg); }
+.poolcard .phint { flex-basis: 100%; font-size: 14px; color: var(--muted); }
 .pooldet[open] { display: flex; flex-direction: column; gap: 10px; }
 .pstats { display: flex; flex-wrap: wrap; gap: 6px; }
 .pstat { font-size: 13px; font-weight: 700; border-radius: 999px; padding: 2px 10px; border: 1px solid var(--line); }
@@ -1179,6 +1198,10 @@ html .wallov.crypt .wgrid { align-content: center; row-gap: var(--wgap, 20px); }
    ширина сетки — чтобы все ряды влезли по высоте (--wc, --wmax из cryptGrid) */
 html .wallov.crypt .wall { max-width: none; }
 html .wallov.crypt .wgrid { grid-template-columns: repeat(var(--wc, 3), minmax(0, 1fr)); width: min(92%, var(--wmax, 100%)); margin-inline: auto; flex: 0 0 auto; margin-block: auto; }
+/* крышка открытого сундука верхнего ряда поднимается над ним — сверху место под неё, имя выбирающего поверх сундуков
+   (заметка пользователя 2026-11-01: «на iPad верхний сундук по центру перекрывает имя выбирающего» — альбомом крышка заходила на шапку) */
+html .wallov.crypt .wgrid { padding-top: var(--wgap, 20px); }
+html .wallov.crypt .wturn { position: relative; z-index: 3; }
 .crypt .whint { color: #CDBBA0; text-shadow: 0 1px 4px #000; }
 .hcrypt { position: absolute; inset: 0; z-index: 0; overflow: hidden; pointer-events: none; }
 /* туман: широкая полоса плывёт влево и повторяется без шва */

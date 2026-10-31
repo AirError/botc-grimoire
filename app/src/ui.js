@@ -759,10 +759,12 @@ function prepDefs(mid) {
   const flag = (k, label, role, ok) => has(role) ? [{ k, label, cur: S.flags[k], ok, apply: (S, id) => E.setPrepFlag(S, k, id), none: true }] : [];
   const out = [];
   if (!mid && (S.players.some(p => p.role === 'drunk') || (S.pool || []).includes('drunk'))) { // Пьяница — кто из Горожан (заметки 2026-10-15)
-    const cur = S.players.find(p => p.role === 'drunk');
-    out.push({ k: 'drunk', label: 'Пьяница — кто из Горожан на самом деле Пьяница (будет считать себя своей ролью)', cur: cur && cur.id,
+    const cur = S.players.find(p => p.role === 'drunk'), need = S.flags.drunkNeed && !cur;
+    out.push({ k: 'drunk', label: 'Пьяница — кто из Горожан на самом деле Пьяница (будет считать себя своей ролью)', cur: cur && cur.id, ask: need,
       ok: p => p === cur || E.realTeam(p) === 'townsfolk', apply: (S, id) => E.makeDrunk(S, id || ''), none: '— Пьяницы нет —',
-      hint: cur ? 'Выберите другого — прежний Пьяница получит роль, которой себя считал: раскладка не изменится.' : 'Пьяница — Изгой: Горожан станет на 1 меньше, Изгоев на 1 больше.' });
+      hint: need ? 'Вместо жетона Пьяницы в мешочке был лишний Горожанин — выберите, кто из Горожан на самом деле Пьяница.'
+        : cur ? 'Выберите другого — прежний Пьяница получит роль, которой себя считал: раскладка не изменится. «Пьяницы нет» — Горожан станет на 1 больше.'
+        : 'Пьяница — Изгой: Горожан станет на 1 меньше, Изгоев на 1 больше.' });
   }
   out.push(...flag('grandchild', 'Внук Бабушки', 'grandmother', p => good(p) && p.role !== 'grandmother'),
     ...flag('ftHerring', 'Ложная цель Гадалки (добрый игрок): для Гадалки он «Демон»', 'fortuneteller', good),
@@ -790,7 +792,7 @@ function prepFields(mid) {
   const roleTxt = p => (p.role === 'drunk' || p.role === 'marionette') && p.believes ? `${E.rname(p.role)} — считает себя: ${E.rname(p.believes)}` : E.rname(p.role);
   const who = d => { const p = d.cur && E.P(S, d.cur);
     return p ? `${p.role ? ico(p.role, p.align, 'pci') : ''}<span class="pcn"><b>${esc(p.name)}</b><span class="small muted">${esc(roleTxt(p))}${p.alive ? '' : ' · мёртв'}</span></span>`
-      : `<span class="pcn muted">${typeof d.none === 'string' ? esc(d.none) : '— не выбран —'}</span>`; };
+      : `<span class="pcn muted">${typeof d.none === 'string' && !d.ask ? esc(d.none) : '— не выбран —'}</span>`; };
   return `<div class="field"><label>Блефы Демона: 3 добрые роли, которых нет в игре</label>
       <div class="bluffrow">${[0, 1, 2].map(i => tile(S.bluffs[i])).join('')}<button class="btn" data-act="prepPick" data-arg="bluff">Выбрать</button></div></div>
     ${prepDefs(mid).map(d => `<div class="field ${d.ask ? 'ask' : ''}"><label>${esc(d.label)}</label>
@@ -849,7 +851,10 @@ function revealHtml(info, dist) {
   const tag = dist ? `<div class="ptag">${icons}<b>${esc(dist.label)}</b><span>${say}</span></div>` : '';
   const top = kind === 'poison' ? DRIP_SVG : kind === 'drunk' && HAS_ART('drunk_foam') ? '<span class="foam2" aria-hidden="true"></span>' : '';
   return `<div class="reveal ${info.secret ? 'secret' : ''} ${dist ? 'poison k-' + kind : ''}">${top}${tag}
-    <div class="lab">${info.secret ? 'Только для вас — не показывайте' : 'Покажите / объявите'}</div>${info.show ? `<div class="big">${esc(info.show)}</div>` : ''}${info.show2 ? `<div class="big alive">${esc(info.show2)}</div>` : ''}
+    <div class="lab">${info.secret ? 'Только для вас — не показывайте' : 'Покажите / объявите'}</div>
+    ${(info.evil || []).map(r => `<div class="evrow"><span class="evl">${esc(r.l)}:</span><span class="evname">${esc(r.names.join(', ') || '—')}</span></div>`).join('')}
+    ${info.show ? `<div class="big">${esc(info.show)}</div>` : ''}${info.show2 ? `<div class="big alive">${esc(info.show2)}</div>` : ''}
+    ${(info.ann || []).map(t => `<div class="annbig">${esc(t)}</div>`).join('')}
     ${(info.lines || []).filter(Boolean).map(l => `<div class="ln">${esc(l)}</div>`).join('')}
     ${info.grim ? `<div class="showbtns"><button class="btn showbtn" data-act="grimShow">${art('eye', 'bg')}Показать Гримуар на весь экран</button>
       <div class="small muted">Закрыть Гримуар — только невидимой кнопкой в <b>левом нижнем углу</b> экрана: игрок сам его не закроет. Его собственная отметка «отравлен / пьян» на экране не видна.</div>
@@ -887,7 +892,7 @@ function viewNight() {
       ${(spec.warn || []).map(w => `<div class="warn">${esc(w)}</div>`).join('')}
       ${fields.map(f => fieldHtml(f, inp)).join('')}
       ${goon ? `<div class="warn">${esc(goon)}</div>` : ''}
-      ${info && (info.show || (info.lines || []).filter(Boolean).length) ? revealHtml(info, spec.dist) : ''}
+      ${info && (info.show || (info.evil || []).length || (info.ann || []).length || (info.lines || []).filter(Boolean).length) ? revealHtml(info, spec.dist) : ''}
       ${st.id === 'dawn' ? morningHtml(true) : ''}
       ${missing.length ? `<div class="small muted">Осталось выбрать: ${missing.map(esc).join('; ')}</div>` : ''}
       ${spec.active && (st.id === 'demoninfo' || st.id === 'fortuneteller') ? `<button class="btn" data-act="prepOpen">${st.id === 'demoninfo' ? 'Изменить блефы' : 'Изменить ложную цель'}</button>` : ''}
@@ -1656,21 +1661,29 @@ function poolCard() {
   const n = S.players.filter(p => !E.isTraveller(p)).length; if (n < 5 || n > 15) return '';
   const pool = S.pool || [], d = E.distribution(n, pool.concat(S.fabled || []), S.flags.mods, E.scriptOutsiders(S));
   const cnt = t => pool.filter(r => team(r) === t).length, good = cnt('townsfolk') + cnt('outsider');
-  // Марионетка: можно отметить ещё одного Горожанина — он ляжет в мешочек вместо её жетона (заметка пользователя 2026-10-21)
-  const mar = pool.includes('marionette'), marX = E.poolMarExtra(S) ? 1 : 0, need = mar ? `${n} или ${n + 1}` : `${n}`;
+  // Марионетка и Пьяница: на каждого можно отметить ещё одного Горожанина — он ляжет в мешочек вместо их жетона (заметки пользователя
+  // 2026-10-21 и 2026-11-01)
+  const sw = E.SWAP_TOKENS.filter(r => pool.includes(r)), own = E.poolOwnSwaps(S), marX = own.length;
+  const need = sw.length ? [n, ...sw.map((_, i) => n + i + 1)].join(sw.length > 1 ? ', ' : ' или ').replace(/, (\d+)$/, ' или $1') : `${n}`;
+  const under = own.map(r => r === 'drunk' ? 'Пьяницу' : 'Марионетку').join(' и ');
   const stat = ['townsfolk', 'outsider', 'minion', 'demon'].map(t => {
     const want = d[t] + (t === 'townsfolk' ? marX : 0);
     const bad = d.free && (t === 'townsfolk' || t === 'outsider') ? good !== d.townsfolk + d.outsider + marX : cnt(t) !== want;
-    return `<span class="pstat ${bad ? 'bad' : 'okc'}">${E.TEAM_RU[t]}: ${cnt(t)} из ${want}${t === 'townsfolk' && marX ? ' (+1 под Марионетку)' : ''}</span>`; }).join('');
+    return `<span class="pstat ${bad ? 'bad' : 'okc'}">${E.TEAM_RU[t]}: ${cnt(t)} из ${want}${t === 'townsfolk' && marX ? ` (+${marX} под ${under})` : ''}</span>`; }).join('');
   const groups = ['townsfolk', 'outsider', 'minion', 'demon'].map(t => {
     const rs = S.script.roles.filter(r => team(r) === t); if (!rs.length) return '';
     return `<div class="poolgrp"><div class="small muted">${TEAM_PL[t]}</div><div class="pooltiles">${rs.map(r => `<button class="ptok ${pool.includes(r) ? 'on' : ''}" data-act="poolToggle" data-arg="${r}" aria-pressed="${pool.includes(r)}">${ico(r, null, 'pti')}<span>${esc(E.rname(r))}</span></button>`).join('')}</div></div>`; }).join('');
   const choices = outChoicesHtml(d);
-  return `<div class="card"><details class="pooldet" ${pool.length ? 'open' : ''}><summary><b>Роли на игру</b> <span class="small muted">${pool.length ? `выбрано ${pool.length} из ${need}` : 'не выбраны — раздача случайная по раскладке'}</span></summary>
+  // крупная карточка с рамкой (заметка пользователя 2026-11-01: «блок трудно найти» — был мелкой строкой)
+  const okPool = pool.length && E.validPool(S) && !E.poolProblem(S);
+  return `<div class="card poolcard ${pool.length ? (okPool ? 'pok' : 'pbad') : ''}"><details class="pooldet" ${pool.length ? 'open' : ''}><summary><span class="ptitle">Роли на игру</span>
+    <span class="pcount">${pool.length ? `выбрано ${pool.length} из ${need}` : 'не выбраны'}</span><span class="pchev" aria-hidden="true">▾</span>
+    ${pool.length ? '' : '<span class="phint">Нажмите, чтобы отметить роли. Не выбраны — раздача случайная по раскладке.</span>'}</summary>
     <div class="small muted">Отметьте роли, которые будут в игре: случайная раздача и жребий возьмут только их. Блефы Демона наберутся из остальных добрых ролей.</div>
     <div class="pstats">${stat}</div>${choices}${d.notes.length ? `<div class="small muted">${d.notes.map(esc).join('<br>')}</div>` : ''}
-    ${mar ? `<div class="small muted">Марионетка: её жетон в мешочек не кладут — вместо него Горожанин. Можно отметить ещё одного Горожанина (всего ${n + 1} ролей) — его роль и достанется будущей Марионетке; не отмечен — Горожанин подберётся случайно. Кто из соседей Демона станет Марионеткой — выберете в «Подготовке».</div>` : ''}
-    ${pool.length && !E.validPool(S) ? `<div class="warn">Нужно ${mar ? `${n} ролей или ${n + 1} с лишним Горожанином под Марионетку` : `ровно ${n} ролей`} — по числу игроков (без Странников).</div>` : ''}
+    ${pool.includes('marionette') ? `<div class="small muted">Марионетка: её жетон в мешочек не кладут — вместо него Горожанин. Можно отметить ещё одного Горожанина — его роль и достанется будущей Марионетке; не отмечен — Горожанин подберётся случайно. Кто из соседей Демона станет Марионеткой — выберете в «Подготовке».</div>` : ''}
+    ${pool.includes('drunk') ? `<div class="small muted">Пьяница: вместо его жетона в мешочек кладут Горожанина (вики). Отметьте ещё одного Горожанина — кто из Горожан на самом деле Пьяница (будет считать себя своей ролью), выберете в «Подготовке». Не отмечен — Пьяница вытянет свой жетон и будет считать себя случайным Горожанином не из игры.</div>` : ''}
+    ${pool.length && !E.validPool(S) ? `<div class="warn">Нужно ${sw.length ? `${need} ролей (лишние — Горожане под ${sw.map(r => r === 'drunk' ? 'Пьяницу' : 'Марионетку').join(' и ')})` : `ровно ${n} ролей`} — по числу игроков (без Странников).</div>` : ''}
     ${E.poolProblem(S) ? `<div class="warn">${esc(E.poolProblem(S))}. Раздать роли и выкатить стену можно, когда раскладка сойдётся.</div>` : ''}
     ${pool.includes('huntsman') && !pool.includes('damsel') ? '<div class="warn">Ловчий в игре — добавьте Девицу.</div>' : ''}
     ${groups}<div class="row"><button class="btn" data-act="poolRandom">Случайный набор</button>${pool.length ? '<button class="btn" data-act="poolClear">Очистить</button>' : ''}</div></details></div>`;
@@ -1683,7 +1696,7 @@ function assignHtml(p) {
   const as = S.assign || {}, cur = as[p.id], taken = Object.entries(as).filter(([id, a]) => id !== p.id && a.role).map(([, a]) => a.role);
   // только из «Ролей на игру» (во время жребия — из того, что осталось в мешочке); роли, выданные или назначенные другим, — нет
   const src = S.draw && !S.draw.finished ? S.draw.bag : (S.pool && S.pool.length ? S.pool : S.script.roles);
-  const roles = src.filter(r => DATA.roles[r] && r !== 'marionette' && !taken.includes(r) && !S.players.some(q => q.role === r)); // Марионетку выбирают после раздачи
+  const roles = src.filter(r => DATA.roles[r] && r !== 'marionette' && !(r === 'drunk' && E.poolDrunkExtra(S)) && !taken.includes(r) && !S.players.some(q => q.role === r)); // Марионетку (и Пьяницу с лишним Горожанином) выбирают после раздачи
   const teams = ['townsfolk', 'outsider', 'minion', 'demon'].filter(t => roles.some(r => team(r) === t));
   const opt = (v, l) => `<option value="${v}" ${(cur ? (cur.role ? 'r:' + cur.role : 't:' + cur.team) : '') === v ? 'selected' : ''}>${esc(l)}</option>`;
   return `<div class="editor"><div class="field"><label>Что выпадет игроку на жребии и при раздаче</label>
@@ -1713,11 +1726,12 @@ function hChestVars() {
 // (над сундуками — шапка и подсказка, внизу — свечи: ~210 px; между рядами 20 px, между столбцами 12 px)
 // столбцов — сколько дают самые крупные сундуки на этом экране (по ширине — 92% стены на весь экран, по высоте — без шапки и подсказки)
 // Не меньше 3 в ряд (заметка пользователя 2026-10-27: на iPhone 12 сундуков стояли по 2 — «лучше 3 в ряд»); 2 — только при 4 и меньше.
-// Открытый сундук выше закрытого на 30% (откинутая крышка) — ряды отступают на эту высоту, чтобы крышки не налезали на ряд выше
+// Открытый сундук выше закрытого на 30% (откинутая крышка) — ряды отступают на эту высоту, чтобы крышки не налезали на ряд выше,
+// и над верхним рядом столько же (крышка заходила на имя выбирающего — заметка пользователя 2026-11-01, iPad)
 function cryptGrid(n) {
   const c = (typeof ART_META !== 'undefined' && ART_META.hallow && ART_META.hallow.chest) || { w: 485, h: 375 }, ar = c.h / c.w;
   const W = ((window.innerWidth || 375) - 28) * .92, H = (window.innerHeight || 700) - 210;
-  const size = k => { const r = Math.ceil(n / k); return Math.min((W - (k - 1) * 12) / k, (H - (r - 1) * 6) / (r + .3 * (r - 1)) / ar); };
+  const size = k => { const r = Math.ceil(n / k); return Math.min((W - (k - 1) * 12) / k, (H - (r - 1) * 6) / (r + .3 * r) / ar); };
   let cols = 3; for (const k of [4, 5, 6].concat(n <= 4 ? [2] : [])) if (size(k) > size(cols)) cols = k;
   const w = size(cols);
   return `--wc:${cols};--wmax:${Math.round(cols * w + (cols - 1) * 12)}px;--wgap:${Math.round(.3 * w * ar + 6)}px`;
@@ -2393,7 +2407,7 @@ function editOverlay() {
       ${spec.active ? '' : `<div class="warn">Не просыпается: ${esc(spec.reason)}</div>`}
       ${(spec.warn || []).map(w => `<div class="warn">${esc(w)}</div>`).join('')}
       ${fields.map(f => fieldHtml(f, inp)).join('')}
-      ${info && (info.show || (info.lines || []).filter(Boolean).length) ? revealHtml(Object.assign({}, info, { grim: false }), spec.dist) : ''}
+      ${info && (info.show || (info.evil || []).length || (info.ann || []).length || (info.lines || []).filter(Boolean).length) ? revealHtml(Object.assign({}, info, { grim: false }), spec.dist) : ''}
       ${missing.length ? `<div class="small muted">Осталось выбрать: ${missing.map(esc).join('; ')}</div>` : ''}
       <div class="actions"><button class="btn primary" data-act="editCheck" ${missing.length || !spec.active ? 'disabled' : ''}>Что изменится →</button>
         ${ed.rec.t === 'step' ? '<button class="btn" data-act="editSkip">Сделать шаг пропущенным</button>' : ''}</div>`;

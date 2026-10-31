@@ -418,6 +418,16 @@ try {
   E.endDay(S);
   const fake = S.night.steps.findIndex(s => s.fakeCannibal), dawnAt = S.night.steps.findIndex(s => s.id === 'dawn');
   ok('отравленного Каннибала можно разбудить «понарошку» (перед рассветом)', fake >= 0 && fake === dawnAt - 1 && E.stepSpec(S, S.night.steps[fake]).active);
+  // заметка пользователя 2026-11-01: шаг «понарошку» — как у роли, которой Каннибал себя считает (вики: лучше блеф казнённого)
+  {
+    const fs = E.stepSpec(S, S.night.steps[fake]), fl = r => E.stepInputs(fs, { fk: r }).filter(f => f.key !== 'fk');
+    ok('Каннибал понарошку: роль не выбрана — не будить, полей нет', fs.info({}).show && /не будить/.test(fs.info({}).show) && fl('').length === 0 && E.missingInputs(fs, {}).length === 0);
+    ok('Каннибал понарошку Гадалкой — выбор 2 игроков', fl('fortuneteller').some(f => f.type === 'players' && f.n === 2));
+    const ch = fl('chef'), ci = fs.info({ fk: 'chef' });
+    ok('Каннибал понарошку Поваром — число (с подсказкой), без выбора игроков', ch.some(f => f.type === 'number' && f.def !== undefined) && !ch.some(f => f.type === 'players') && /^\d+$/.test(ci.show), JSON.stringify(ci));
+    ok('Каннибал понарошку Уродцем — не просыпается, ничего (пример вики)', fl('mutant').length === 0 && /не просыпается/.test(fs.info({ fk: 'mutant' }).show));
+    ok('Каннибал понарошку: способность не появилась', !can.gained && E.actsAs(can) === 'cannibal');
+  }
   const bst = S.night.steps.find(s => s.id === 'balloonist'), bspec = E.stepSpec(S, bst), last = S.flags['balloonLast_' + byRole(S, 'balloonist').id];
   ok('Аэронавт: по умолчанию игрок другого типа', E.realTeam(E.P(S, bspec.defaults.t[0])) !== last.type, E.nm(S, bspec.defaults.t[0]));
   const sameType = S.players.find(q => q.id !== bst.pid && q.id !== last.pid && E.realTeam(q) === last.type);
@@ -1320,7 +1330,10 @@ try {
       const pl = E.stepSpec(Q, Q.night.steps.find(s => s.id === 'minioninfo')).info({}).tokens[0].players; if (pl[pl.length - 1] === byRole(Q, 'magician').id) lastN++;
     }
     ok('Фокусник замешан: порядок случайный, от перерисовки не меняется, в карточке рассказчика — тот же', minTok(di).join() === minTok(di2).join() && lastN > 0 && lastN < 40
-      && di.lines[0] === 'Укажите как на Приспешников: ' + minTok(di).map(id => G.players.find(p => p.id === id).name).join(', '), `последним ${lastN} из 40; ${di.lines[0]}`);
+      && di.evil[1].l === 'Укажите как на Приспешников' && di.evil[1].names.join() === minTok(di).map(id => G.players.find(p => p.id === id).name).join(), `последним ${lastN} из 40; ${JSON.stringify(di.evil)}`);
+    // заметка пользователя 2026-11-01: кого будить и на кого указывать — отдельными строками крупно (info.evil)
+    ok('Информация Приспешникам: «Разбудите Приспешников» и «Укажите как на Демона» — имена', mi.evil[0].l === 'Разбудите Приспешников' && mi.evil[0].names.join() === byRole(G, 'poisoner').name
+      && mi.evil[1].names.length === 2 && di.evil[0].l === 'Разбудите Демона' && di.evil[0].names.join() === byRole(G, 'imp').name, JSON.stringify([mi.evil, di.evil]));
     // Страшила: номинировал выбранного, его казнили — команда проигрывает
     G = game(['steward', 'chef', 'investigator', 'monk', 'soldier', 'saint', 'fearmonger', 'imp'], 'nachtmahr');
     E.autoSetup(G, true); E.startGame(G);
@@ -1336,6 +1349,8 @@ try {
     const fearOn = (Q, r) => ({ fearmonger: { t: [byRole(Q, r).id] } }), annN = Q => Q.log.filter(l => /объявлено: «Страшила выбрал игрока»/.test(l.t)).length;
     let F = fg(); runNight(F, fearOn(F, 'chef')); E.endDay(F); runNight(F, fearOn(F, 'chef'));
     ok('Страшила: тот же игрок во 2-ю ночь — ничего не объявляют', annN(F) === 1 && F.log.some(l => /\(тот же игрок\)/.test(l.t)));
+    { const D = fg(); runUntil(D, 'dawn', fearOn(D, 'chef')); const ds = E.stepSpec(D, E.currentStep(D)).info({});
+      ok('Рассвет: «Страшила выбрал игрока» — крупной плашкой (ann), не мелкой строкой', (ds.ann || []).some(t => /Страшила выбрал игрока/.test(t)) && !ds.lines.some(t => /Страшила/.test(t)), JSON.stringify(ds)); }
     E.endDay(F); runNight(F, fearOn(F, 'soldier'));
     E.nominate(F, byRole(F, 'fearmonger').id, byRole(F, 'chef').id); E.execute(F, byRole(F, 'chef').id);
     ok('Страшила выбрал другого — объявлено, казнь прежнего выбора игру не заканчивает', annN(F) === 2 && !F.result && !E.hasTok(byRole(F, 'chef'), 'fear', 'fearmonger'));
@@ -1454,8 +1469,12 @@ try {
     ok('Марионетка: после выбора соседа подготовка без проблем', nb && !E.setupProblems(Q).length, E.setupProblems(Q).join('; '));
     Q = mk(); Q.pool = Q.pool.filter(r => r !== 'juggler');
     ok('Марионетка: 6 ролей тоже годится — Горожанин подберётся сам', E.validPool(Q) && !E.poolMarExtra(Q));
+    Q = mk(); Q.pool = Q.pool.filter(r => r !== 'marionette' && r !== 'drunk').concat('slayer', 'fisherman');
+    ok('Без Марионетки и Пьяницы 7 ролей на 6 игроков — нельзя', !E.validPool(Q) && !!E.drawProblem(Q));
     Q = mk(); Q.pool = Q.pool.filter(r => r !== 'marionette').concat('slayer');
-    ok('Без Марионетки 7 ролей на 6 игроков — нельзя', !E.validPool(Q) && !!E.drawProblem(Q));
+    ok('Без Марионетки, с Пьяницей: 7 ролей — лишний Горожанин под Пьяницу (заметка 2026-11-01)', E.validPool(Q) && E.poolDrunkExtra(Q) && !E.poolMarExtra(Q));
+    Q = mk(); Q.pool = Q.pool.concat('slayer');
+    ok('Марионетка и Пьяница: 8 ролей на 6 игроков — по Горожанину на каждого', E.validPool(Q) && E.poolMarExtra(Q) && E.poolDrunkExtra(Q) && !E.drawProblem(Q), E.drawProblem(Q));
   }
 
   // 37. заметки пользователя 2026-10-24: Девица во 2-ю ночь, Ловчий без Девицы, ложная цель Гадалки из Девицы, выбор подготовки
@@ -1693,6 +1712,45 @@ try {
     const qb = byRole(Q, 'banshee'); runNight(Q, { poisoner: { t: [byRole(Q, 'chef').id] } });
     E.nominate(Q, byRole(Q, 'chef').id, qb.id); E.recordVote(Q, qb.id, Q.players.filter(p => p.alive).map(p => p.id)); E.endDay(Q);
     ok('Казнённая Банши — без способности, голос призрака тратится', !qb.alive && !E.hasTok(qb, 'hasability', 'banshee') && E.voteWeight(Q, qb) === 1);
+  }
+
+  // 46. заметки пользователя 2026-11-01 (из Nachtmahr, но в любом сценарии): Пьяница с лишним Горожанином, Каннибал и Истребитель, Повар и «Кошачья лапка»
+  {
+    const mk = () => { const Q = E.newGame('tb'); for (let i = 0; i < 8; i++) Q.players.push(E.newPlayer('П' + i));
+      Q.pool = ['chef', 'empath', 'monk', 'soldier', 'slayer', 'undertaker', 'drunk', 'poisoner', 'imp']; return Q; };
+    let Q = mk();
+    ok('Пьяница: 9 ролей на 8 игроков (лишний Горожанин) — набор годится', E.validPool(Q) && E.poolDrunkExtra(Q) && !E.drawProblem(Q), E.drawProblem(Q));
+    E.randomDeal(Q);
+    ok('Пьяница: розданы Горожане, жетона Пьяницы нет — выбрать в «Подготовке»', !Q.players.some(p => p.role === 'drunk') && Q.flags.drunkNeed
+      && E.setupProblems(Q).some(t => /Пьяница: выберите/.test(t)) && !E.setupProblems(Q).some(t => /Раскладка/.test(t)), E.setupProblems(Q).join('; '));
+    const tf = Q.players.find(p => p.role === 'empath'); E.makeDrunk(Q, tf.id);
+    ok('Пьяница выбран: считает себя своей ролью, раскладка сходится', tf.role === 'drunk' && tf.believes === 'empath' && !Q.flags.drunkNeed
+      && !E.setupProblems(Q).some(t => /Раскладка|Пьяница/.test(t)), E.setupProblems(Q).join('; '));
+    Q = mk(); E.drawStart(Q); let g = 0; while (Q.draw.turn && g++ < 20) { E.drawOpen(Q, Q.draw.cells.findIndex(c => !c.pid)); E.drawClose(Q); }
+    ok('Пьяница и жребий: в ячейках только Горожане, потом выбор Пьяницы', !Q.players.some(p => p.role === 'drunk') && Q.flags.drunkNeed
+      && Q.players.filter(p => DATA.roles[p.role].team === 'townsfolk').length === 6);
+    Q = mk(); Q.pool = Q.pool.filter(r => r !== 'undertaker'); E.randomDeal(Q);
+    ok('Пьяница без лишнего Горожанина — как раньше: жетон Пьяницы, считает себя Горожанином не из игры',
+      Q.players.some(p => p.role === 'drunk' && p.believes && !Q.players.some(q => q.role === p.believes)) && !Q.flags.drunkNeed);
+    E.makeDrunk(Q, '');
+    ok('Пьяницу убрали в «Подготовке» — в проблеме сказано почему', E.setupProblems(Q).some(t => /Раскладка.*Пьяница отмечен/.test(t)), E.setupProblems(Q).join('; '));
+
+    // Каннибал съел Истребителя (тот уже стрелял): у Каннибала свой выстрел (вики: способность казнённого; про потраченный выстрел молчит)
+    const G = game(['cannibal', 'slayer', 'chef', 'empath', 'monk', 'poisoner', 'imp'], 'nachtmahr'); E.autoSetup(G, true); E.startGame(G);
+    runNight(G, { poisoner: { t: [byRole(G, 'chef').id] } });
+    const cn = byRole(G, 'cannibal'), sl = byRole(G, 'slayer'), im = byRole(G, 'imp');
+    E.slayerShot(G, sl.id, byRole(G, 'chef').id); E.nominate(G, byRole(G, 'chef').id, sl.id); E.execute(G, sl.id);
+    ok('Каннибал съел Истребителя — способность Истребителя у Каннибала', cn.gained === 'slayer' && E.actsAs(cn) === 'slayer' && !G.flags['slayerUsed_' + cn.id]);
+    E.slayerShot(G, cn.id, im.id);
+    ok('Каннибал-Истребитель стреляет в Демона — Демон умирает', !im.alive);
+
+    // Повар: «Кошачья лапка» по вики определяется злой — посчитана, но видно и число без неё
+    const C = game(['chef', 'lycanthrope', 'empath', 'monk', 'soldier', 'poisoner', 'imp'], 'nachtmahr');
+    const paw = byRole(C, 'soldier'); C.flags.fauxPaw = paw.id; E.autoSetup(C, false); C.flags.fauxPaw = paw.id;
+    const pi = C.players.indexOf(paw); C.players.splice(pi, 1); C.players.splice(C.players.indexOf(byRole(C, 'poisoner')) + 1, 0, paw); // лапка рядом с Отравителем
+    E.startGame(C);
+    const cs = E.stepSpec(C, C.night.steps.find(s => s.id === 'chef')), ci = cs.info(Object.assign({}, cs.defaults));
+    ok('Повар: лапка рядом со злым — пара посчитана, в подсказке число без лапки', ci.lines.some(l => /без неё пар было бы/.test(l)), ci.lines.join(' | '));
   }
 
   for (const k of Object.keys(DATA.scripts)) ok('сценарий ' + k + ' — все роли в данных', DATA.scripts[k].roles.every(r => DATA.roles[r]));
