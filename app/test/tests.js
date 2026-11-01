@@ -746,7 +746,8 @@ try {
 
   // 31. жребий: каменная стена — роль выпадает в момент открытия ячейки, строго из «Ролей на игру»
   const drawAll = (S, before) => { let g = 0; while (S.draw.turn && g++ < 30) { if (before) before(S); const k = S.draw.cells.findIndex(c => !c.pid); E.drawOpen(S, k); E.drawClose(S); } };
-  const POOL8 = ['washerwoman', 'librarian', 'investigator', 'chef', 'empath', 'drunk', 'poisoner', 'imp'];
+  // без Пьяницы: с ним в «Ролях на игру» нужен ещё Горожанин (заметка 2026-11-02) — это блок 46; жетон Пьяницы в ячейке — ниже, без набора
+  const POOL8 = ['washerwoman', 'librarian', 'investigator', 'chef', 'empath', 'butler', 'poisoner', 'imp'];
   S = E.newGame('tb'); for (let i = 0; i < 8; i++) S.players.push(E.newPlayer('W' + i)); S.pool = POOL8.slice();
   E.drawStart(S);
   ok('жребий: до открытия ячеек ролей ни у кого нет, жребий не закончен', S.players.every(p => !p.role) && S.draw.cells.length === 8 && S.draw.bag.length === 8 && E.setupProblems(S).some(t => /Жребий не закончен/.test(t)));
@@ -756,9 +757,12 @@ try {
   ok('жребий: роль выпадает только открывшему ячейку', S.players.filter(p => p.role).length === 1 && S.draw.bag.length === 7, k0);
   drawAll(S);
   ok('жребий: роли — ровно «Роли на игру», без повторов, раскладка в порядке', S.draw.finished && S.players.map(p => p.role).sort().join() === POOL8.slice().sort().join() && E.setupProblems(S).length === 0, E.setupProblems(S).join('; '));
-  const dr = byRole(S, 'drunk');
-  ok('жребий: Пьяница видит Горожанина не из игры и не из блефов', dr.believes && E.realTeam({ role: dr.believes }) === 'townsfolk' && !S.players.some(p => p.role === dr.believes) && !S.bluffs.includes(dr.believes) && E.drawShown(S.draw.cells.find(c => c.pid === dr.id)) === dr.believes);
   ok('жребий: после стены роли не раздать заново', E.drawLocked(S) && E.randomDeal(S) === false && S.bluffs.filter(Boolean).length === 3);
+  // роли не отмечены — набор случайный; Пьяница (назначен) вытягивает свой жетон и видит Горожанина не из игры
+  S = E.newGame('tb'); for (let i = 0; i < 8; i++) S.players.push(E.newPlayer('Y' + i)); S.assign = { [S.players[2].id]: { role: 'drunk' } };
+  E.drawStart(S); drawAll(S);
+  const dr = byRole(S, 'drunk');
+  ok('жребий: Пьяница видит Горожанина не из игры и не из блефов', dr && dr.believes && E.realTeam({ role: dr.believes }) === 'townsfolk' && !S.players.some(p => p.role === dr.believes) && !S.bluffs.includes(dr.believes) && E.drawShown(S.draw.cells.find(c => c.pid === dr.id)) === dr.believes);
   // назначения: конкретная роль и тип роли — в том числе назначенные во время жребия
   S = E.newGame('tb'); for (let i = 0; i < 8; i++) S.players.push(E.newPlayer('N' + i)); S.pool = POOL8.slice();
   S.assign = { [S.players[5].id]: { role: 'imp' }, [S.players[6].id]: { team: 'minion' } };
@@ -768,7 +772,7 @@ try {
   ok('жребий: назначенные роль и тип роли выпадают нужным игрокам (и назначенное посреди жребия)', S.players[5].role === 'imp' && S.players[6].role === 'poisoner' && !!midRole && S.players[7].role === midRole, S.players.map(p => p.role).join() + ' / ' + midRole);
   // выбрано не по числу игроков — стена не выкатывается (раньше молча брались случайные роли)
   S = E.newGame('tb'); for (let i = 0; i < 8; i++) S.players.push(E.newPlayer('B' + i)); S.pool = POOL8.slice(0, 7);
-  ok('жребий: ролей на игру не по числу игроков — стена не выкатывается', E.drawStart(S) === false && !S.draw && /отметьте ровно 8/.test(E.drawProblem(S)));
+  ok('жребий: ролей на игру не по числу игроков — стена не выкатывается', E.drawStart(S) === false && !S.draw && /нужно 8/.test(E.drawProblem(S)), E.drawProblem(S));
   // роли, выданные до стены, остаются за игроками
   S = game(['washerwoman', 'librarian', 'investigator', 'chef', 'empath', 'monk', 'poisoner', 'imp'], 'tb'); S.players[3].role = null; S.players[4].role = null;
   E.drawStart(S); drawAll(S);
@@ -1052,7 +1056,8 @@ try {
     ok('Психопат не проиграл — жив, казнь дня состоялась', psy.alive && G.day.executed === psy.id && G.day.exeResult && !G.day.exeResult.died);
     // Марионетка: в мешочке вместо неё Горожанин, потом сосед Демона; просыпается как своя роль, Приспешники её не видят
     G = E.newGame('pies'); for (let i = 0; i < 9; i++) G.players.push(E.newPlayer('M' + i));
-    G.pool = ['chef', 'washerwoman', 'librarian', 'empath', 'monk', 'butler', 'saint', 'marionette', 'imp']; E.randomDeal(G);
+    G.pool = ['chef', 'washerwoman', 'librarian', 'empath', 'monk', 'butler', 'saint', 'marionette', 'imp'];
+    G.pool.push(G.script.roles.find(r => DATA.roles[r].team === 'townsfolk' && !G.pool.includes(r))); E.randomDeal(G); // + Горожанин вместо её жетона (обязательно)
     ok('Марионетка: при раздаче — Горожанин вместо неё, нужно выбрать', G.flags.marionetteNeed && !G.players.some(p => p.role === 'marionette') && E.setupProblems(G).some(t => /Марионетка/.test(t)));
     const mn = E.demonSeatNeighbours(G).find(p => E.isGoodTeam(E.realTeam(p))), mrole = mn.role; E.makeMarionette(G, mn.id); E.autoSetup(G, false);
     ok('Марионетка: сосед Демона, злой, считает себя своей ролью', mn.role === 'marionette' && mn.align === 'evil' && mn.believes === mrole && E.actsAs(mn) === mrole && E.abilityOff(G, mn) === 'Марионетка' && !G.bluffs.includes(mrole));
@@ -1458,23 +1463,26 @@ try {
 
   // 36. Марионетка: в «Ролях на игру» можно на одну больше — лишний Горожанин вместо её жетона (заметка пользователя 2026-10-21)
   {
+    // лишний Горожанин под Марионетку и Пьяницу обязателен (заметка 2026-11-02): 6 игроков — 7 ролей с одной из них, 8 — с обеими
     const mk = () => { const Q = E.newGame('leech'); for (let i = 0; i < 6; i++) Q.players.push(E.newPlayer('И' + i));
-      Q.pool = ['oracle', 'undertaker', 'exorcist', 'juggler', 'drunk', 'marionette', 'lleech']; return Q; };
+      Q.pool = ['oracle', 'undertaker', 'exorcist', 'juggler', 'lunatic', 'marionette', 'lleech']; return Q; };
     let Q = mk();
-    ok('Марионетка: 7 ролей на 6 игроков — набор годится', E.validPool(Q) && E.poolMarExtra(Q) && !E.drawProblem(Q));
+    ok('Марионетка: 7 ролей на 6 игроков — набор годится', E.validPool(Q) && E.poolMarExtra(Q) && !E.drawProblem(Q), E.drawProblem(Q));
     E.randomDeal(Q);
     const roles = Q.players.map(p => p.role).sort().join(',');
-    ok('Марионетка: розданы ровно отмеченные роли без её жетона', roles === ['oracle', 'undertaker', 'exorcist', 'juggler', 'drunk', 'lleech'].sort().join(',') && Q.flags.marionetteNeed, roles);
+    ok('Марионетка: розданы ровно отмеченные роли без её жетона', roles === ['oracle', 'undertaker', 'exorcist', 'juggler', 'lunatic', 'lleech'].sort().join(',') && Q.flags.marionetteNeed, roles);
     const nb = E.demonSeatNeighbours(Q).find(p => DATA.roles[p.role].team === 'townsfolk'); if (nb) E.makeMarionette(Q, nb.id);
     ok('Марионетка: после выбора соседа подготовка без проблем', nb && !E.setupProblems(Q).length, E.setupProblems(Q).join('; '));
     Q = mk(); Q.pool = Q.pool.filter(r => r !== 'juggler');
-    ok('Марионетка: 6 ролей тоже годится — Горожанин подберётся сам', E.validPool(Q) && !E.poolMarExtra(Q));
-    Q = mk(); Q.pool = Q.pool.filter(r => r !== 'marionette' && r !== 'drunk').concat('slayer', 'fisherman');
+    ok('Марионетка: 6 ролей — нельзя, лишний Горожанин обязателен (заметка 2026-11-02)', !E.validPool(Q) && /нужно 7/.test(E.drawProblem(Q)), E.drawProblem(Q));
+    Q = mk(); Q.pool = Q.pool.filter(r => r !== 'marionette').concat('devilsadvocate');
     ok('Без Марионетки и Пьяницы 7 ролей на 6 игроков — нельзя', !E.validPool(Q) && !!E.drawProblem(Q));
-    Q = mk(); Q.pool = Q.pool.filter(r => r !== 'marionette').concat('slayer');
+    Q = mk(); Q.pool = Q.pool.filter(r => r !== 'marionette' && r !== 'lunatic').concat('drunk', 'devilsadvocate');
     ok('Без Марионетки, с Пьяницей: 7 ролей — лишний Горожанин под Пьяницу (заметка 2026-11-01)', E.validPool(Q) && E.poolDrunkExtra(Q) && !E.poolMarExtra(Q));
-    Q = mk(); Q.pool = Q.pool.concat('slayer');
+    Q = mk(); Q.pool = Q.pool.filter(r => r !== 'lunatic').concat('drunk', 'slayer');
     ok('Марионетка и Пьяница: 8 ролей на 6 игроков — по Горожанину на каждого', E.validPool(Q) && E.poolMarExtra(Q) && E.poolDrunkExtra(Q) && !E.drawProblem(Q), E.drawProblem(Q));
+    Q = mk(); Q.pool = Q.pool.filter(r => r !== 'lunatic').concat('drunk');
+    ok('Марионетка и Пьяница, 7 ролей — нельзя: нужно 8 (два лишних Горожанина)', !E.validPool(Q) && /нужно 8.*два лишних/.test(E.drawProblem(Q)), E.drawProblem(Q));
   }
 
   // 37. заметки пользователя 2026-10-24: Девица во 2-ю ночь, Ловчий без Девицы, ложная цель Гадалки из Девицы, выбор подготовки
@@ -1729,10 +1737,10 @@ try {
     Q = mk(); E.drawStart(Q); let g = 0; while (Q.draw.turn && g++ < 20) { E.drawOpen(Q, Q.draw.cells.findIndex(c => !c.pid)); E.drawClose(Q); }
     ok('Пьяница и жребий: в ячейках только Горожане, потом выбор Пьяницы', !Q.players.some(p => p.role === 'drunk') && Q.flags.drunkNeed
       && Q.players.filter(p => DATA.roles[p.role].team === 'townsfolk').length === 6);
-    Q = mk(); Q.pool = Q.pool.filter(r => r !== 'undertaker'); E.randomDeal(Q);
-    ok('Пьяница без лишнего Горожанина — как раньше: жетон Пьяницы, считает себя Горожанином не из игры',
-      Q.players.some(p => p.role === 'drunk' && p.believes && !Q.players.some(q => q.role === p.believes)) && !Q.flags.drunkNeed);
-    E.makeDrunk(Q, '');
+    Q = mk(); Q.pool = Q.pool.filter(r => r !== 'undertaker');
+    ok('Пьяница без лишнего Горожанина — набор не годится (заметка 2026-11-02: «+1 Горожанин обязательно»)',
+      !E.validPool(Q) && !E.randomDeal(Q) && /нужно 9.*Пьяницы/.test(E.drawProblem(Q)), E.drawProblem(Q));
+    Q = mk(); E.randomDeal(Q); E.makeDrunk(Q, Q.players.find(p => p.role === 'chef').id); E.makeDrunk(Q, '');
     ok('Пьяницу убрали в «Подготовке» — в проблеме сказано почему', E.setupProblems(Q).some(t => /Раскладка.*Пьяница отмечен/.test(t)), E.setupProblems(Q).join('; '));
 
     // Каннибал съел Истребителя (тот уже стрелял): у Каннибала свой выстрел (вики: способность казнённого; про потраченный выстрел молчит)

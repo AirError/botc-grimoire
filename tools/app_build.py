@@ -158,6 +158,12 @@ for folder in sorted(REC_SRC.iterdir()) if REC_SRC.is_dir() else []:
         name = re.sub(r"[ _]+монтаж$", "", re.sub(r"^\d+[ _.\-]+", "", f.stem), flags=re.I).replace("_", " ").strip() or f.stem
         rec.append({"id": rid, "c": cat, "n": name, "src": f"rec/{out}"})
 art_js += "const MORNING_REC = " + json.dumps(rec, ensure_ascii=False) + ";\n"
+# колокол конца дня (таймер дня; файл пользователя 2026-11-02, audio/bell/*.mp3): встроен в страницу — короткий, нужен и без сети;
+# нет файла — приложение синтезирует удар само
+BELL_DIR = ROOT / "audio" / "bell"
+bell = next(iter(sorted(BELL_DIR.glob("*.mp3"))), None) if BELL_DIR.is_dir() else None
+art_js += "const BELL_SRC = " + json.dumps(base64.b64encode(bell.read_bytes()).decode() if bell else "") + ";\n"
+print("колокол:", bell.name if bell else "нет (синтез)")
 print("записей на утро:", len(rec), *[f"{c}: {sum(r['c'] == c for r in rec)}" for c in (0, 1, 2)])
 missing = [k for k, (p, _) in ART.items() if not p.exists() and not k.startswith(("d_pane", "d_nave", "d_reveal", "d_arch", "d_crack", "d_beams", "d_impact", "d_digit", "h_digit", "k_"))]  # витраж и котёл — по желанию
 if missing:

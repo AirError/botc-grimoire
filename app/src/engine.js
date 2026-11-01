@@ -501,17 +501,18 @@ function countTeams(S) {
 const SETUP_TF = ['balloonist', 'huntsman']; // Горожане, которые сами меняют раскладку
 const coreOf = S => S.players.filter(p => !isTraveller(p));
 // набор ролей, выбранный рассказчиком на вкладке «Гримуар» (S.pool), годится, если ролей ровно по числу игроков. Марионетка и Пьяница
-// (вики): их жетонов в мешочке нет — вместо них Горожане; на каждого можно отметить лишнего Горожанина (заметки пользователя 2026-10-21:
-// «не даёт выбрать +1 Горожанина под Марионетку» и 2026-11-01: «почему при выборе Пьяницы не выдаёт +1 Горожанина, которого сделаем
-// Пьяницей»). Лишний достаётся сначала Марионетке, потом Пьянице; кто из Горожан ими станет — выбор в «Подготовке».
-// Не отмечен — Марионетке Горожанин подберётся случайно (marionetteSwap), Пьяница вытянет свой жетон и будет считать себя случайным Горожанином
+// (вики): их жетонов в мешочке нет — вместо них Горожане, поэтому на каждого **обязательно** отмечен лишний Горожанин (заметки пользователя
+// 2026-10-21, 2026-11-01 и 2026-11-02: «что значит выбрано 13 или 14? Если выбран Пьяница, нужно обязательно добавить +1 Горожанин.
+// При этом роль Пьяницы не выдаётся» — раньше лишний был по желанию). Кто из Горожан станет Пьяницей или Марионеткой — выбор в «Подготовке».
+// Случайный набор (роли не отмечены) — как раньше: Марионетке Горожанин подберётся сам (marionetteSwap), Пьяница вытянет свой жетон
 const SWAP_TOKENS = ['marionette', 'drunk'];
-const poolExtra = S => { const x = S.pool ? S.pool.length - coreOf(S).length : 0;
-  return x > 0 && x <= S.pool.filter(r => SWAP_TOKENS.includes(r)).length && S.pool.filter(r => R(r) && R(r).team === 'townsfolk').length >= x ? x : 0; };
+const poolSwaps = S => SWAP_TOKENS.filter(r => (S.pool || []).includes(r)).length;
+const poolExtra = S => { const k = poolSwaps(S), x = S.pool ? S.pool.length - coreOf(S).length : 0;
+  return k && x === k && S.pool.filter(r => R(r) && R(r).team === 'townsfolk').length >= k ? k : 0; };
 const poolOwnSwaps = S => SWAP_TOKENS.filter(r => (S.pool || []).includes(r)).slice(0, poolExtra(S)); // кому достался лишний Горожанин
 const poolMarExtra = S => poolOwnSwaps(S).includes('marionette');
 const poolDrunkExtra = S => poolOwnSwaps(S).includes('drunk');
-const validPool = S => !!(S.pool && (S.pool.length === coreOf(S).length || poolExtra(S)) && S.pool.every(r => S.script.roles.includes(r)));
+const validPool = S => !!(S.pool && (poolSwaps(S) ? poolExtra(S) : S.pool.length === coreOf(S).length) && S.pool.every(r => S.script.roles.includes(r)));
 // «Роли на игру» отмечены по числу игроков, но типы не сходятся с таблицей (с их же сдвигами Изгоев) — раздать и выкатить стену нельзя.
 // Заметка пользователя 2026-10-30: «почему приложение позволяет раздать неправильную раскладку, а только потом говорит об ошибке и не
 // даёт начать?» — проверялось только число ролей. Раскладки, которых приложение не знает (Легион…), не проверяем — как на старте
@@ -641,7 +642,8 @@ function demonSeatNeighbours(S) {
 // случайная раздача: выбранный набор ролей (если он полный) или случайный по раскладке.
 // Если роли уже выдаются или выданы стеной — раздавать заново нельзя (возвращает false)
 function randomDeal(S) {
-  if (S.draw || scriptShort(S) || poolProblem(S)) return false;
+  // роли отмечены, но набор не годится (не по числу, нет лишнего Горожанина под Пьяницу) — не раздаём случайные вместо отмеченных
+  if (S.draw || scriptShort(S) || poolProblem(S) || (S.pool && S.pool.length && !validPool(S))) return false;
   dealPool(S, validPool(S) ? S.pool : randomPool(S));
   autoSetup(S, true);
   return true;
@@ -764,7 +766,7 @@ function drawProblem(S) {
   if (n < 5 || n > 15) return 'Нужно от 5 до 15 игроков (без Странников)';
   const short = scriptShort(S); if (short) return short;
   const sw = S.pool ? SWAP_TOKENS.filter(r => S.pool.includes(r)) : [];
-  if (S.pool && S.pool.length && !validPool(S)) return `В «Ролях на игру» отмечено ${S.pool.length}, а игроков ${n}: отметьте ровно ${n} ролей${sw.length ? ` (можно до ${n + sw.length}: лишний Горожанин — вместо жетона ${sw.map(r => r === 'drunk' ? 'Пьяницы' : 'Марионетки').join(' и ')})` : ''} — или очистите выбор, тогда роли наберутся случайно по раскладке`;
+  if (S.pool && S.pool.length && !validPool(S)) return `В «Ролях на игру» отмечено ${S.pool.length}, а нужно ${n + sw.length}: по числу игроков (${n})${sw.length ? ` и ${sw.length > 1 ? 'два лишних Горожанина' : 'лишний Горожанин'} — вместо жетона ${sw.map(r => r === 'drunk' ? 'Пьяницы' : 'Марионетки').join(' и ')}, его в мешочек не кладут` : ''} — или очистите выбор, тогда роли наберутся случайно по раскладке`;
   // Ловчий без Девицы (вики: Девицу добавляют) — иначе после жребия игру не начать (заметка пользователя 2026-10-24)
   if (S.pool && S.pool.includes('huntsman') && !S.pool.includes('damsel')) return 'В «Ролях на игру» есть Ловчий, а Девицы нет: с Ловчим Девица в игре обязательно (вики) — отметьте её';
   return poolProblem(S);

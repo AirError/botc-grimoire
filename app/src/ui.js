@@ -692,8 +692,8 @@ function dealButtons() {
   const d = S.draw;
   if (d && d.finished) return '<div class="note-ok">Роли выданы жребием (стена). Заново не раздаются; роль можно сменить только на роль сценария, которой нет в игре.</div>';
   if (d) return '<div class="small muted">Идёт жребий (карточка «Выдача ролей» выше): роли закреплены за игроками — случайная раздача недоступна.</div>';
-  const prob = E.drawProblem(S);
-  return `<div class="row"><button class="btn" data-act="deal" ${E.poolProblem(S) || E.scriptShort(S) ? 'disabled' : ''}>${E.validPool(S) ? 'Раздать выбранные роли случайно' : 'Раздать роли случайно'}</button><button class="btn" data-act="drawStart" ${prob ? 'disabled' : ''}>Жребий: ${cryptOn() ? 'склеп' : vitrOn() ? 'витраж' : 'каменная стена'}</button></div>
+  const prob = E.drawProblem(S), badPool = S.pool && S.pool.length && !E.validPool(S);
+  return `<div class="row"><button class="btn" data-act="deal" ${E.poolProblem(S) || E.scriptShort(S) || badPool ? 'disabled' : ''}>${E.validPool(S) ? 'Раздать выбранные роли случайно' : 'Раздать роли случайно'}</button><button class="btn" data-act="drawStart" ${prob ? 'disabled' : ''}>Жребий: ${cryptOn() ? 'склеп' : vitrOn() ? 'витраж' : kettleOn() ? 'котёл' : 'каменная стена'}</button></div>
     ${prob && S.pool && S.pool.length ? `<div class="small muted">${esc(prob)}</div>` : ''}`;
 }
 // подсказки (ideas.js): нажатие подставляет текст в поле
@@ -908,16 +908,84 @@ function viewNight() {
     ${killFormHtml()}${prepBtn()}`;
 }
 
+/* ---------- таймер дня (заметка пользователя 2026-11-01): когда кончилась ночь — окно «поставить таймер на 3, 5, 7, 8, 10, 12 минут или своё
+   время»; идёт — вверху экрана дня, можно +1, +2, +3 минуты; кончился — окно «День подошёл к концу» и колокол. Таймер — в S.day.timer
+   (переживает перезагрузку, на новый день — новый); колокол синтезируется кодом (WAV в памяти) и играет через <audio>: на iPhone звук
+   разрешён, только если плеер «разбудили» нажатием — это делает запуск таймера (bellPrime) */
+const TIMER_MIN = [3, 5, 7, 8, 10, 12];
+const fmtLeft = ms => { const s = Math.max(0, Math.ceil(ms / 1000)); return `${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}`; };
+// удар колокола: частичные тона церковного колокола (гул, основной, малая терция, квинта, октава…), у каждого своё затухание; три удара
+function bellWav() {
+  const sr = 22050, n = Math.round(sr * 6.2), x = new Float32Array(n), f0 = 247;
+  const parts = [[.5, .4, 4.8], [1, .9, 3.4], [1.19, .5, 2.6], [1.5, .3, 2.1], [2, .5, 1.7], [2.52, .2, 1.3], [3.01, .16, 1], [4.07, .09, .7]];
+  for (let s = 0; s < 3; s++) { const i0 = Math.round(s * 1.6 * sr);
+    for (const [r, g, d] of parts) { const w = 2 * Math.PI * f0 * r * (1 + (s - 1) * .0015) / sr, len = Math.min(n - i0, Math.round(d * 1.3 * sr));
+      for (let i = 0; i < len; i++) { const t = i / sr; x[i0 + i] += g * Math.exp(-t * 4.6 / d) * Math.min(1, t * 300) * Math.sin(w * i); } } }
+  let pk = 0; for (let i = 0; i < n; i++) pk = Math.max(pk, Math.abs(x[i]));
+  const buf = new ArrayBuffer(44 + n * 2), v = new DataView(buf), str = (o, s) => [...s].forEach((c, k) => v.setUint8(o + k, c.charCodeAt(0)));
+  str(0, 'RIFF'); v.setUint32(4, 36 + n * 2, true); str(8, 'WAVEfmt '); v.setUint32(16, 16, true); v.setUint16(20, 1, true); v.setUint16(22, 1, true);
+  v.setUint32(24, sr, true); v.setUint32(28, sr * 2, true); v.setUint16(32, 2, true); v.setUint16(34, 16, true); str(36, 'data'); v.setUint32(40, n * 2, true);
+  for (let i = 0; i < n; i++) v.setInt16(44 + i * 2, Math.round(x[i] / (pk || 1) * .85 * 32767), true);
+  return new Blob([buf], { type: 'audio/wav' });
+}
+// звук — колокол пользователя (BELL_SRC: mp3 в base64, встроен сборкой), иначе синтез; в плеер — через Blob (Safari надёжнее)
+function bellBlob() {
+  if (typeof BELL_SRC === 'undefined' || !BELL_SRC) return bellWav();
+  const s = atob(BELL_SRC), b = new Uint8Array(s.length); for (let i = 0; i < s.length; i++) b[i] = s.charCodeAt(i);
+  return new Blob([b], { type: 'audio/mpeg' });
+}
+function bellAudio() { if (bellAudio.a === undefined) { try { bellAudio.a = new Audio(URL.createObjectURL(bellBlob())); bellAudio.a.preload = 'auto'; } catch (e) { bellAudio.a = null; } } return bellAudio.a; }
+function bellPrime() { // в нажатии: проиграть беззвучно и остановить — потом колокол зазвучит и без нажатия
+  const a = bellAudio(); if (!a || bellAudio.primed) return; bellAudio.primed = true; a.muted = true;
+  try { const p = a.play(); if (p && p.then) p.then(() => { a.pause(); a.currentTime = 0; a.muted = false; }).catch(() => { a.muted = false; bellAudio.primed = false; }); else { a.pause(); a.muted = false; } } catch (e) { a.muted = false; }
+}
+function bellPlay() { const a = bellAudio(); if (!a) return; try { a.muted = false; a.currentTime = 0; const p = a.play(); if (p && p.catch) p.catch(() => {}); } catch (e) { /* без звука */ } }
+const dayTimer = () => S && S.phase === 'day' && S.day ? S.day.timer : null;
+function timerBarHtml() {
+  const t = S.day.timer;
+  if (!t) return '';
+  const left = t.end - Date.now();
+  return `<div class="card daytimer ${left < 60000 ? 'low' : ''}"><span class="dtl">⏱</span><b id="dtime">${t.done ? '0:00' : fmtLeft(left)}</b>
+    <span class="dtadd">${[1, 2, 3].map(m => `<button class="btn" data-act="timerAdd" data-arg="${m}">+${m}</button>`).join('')}</span>
+    <button class="btn dtx" data-act="timerStop" aria-label="Убрать таймер">×</button></div>`;
+}
+function timerAskHtml() {
+  if (!UI.timerAsk || S.phase !== 'day') return '';
+  return `<div class="ov editres" role="dialog" aria-label="Таймер дня"><div class="erbox statbox tmrbox">
+    <div class="lab">День ${S.n}</div><h3>Таймер обсуждения</h3>
+    <div class="tmrgrid">${TIMER_MIN.map(m => `<button class="btn" data-act="timerSet" data-arg="${m}">${m} мин</button>`).join('')}</div>
+    <div class="row tmrown"><input type="number" id="timerOwn" min="1" max="120" inputmode="numeric" placeholder="своё" aria-label="Своё время, минут"><span class="muted">мин</span>
+      <button class="btn primary" data-act="timerOwn">Запустить</button></div>
+    <button class="btn wide" data-act="timerNo">Без таймера</button></div></div>`;
+}
+function timerEndHtml() {
+  if (!UI.timerEnd) return '';
+  return `<div class="ov editres" role="alertdialog" aria-label="День подошёл к концу"><div class="erbox statbox tmrbox">
+    <div class="tmrbell" aria-hidden="true">🔔</div><h3 class="tmrend">День подошёл к концу</h3>
+    <button class="btn primary wide" data-act="timerEndClose">Понятно</button></div></div>`;
+}
+// раз в секунду: время на экране; кончилось — окно и колокол (один раз)
+function timerTick() {
+  const t = dayTimer(); if (!t || t.done) return;
+  const left = t.end - Date.now(), el = document.getElementById('dtime');
+  if (el) { el.textContent = fmtLeft(left); el.closest('.daytimer').classList.toggle('low', left < 60000); }
+  if (left <= 0) { UI.timerEnd = true; draft(S => { S.day.timer.done = true; }); bellPlay(); }
+}
+setInterval(timerTick, 1000);
+// после перезагрузки страницы с идущим таймером — «разбудить» плеер первым же нажатием
+document.addEventListener('pointerdown', () => { const t = dayTimer(); if (t && !t.done) bellPrime(); }, { passive: true });
+
 function viewDay() {
   const d = S.day, th = E.voteThreshold(S), blk = E.block(S), alive = E.aliveCount(S), picks = d.picks || (d.picks = {});
   const nm = d.draft || (d.draft = { by: null, on: null, voters: [], stage: 'pick', spy: false });
   const parts = [];
   parts.push(phaseArt('day'));
+  parts.push(timerBarHtml());
   parts.push(`<div class="card"><div class="row"><h2>День ${S.n}</h2><span class="muted">живых ${E.aliveAll(S)} · для казни нужно ${th}</span></div>
     ${S.night && E.nightDeaths(S).length ? `<div class="small">Ночью умерли: ${E.nightDeaths(S).map(x => esc(E.nm(S, x.pid))).join(', ')}</div>` : '<div class="small muted">Ночью никто не умер</div>'}
     ${S.night && (S.night.revived || []).some(id => E.P(S, id) && E.P(S, id).alive) ? `<div class="small">Снова жив: ${S.night.revived.filter(id => E.P(S, id) && E.P(S, id).alive).map(id => esc(E.nm(S, id))).join(', ')}</div>` : ''}
     ${S.night ? `<details><summary class="small">Слова для утра</summary>${morningHtml(false)}</details>` : ''}
-    ${dayStatusBtn()}</div>`);
+    ${d.timer ? '' : '<button class="btn tmrbtn" data-act="timerAsk">⏱ Таймер дня</button>'}${dayStatusBtn()}</div>`);
   // Дитя Луны / Растяпа умерли ночью — выбор вверху экрана дня (утром); умерли днём (казнь) — над кнопкой «Начать ночь» (там же, где
   // рассказчик только что завершал день; заметка пользователя 2026-10-29: карточка была посреди экрана — «ушло в ночь без выбора»)
   if (!d.holdForChoice) parts.push(deathChoiceHtml(picks));
@@ -1221,7 +1289,8 @@ function rolesCurtain() {
 function viewTable() {
   if (rolesHidden()) return poolCard() + rolesCurtain(); // стена — на вкладке «Игра»; Гримуар с ролями — под «шторкой»
   const n = S.players.length, ring = !UI.grimGrid && n > 1;
-  const seatB = S.phase === 'setup' && n > 1 ? '<button class="btn ringbtn" data-act="ringSeat">Рассадка</button>' : '';
+  // в игре — «Поменять местами» (два игрока меняются местами; заметка пользователя 2026-11-01)
+  const seatB = n < 2 ? '' : S.phase === 'setup' ? '<button class="btn ringbtn" data-act="ringSeat">Рассадка</button>' : '<button class="btn ringbtn" data-act="ringSwap">⇄ Поменять местами</button>';
   const viewSeg = n > 1 ? `<div class="seg gview" role="group" aria-label="Вид Гримуара"><button class="${ring ? 'on' : ''}" data-act="grimGrid" data-arg="0">◯ Кругом</button><button class="${ring ? '' : 'on'}" data-act="grimGrid" data-arg="1">▦ Плиткой</button></div>` : '';
   const body = !n ? '<div class="muted">Игроков пока нет — добавьте их на вкладке «Игра»</div>'
     : ring ? `<div class="gcwrap">${grimCircle({ names: true, notes: true, act: 'openP' })}</div>`
@@ -1576,8 +1645,20 @@ function ringOverlay() {
   if (UI.ring === 'exile' && S.phase === 'day') return exileRing();
   if (UI.ring === 'pick' && S.phase === 'day') return pickRing();
   if (UI.ring === 'seat' && S.phase === 'setup') return seatRing();
+  if (UI.ring === 'swap') return swapRing();
   if (UI.ring === 'nom' && S.phase === 'day') return nomRing();
   return '';
+}
+// поменять двух игроков местами после раздачи — в любой фазе (заметка пользователя 2026-11-01: «дай возможность менять местами игроков
+// после раздачи, отдельная кнопка в разделе Гримуар»): нажать одного, потом другого — меняются сразу; роли и всё остальное — с игроками
+function swapRing() {
+  const n = S.players.length, g = ringGeom(Math.max(n, 1), false, 250), a = UI.swapA && E.P(S, UI.swapA);
+  const seats = S.players.map((p, i) => seatHtml(p, i, g, a === p ? 'on' : '', `data-act="swapSeat" data-arg="${p.id}"`)).join('');
+  return `<div class="ov ringov" role="dialog" aria-label="Поменять игроков местами">
+    <div class="ringtop"><span></span><b>Поменять местами</b><button class="wbtn" data-act="ringClose" aria-label="Закрыть">×</button></div>
+    <div class="ringbox"><div class="small muted ringhint">Нажмите на одного игрока, потом на другого — они поменяются местами (роли, отметки и всё остальное — вместе с ними). Отменить — ↶. Первый — внизу, у вас; номера идут ${dirName()}.</div>
+      <div class="ring" style="${ringStyle(g)}">${seats}<div class="ringmid" style="top:${(g.H / 2).toFixed(2)}cqw">${a ? `<span>меняем</span><b class="nm">${esc(a.name)}</b><span>с кем?</span>` : '<b class="q">кого?</b>'}</div></div>
+      <button class="btn primary wide" data-act="ringClose">Готово</button></div></div>`;
 }
 
 // Гримуар на весь экран — Шпиону и Вдове в их ночной шаг: только смотреть; жетон можно открыть крупно; закрыть — кнопкой.
@@ -1668,11 +1749,10 @@ function poolCard() {
   const n = S.players.filter(p => !E.isTraveller(p)).length; if (n < 5 || n > 15) return '';
   const pool = S.pool || [], d = E.distribution(n, pool.concat(S.fabled || []), S.flags.mods, E.scriptOutsiders(S));
   const cnt = t => pool.filter(r => team(r) === t).length, good = cnt('townsfolk') + cnt('outsider');
-  // Марионетка и Пьяница: на каждого можно отметить ещё одного Горожанина — он ляжет в мешочек вместо их жетона (заметки пользователя
-  // 2026-10-21 и 2026-11-01)
-  const sw = E.SWAP_TOKENS.filter(r => pool.includes(r)), own = E.poolOwnSwaps(S), marX = own.length;
-  const need = sw.length ? [n, ...sw.map((_, i) => n + i + 1)].join(sw.length > 1 ? ', ' : ' или ').replace(/, (\d+)$/, ' или $1') : `${n}`;
-  const under = own.map(r => r === 'drunk' ? 'Пьяницу' : 'Марионетку').join(' и ');
+  // Марионетка и Пьяница: на каждого обязательно ещё один Горожанин — он ляжет в мешочек вместо их жетона (заметки пользователя
+  // 2026-10-21, 2026-11-01 и 2026-11-02: «что значит выбрано 13 или 14?» — теперь одно число)
+  const sw = E.SWAP_TOKENS.filter(r => pool.includes(r)), marX = sw.length, need = `${n + sw.length}`;
+  const under = sw.map(r => r === 'drunk' ? 'Пьяницу' : 'Марионетку').join(' и ');
   const stat = ['townsfolk', 'outsider', 'minion', 'demon'].map(t => {
     const want = d[t] + (t === 'townsfolk' ? marX : 0);
     const bad = d.free && (t === 'townsfolk' || t === 'outsider') ? good !== d.townsfolk + d.outsider + marX : cnt(t) !== want;
@@ -1688,9 +1768,9 @@ function poolCard() {
     ${pool.length ? '' : '<span class="phint">Нажмите, чтобы отметить роли. Не выбраны — раздача случайная по раскладке.</span>'}</summary>
     <div class="small muted">Отметьте роли, которые будут в игре: случайная раздача и жребий возьмут только их. Блефы Демона наберутся из остальных добрых ролей.</div>
     <div class="pstats">${stat}</div>${choices}${d.notes.length ? `<div class="small muted">${d.notes.map(esc).join('<br>')}</div>` : ''}
-    ${pool.includes('marionette') ? `<div class="small muted">Марионетка: её жетон в мешочек не кладут — вместо него Горожанин. Можно отметить ещё одного Горожанина — его роль и достанется будущей Марионетке; не отмечен — Горожанин подберётся случайно. Кто из соседей Демона станет Марионеткой — выберете в «Подготовке».</div>` : ''}
-    ${pool.includes('drunk') ? `<div class="small muted">Пьяница: вместо его жетона в мешочек кладут Горожанина (вики). Отметьте ещё одного Горожанина — кто из Горожан на самом деле Пьяница (будет считать себя своей ролью), выберете в «Подготовке». Не отмечен — Пьяница вытянет свой жетон и будет считать себя случайным Горожанином не из игры.</div>` : ''}
-    ${pool.length && !E.validPool(S) ? `<div class="warn">Нужно ${sw.length ? `${need} ролей (лишние — Горожане под ${sw.map(r => r === 'drunk' ? 'Пьяницу' : 'Марионетку').join(' и ')})` : `ровно ${n} ролей`} — по числу игроков (без Странников).</div>` : ''}
+    ${pool.includes('marionette') ? `<div class="small muted">Марионетка: её жетон в мешочек не кладут — вместо него Горожанин (вики). Отметьте ещё одного Горожанина — его роль и достанется будущей Марионетке. Кто из соседей Демона станет Марионеткой — выберете в «Подготовке».</div>` : ''}
+    ${pool.includes('drunk') ? `<div class="small muted">Пьяница: его жетон в мешочек не кладут и роль Пьяницы не выдают — вместо него Горожанин (вики). Отметьте ещё одного Горожанина; кто из Горожан на самом деле Пьяница (будет считать себя своей ролью), выберете в «Подготовке».</div>` : ''}
+    ${pool.length && !E.validPool(S) ? `<div class="warn">Нужно ${need} ролей: по числу игроков (${n}, без Странников)${sw.length ? ` и ${sw.length > 1 ? 'два лишних Горожанина' : 'лишний Горожанин'} под ${under}` : ''}.</div>` : ''}
     ${E.poolProblem(S) ? `<div class="warn">${esc(E.poolProblem(S))}. Раздать роли и выкатить стену можно, когда раскладка сойдётся.</div>` : ''}
     ${pool.includes('huntsman') && !pool.includes('damsel') ? '<div class="warn">Ловчий в игре — добавьте Девицу.</div>' : ''}
     ${groups}<div class="row"><button class="btn" data-act="poolRandom">Случайный набор</button>${pool.length ? '<button class="btn" data-act="poolClear">Очистить</button>' : ''}</div></details></div>`;
@@ -2317,9 +2397,10 @@ const K_FACE = { townsfolk: 1, outsider: 2, minion: 3, demon: 4 };
 // что кладут в банку и бросают в котёл: ингредиент без тары (этап 3 промптов; заметка пользователя 2026-11-01 — «точно хорошая идея
 // компоненты прям в банках в котёл кидать?»), пока нет картинки — как на полке
 const kBit = i => ART['k_bit' + i] || ART['k_ing' + i];
-// время варки (мс от «В котёл!»): проезд камеры; три броска — рука берёт из банки (g), несёт и разжимает пальцы (через carry),
-// предмет падает (fall); колдовство над котлом, уход руки, пар, роль из пара
-const KT = { pan: 900, g: [1300, 2300, 3300], carry: 520, fall: 380, conj: 4250, exit: 5100, out: 5500, steam: 4400, card: 5300 };
+// время варки (мс от «В котёл!»): проезд камеры; рука берёт из банки все три ингредиента разом (g), несёт и разжимает пальцы (rel),
+// они падают (fall); колдовство над котлом, уход руки, пар, роль из пара. Один бросок вместо трёх (заметка пользователя 2026-11-01:
+// «ускорь выдачу ролей через котёл — пусть ведьма берёт сразу все компоненты из банки и кидает в котёл»): роль через ~3 с, было 5,3
+const KT = { pan: 900, g: 1250, rel: 1700, fall: 400, conj: 2150, exit: 2800, out: 3150, steam: 2250, card: 3100 };
 const kettleOn = () => drawKind() === 'cauldron';
 const KM = () => (typeof ART_META !== 'undefined' && ART_META.kettle) || {};
 const kSize = k => KM()[k] || [1, 1]; // размер картинки [w, h]
@@ -2447,7 +2528,7 @@ function kettleOverlay(d) {
   // роль из пара; сверху выглядывает ведьма с фразой (лицо и фраза — по типу роли, которую видит игрок)
   const reveal = open ? (() => { const op = E.P(S, open.pid), r = (op && seenRole(op)) || E.drawShown(open), al = isGoodRole(r) ? 'good' : 'evil', t = team(r), face = K_FACE[t] || 1;
     const ph = K_PHR[open.phr] || K_PHR.find(p => p[0] === t) || K_PHR[0];
-    return `<div class="wreveal kreveal side-${al} ${anim ? '' : 'know'}" data-act="drawClose" role="dialog" aria-label="Ваша роль" style="padding-top:${Math.round(L.st + Math.min(L.H * .27, 230))}px">
+    return `<div class="wreveal kreveal side-${al} ${anim ? '' : 'know'}" data-act="drawClose" role="dialog" aria-label="Ваша роль" style="padding-top:${Math.round(L.st + Math.min(L.H * .27, 230))}px;--kc:${KT.card / 1000}s">
       <div class="wrfor">Ваша роль</div><div class="wrart">${ico(r, al, 'wric')}</div><div class="wrname">${esc(E.rname(r))}</div>
       <div class="wrteam">${esc(E.TEAM_RU[t] || '')} · ${al === 'good' ? 'добро' : 'зло'}</div><div class="wrab">${esc(DATA.roles[r].ability)}</div>
       <div class="shhint wrlater">Запомните роль и нажмите — котёл закипит для следующего</div>
@@ -2472,47 +2553,48 @@ function kFlyIn(room, f, el) {
 // варка: путь руки — опорные точки [время, x, y, дуга на отрезке] (точка — щепоть); кадры — через hAnim, перерисовка продолжает с того же места
 function kBrewAnim(room, L, el) {
   kCam(room, L, 0, -L.pan, el);
-  const pk = UI.kbrew || [], rr = room.getBoundingClientRect(), T = KT.out, g = KT.g, rel = k => g[k] + KT.carry, set = a => { if (a) a.currentTime = el; };
+  const pk = UI.kbrew || [], rr = room.getBoundingClientRect(), T = KT.out, g = KT.g, set = a => { if (a) a.currentTime = el; };
   const slots = [0, 1, 2].map(k => { const n = room.querySelector(`.kslot[data-arg="${k}"]`), b = n && n.getBoundingClientRect();
     return b ? [b.left - rr.left + b.width / 2, b.top - rr.top + b.height / 2] : [L.jx, L.jt + L.jh * .66]; });
-  const M = [L.mx - L.pan, L.my], up = -L.H * .4, Rk = k => [M[0] + (k - 1) * L.rx * .3, M[1] - L.kch * .62], C = [M[0] + L.rx * .08, M[1] - L.kch * .5];
-  const P = [[0, slots[0][0], up], [KT.pan, slots[0][0], up], [g[0], ...slots[0]]];
-  for (let k = 0; k < 3; k++) {
-    const q = Rk(k); P.push([g[k] + 120, ...slots[k]], [rel(k), q[0], q[1], 60], [rel(k) + 80, q[0], q[1] - 14]);
-    if (k < 2) P.push([g[k + 1], ...slots[k + 1], 40]);
-  }
-  P.push([KT.conj, ...C], [KT.exit, ...C], [KT.out, C[0] + 40, up]);
+  // рука идёт к середине банки, берёт все три разом, несёт к котлу и разжимает пальцы
+  const M = [L.mx - L.pan, L.my], up = -L.H * .4, J = [(slots[0][0] + slots[2][0]) / 2, (slots[0][1] + slots[1][1] + slots[2][1]) / 3];
+  const Rl = [M[0], M[1] - L.kch * .62], C = [M[0] + L.rx * .08, M[1] - L.kch * .5];
+  const P = [[0, J[0], up], [KT.pan, J[0], up], [g, ...J], [g + 120, ...J], [KT.rel, Rl[0], Rl[1], 60], [KT.rel + 80, Rl[0], Rl[1] - 14],
+    [KT.conj, ...C], [KT.exit, ...C], [KT.out, C[0] + 40, up]];
   const at = t => { for (let q = 1; q < P.length; q++) if (t <= P[q][0]) { const a = P[q - 1], b = P[q], u = hSmooth(hClamp((t - a[0]) / Math.max(1, b[0] - a[0]), 0, 1));
     return [a[1] + (b[1] - a[1]) * u, a[2] + (b[2] - a[2]) * u - Math.sin(Math.PI * u) * (b[3] || 0)]; } const z = P[P.length - 1]; return [z[1], z[2]]; };
   const wig = t => t > KT.conj && t < KT.exit ? Math.sin((t - KT.conj) / 140) * 7 : 0; // колдует — пальцы шевелятся над котлом
   set(hAnim(room.querySelector('.khand'), u => { const t = u * T, p = at(t); return { x: p[0] + wig(t), y: p[1], r: wig(t) * .9 }; }, T));
   // позы: щепоть; разжатые пальцы — сразу после броска; колдовство над котлом
-  const pose = t => { for (let k = 0; k < 3; k++) if (t >= rel(k) && t < rel(k) + 300) return 2; return t >= KT.conj - 300 ? 3 : 1; };
+  const pose = t => t >= KT.rel && t < KT.rel + 300 ? 2 : t >= KT.conj - 250 ? 3 : 1;
   [1, 2, 3].forEach(q => set(hFade(room.querySelector('.kh' + q), u => pose(u * T) === q ? 1 : 0, T)));
   const ci = room.querySelectorAll('.kci'), si = room.querySelectorAll('.kslot img'), fi = room.querySelectorAll('.kfi'), sp = room.querySelectorAll('.ksp'), Rn = hRand(UI.openAt || 5);
+  const cs = ci[0] ? ci[0].offsetWidth : 60, OFF = [[-.32, .12], [0, -.16], [.32, .1]]; // в щепоти — горсткой
+  const hits = [0, 1, 2].map(k => KT.rel + k * 70 + KT.fall - 40);
   pk.forEach((_, k) => {
-    set(hFade(si[k], u => u * T < g[k] ? 1 : 0, T)); // в банке — пока рука не взяла
-    set(hAnim(ci[k], u => { const t = u * T, p = at(t); return { x: p[0], y: p[1], s: 1.1, r: Math.sin(t / 90) * 7, o: t >= g[k] && t < rel(k) ? 1 : 0 }; }, T));
-    // падает дугой и кувыркаясь, уходит за передний край котла (в сцене: экран + проезд камеры)
-    const s0 = [Rk(k)[0] + L.pan, Rk(k)[1]], h = [M[0] + (k - 1) * L.rx * .22 + L.pan, M[1] + L.ry * .25], spin = (Rn() < .5 ? -1 : 1) * (220 + Rn() * 240), t0 = rel(k), hit = t0 + KT.fall - 40;
+    const o = [OFF[k][0] * cs, OFF[k][1] * cs];
+    set(hFade(si[k], u => u * T < g ? 1 : 0, T)); // в банке — пока рука не взяла
+    set(hAnim(ci[k], u => { const t = u * T, p = at(t); return { x: p[0] + o[0], y: p[1] + o[1], s: .9, r: Math.sin(t / 90 + k) * 7, o: t >= g && t < KT.rel ? 1 : 0 }; }, T));
+    // падают вразлёт, кувыркаясь, и уходят за передний край котла (в сцене: экран + проезд камеры); чуть друг за другом
+    const s0 = [Rl[0] + o[0] + L.pan, Rl[1] + o[1]], h = [M[0] + (k - 1) * L.rx * .3 + L.pan, M[1] + L.ry * .25], spin = (Rn() < .5 ? -1 : 1) * (220 + Rn() * 240), t0 = KT.rel + k * 70;
     set(hAnim(fi[k], u => { const t = u * T, v = hClamp((t - t0) / KT.fall, 0, 1);
-      return { x: s0[0] + (h[0] - s0[0]) * v, y: s0[1] + (h[1] - s0[1]) * v * v - Math.sin(Math.PI * v) * 22, r: spin * v, s: 1.1 - .45 * v * v, o: t >= t0 && t < t0 + KT.fall ? 1 - hRamp(v, .84, 1) : 0 }; }, T));
-    set(hAnim(sp[k], u => { const t = u * T, v = hClamp((t - hit) / 560, 0, 1);
-      return { x: h[0], y: M[1], s: .35 + .8 * hSmooth(v), o: t >= hit && t < hit + 560 ? Math.min(1, v * 6) * (1 - hRamp(v, .45, 1)) : 0 }; }, T));
+      return { x: s0[0] + (h[0] - s0[0]) * v, y: s0[1] + (h[1] - s0[1]) * v * v - Math.sin(Math.PI * v) * 22, r: spin * v, s: 1 - .4 * v * v, o: t >= KT.rel && t < t0 + KT.fall ? 1 - hRamp(v, .84, 1) : 0 }; }, T));
+    set(hAnim(sp[k], u => { const t = u * T, v = hClamp((t - hits[k]) / 560, 0, 1);
+      return { x: h[0], y: M[1], s: .35 + .8 * hSmooth(v), o: t >= hits[k] && t < hits[k] + 560 ? Math.min(1, v * 6) * (1 - hRamp(v, .45, 1)) : 0 }; }, T));
   });
-  // зелье меняет цвет от каждого ингредиента; после третьего — кипит и светится
+  // зелье меняет цвет от каждого ингредиента (всплески друг за другом); потом кипит и светится
   const pot = room.querySelector('.kpot'), cols = kPotCols(pk);
   if (pot && pot.animate) {
     const kf = [{ offset: 0, backgroundColor: cols[0] }];
-    [0, 1, 2].forEach(k => { const h = rel(k) + KT.fall - 40; kf.push({ offset: h / T, backgroundColor: cols[k] }, { offset: (h + 240) / T, backgroundColor: cols[k + 1] }); });
+    hits.forEach((h, k) => kf.push({ offset: h / T, backgroundColor: cols[k] }, { offset: (h + 60) / T, backgroundColor: cols[k + 1] })); // всплески через 70 мс — переход короче
     kf.push({ offset: 1, backgroundColor: cols[3] }); set(pot.animate(kf, { duration: T, fill: 'both' }));
   }
-  ['.kboil', '.kpglow'].forEach(s => set(hFade(room.querySelector(s), u => hRamp(u * T, g[2] + 700, KT.conj + 500), T)));
-  set(hFade(room.querySelector('.kjar'), u => 1 - hRamp(u * T, g[2] + 600, KT.conj + 200), T)); // пустая банка тает — пар и роль на первом плане
+  ['.kboil', '.kpglow'].forEach(s => set(hFade(room.querySelector(s), u => hRamp(u * T, hits[2], KT.conj + 400), T)));
+  set(hFade(room.querySelector('.kjar'), u => 1 - hRamp(u * T, g + 300, KT.conj), T)); // пустая банка тает — пар и роль на первом плане
   // пар поднимается из котла и стоит за ролью
   const T2 = KT.card + 2400;
-  set(hAnim(room.querySelector('.kst'), u => { const t = u * T2, v = hSmooth(hRamp(t, KT.steam, KT.steam + 1200));
-    return { sx: .55 + .45 * v, sy: .12 + .88 * v, y: -hRamp(t, KT.steam + 1200, T2) * 30, o: .95 * v - .4 * hRamp(t, KT.steam + 1300, T2) }; }, T2));
+  set(hAnim(room.querySelector('.kst'), u => { const t = u * T2, v = hSmooth(hRamp(t, KT.steam, KT.steam + 1000));
+    return { sx: .55 + .45 * v, sy: .12 + .88 * v, y: -hRamp(t, KT.steam + 1000, T2) * 30, o: .95 * v - .4 * hRamp(t, KT.steam + 1100, T2) }; }, T2));
   // карточка роли и ведьма — CSS-анимации с задержками: перерисовка ставит их на то же место
   document.querySelectorAll('.kreveal').forEach(n => n.getAnimations && n.getAnimations({ subtree: true }).forEach(a => { try { a.currentTime = el; } catch (e) { /* без времени */ } }));
 }
@@ -2855,6 +2937,10 @@ function render() {
   const app = document.getElementById('app');
   if (!S) { app.innerHTML = '<main><div class="card">Загрузка…</div></main>'; return; }
   scriptNames();
+  // ночь кончилась прямо сейчас (а не открыли страницу днём) — предложить таймер дня
+  if (UI.prevPhase === 'night' && S.phase === 'day' && S.day && !S.day.timerAsked && !S.day.timer) UI.timerAsk = true;
+  if (S.phase !== 'day') { UI.timerAsk = false; UI.timerEnd = false; }
+  UI.prevPhase = S.phase;
   // ночью — принудительный OLED: чистый чёрный фон, светятся только текст и иконки
   document.documentElement.classList.toggle('oled', S.phase === 'night');
   // днём и на остальных экранах — всегда светлая тема, даже если телефон переключился на тёмную
@@ -2880,13 +2966,13 @@ function render() {
       <button class="hundo" data-act="undo" ${last ? '' : 'disabled'} aria-label="${last ? esc('Отменить: ' + last.label) : 'Нечего отменять'}" title="${last ? esc('Отменить: ' + last.label) : ''}">↶</button><span class="save"></span></header>
     <main>${body}</main>
     <nav class="tabs">${[['game', S.phase === 'night' ? 'Ночь' : S.phase === 'day' ? 'День' : 'Игра', S.phase === 'night' ? 'night' : S.phase === 'day' ? 'day' : 'setup'], ['table', 'Гримуар'], ['log', 'Журнал'], ['roles', 'Роли'], ['menu', 'Ещё']].map(([k, l, ic]) => `<button class="${UI.tab === k ? 'on' : ''}" data-act="tab" data-arg="${k}">${tabIco(ic || k)}<span class="tl">${l}</span></button>`).join('')}</nav>
-    ${legendOverlay()}${wallOverlay()}${grimOverlay()}${ringOverlay()}${sheetOverlay()}${editOverlay()}${fateOverlay()}${statOverlay()}${tipHtml()}${savFactsHtml()}${ghostLostHtml()}${pinAskHtml()}${polOverlay()}${gossipAskHtml()}${prepOverlay()}${prepPickHtml()}${exeAskHtml()}${exeResHtml()}${showOverlay()}${noteViewOverlay()}${testWelcomeHtml()}${splashHtml()}`;
+    ${legendOverlay()}${wallOverlay()}${grimOverlay()}${ringOverlay()}${sheetOverlay()}${editOverlay()}${fateOverlay()}${statOverlay()}${tipHtml()}${savFactsHtml()}${ghostLostHtml()}${pinAskHtml()}${polOverlay()}${gossipAskHtml()}${prepOverlay()}${prepPickHtml()}${exeAskHtml()}${exeResHtml()}${showOverlay()}${noteViewOverlay()}${timerAskHtml()}${timerEndHtml()}${testWelcomeHtml()}${splashHtml()}`;
   // круг рассадки — только на подготовке, круг номинации — только днём, Гримуар кругом — во время игры (после смены фазы закрываются сами)
   if ((UI.ring === 'seat' && S.phase !== 'setup') || ((UI.ring === 'nom' || UI.ring === 'pick' || UI.ring === 'exile') && S.phase !== 'day') || UI.ring === 'grim') UI.ring = null;
   // под полноэкранными слоями страница не прокручивается
   if (UI.fate && !(S.phase === 'day' && S.day.picks && S.day.picks.fate)) UI.fate = false; // день кончился — выбор казни закрыт
   if (UI.stat && S.phase !== 'day') UI.stat = false;
-  document.documentElement.classList.toggle('locked', !!((UI.splash && UI.skin !== 'basic') || UI.show || UI.legend || UI.ring || UI.noteView || UI.edit || UI.fate || UI.stat || UI.tip || UI.savFacts || UI.ghostLost || UI.pinAsk || UI.testWelcome || E.politiciansPending(S).length || UI.gossipAsk || UI.exeAsk || UI.exeRes || (UI.open && E.P(S, UI.open)) || (UI.wall && S.draw) || (UI.grimShow && S.phase === 'night')));
+  document.documentElement.classList.toggle('locked', !!((UI.splash && UI.skin !== 'basic') || UI.show || UI.legend || UI.ring || UI.noteView || UI.edit || UI.fate || UI.stat || UI.tip || UI.savFacts || UI.ghostLost || UI.pinAsk || UI.testWelcome || UI.timerAsk || UI.timerEnd || E.politiciansPending(S).length || UI.gossipAsk || UI.exeAsk || UI.exeRes || (UI.open && E.P(S, UI.open)) || (UI.wall && S.draw) || (UI.grimShow && S.phase === 'night')));
   app.querySelectorAll('details > summary').forEach(s => { if (opened.has(s.textContent)) s.parentElement.open = true; });
   if (UI.tab === 'roles') filterRefs();
   paintSave();
@@ -2931,7 +3017,8 @@ const A = {
   rename: (id, el) => act(S => { E.P(S, id).name = el.value.trim() || E.P(S, id).name; }, 'имя игрока'),
   move: arg => { const [id, d] = arg.split('|'); act(S => { const i = S.players.findIndex(p => p.id === id), j = i + (+d); if (j >= 0 && j < S.players.length) [S.players[i], S.players[j]] = [S.players[j], S.players[i]]; }, 'порядок мест'); },
   delP: id => act(S => { S.players = S.players.filter(p => p.id !== id); }, 'удалён игрок'),
-  deal: () => { if (S.draw) return alertNote('Роли выдаются или выданы жребием — случайная раздача недоступна.'); if (E.scriptShort(S)) return alertNote(E.scriptShort(S)); if (E.poolProblem(S)) return alertNote(E.poolProblem(S)); act(S => E.randomDeal(S), 'случайная раздача ролей'); },
+  deal: () => { if (S.draw) return alertNote('Роли выдаются или выданы жребием — случайная раздача недоступна.'); if (E.scriptShort(S)) return alertNote(E.scriptShort(S)); if (E.poolProblem(S)) return alertNote(E.poolProblem(S));
+    if (S.pool && S.pool.length && !E.validPool(S)) return alertNote(E.drawProblem(S)); act(S => E.randomDeal(S), 'случайная раздача ролей'); },
   outMod: arg => { const [id, v] = arg.split('|'); act(S => { S.flags.mods = Object.assign({}, S.flags.mods, { [id]: +v }); }, `${E.rname(id)}: ${(MOD_RU_ROLE[id] || { '-1': '−1 Изгой', 0: 'Изгоев без изменений', 1: '+1 Изгой' })[v]}`); },
   setRole: (id, el) => act(S => E.setupRole(S, E.P(S, id), el.value), 'роль ' + E.P(S, id).name),
   setDrunk: (a, el) => act(S => E.makeDrunk(S, el.value), 'Пьяница'),
@@ -3136,6 +3223,22 @@ const A = {
   grimZoom: id => { UI.grimZoom = UI.grimZoom ? null : id; render(); },
   // круг игроков: рассадка (подготовка) и номинация (день)
   ringSeat: () => { UI.ring = 'seat'; render(); },
+  ringSwap: () => { UI.ring = 'swap'; UI.swapA = null; render(); },
+  // таймер дня
+  timerAsk: () => { UI.timerAsk = true; render(); },
+  timerSet: m => { m = +m; if (!(m > 0)) return; bellPrime(); UI.timerAsk = false;
+    draft(S => { S.day.timerAsked = true; S.day.timer = { end: Date.now() + m * 60000, min: m, done: false }; }); },
+  timerOwn: () => { const v = parseFloat(((document.getElementById('timerOwn') || {}).value || '').replace(',', '.'));
+    if (!(v > 0) || v > 180) { const el = document.getElementById('timerOwn'); if (el) el.focus(); return; } A.timerSet(v); },
+  timerNo: () => { UI.timerAsk = false; draft(S => { S.day.timerAsked = true; }); },
+  timerAdd: m => { bellPrime(); draft(S => { const t = S.day.timer; if (!t) return; t.end = Math.max(t.end, Date.now()) + (+m) * 60000; t.done = false; }); },
+  timerStop: () => draft(S => { S.day.timer = null; }),
+  timerEndClose: () => { UI.timerEnd = false; const a = bellAudio(); if (a) try { a.pause(); } catch (e) { /* без звука */ } render(); },
+  swapSeat: id => { if (!UI.swapA || UI.swapA === id) { UI.swapA = UI.swapA === id ? null : id; return render(); }
+    const a = UI.swapA; UI.swapA = null;
+    act(S => { const i = S.players.findIndex(p => p.id === a), j = S.players.findIndex(p => p.id === id); if (i < 0 || j < 0) return;
+      [S.players[i], S.players[j]] = [S.players[j], S.players[i]];
+      E.log(S, `Поменялись местами: ${S.players[j].name} (теперь место ${j + 1}) и ${S.players[i].name} (теперь место ${i + 1})`, 'effect'); }, 'поменять местами'); },
   ringNom: () => { UI.ring = 'nom'; render(); },
   ringExile: () => { UI.ring = 'exile'; render(); },
   grimGrid: v => { UI.grimGrid = v === '1'; try { localStorage.setItem('botc-grimoire-grimgrid', UI.grimGrid ? '1' : ''); } catch (e) { /* без хранилища — до перезагрузки */ } render(); },
@@ -3442,7 +3545,7 @@ document.addEventListener('input', ev => {
   const el = ev.target; if (!el.dataset || !el.dataset.act || (el.tagName !== 'TEXTAREA' && !el.dataset.live)) return;
   const f = A[el.dataset.act]; if (f) f(el.dataset.arg, el);
 });
-document.addEventListener('keydown', ev => { if (ev.key === 'Enter' && ev.target.id === 'newName') A.addP(); if (ev.key === 'Enter' && ev.target.id === 'pinIn') A.pinOk(); });
+document.addEventListener('keydown', ev => { if (ev.key === 'Enter' && ev.target.id === 'newName') A.addP(); if (ev.key === 'Enter' && ev.target.id === 'pinIn') A.pinOk(); if (ev.key === 'Enter' && ev.target.id === 'timerOwn') A.timerOwn(); });
 // круг Гримуара для Шпиона подстраивается под экран (поворот телефона, размер окна)
 let resizeTimer = null;
 // где нажали в последний раз — витраж бьётся от этой точки
