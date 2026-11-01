@@ -91,6 +91,18 @@ ART.update({f"d_pane{i}": (CUT / f"d_pane{i}.png", 300) for i in range(20)})
 # этап 2: нарисованные трещины, ночной витраж и ореол за ролью, цветные лучи, вспышка удара
 ART.update({"d_reveal_dark": (CUT / "d_reveal_dark.jpg", 600), "d_reveal_glow": (CUT / "d_reveal_glow.jpg", 160), "d_beams": (CUT / "d_beams.png", 600),
             "d_impact": (CUT / "d_impact.png", 400), "d_crack1": (CUT / "d_crack1.png", 700), "d_crack2": (CUT / "d_crack2.png", 700)})
+# «Ведьмин котёл»: выдача ролей варкой зелья (prep_art.cauldron, prompts_cauldron.md); без картинок вида «Котёл» нет
+ART.update({"k_hut": (CUT / "k_hut.jpg", 1536), "k_cauldron": (CUT / "k_cauldron.png", 640), "k_cauldron_front": (CUT / "k_cauldron_front.png", 640),
+            "k_logs": (CUT / "k_logs.png", 560), "k_steam": (CUT / "k_steam.png", 520), "k_jar": (CUT / "k_jar.png", 560)})
+ART.update({f"k_shelf{i}": (CUT / f"k_shelf{i}.png", 1100) for i in (1, 2, 3)})
+ART.update({f"k_ing{i}": (CUT / f"k_ing{i}.png", 210) for i in range(20)})
+ART.update({f"k_bit{i}": (CUT / f"k_bit{i}.png", 180) for i in range(20)})  # те же без банок — в банку игрока и в котёл (этап 3)
+ART.update({f"k_hand{i}": (CUT / f"k_hand{i}.png", 300) for i in (1, 2, 3)})
+ART.update({f"k_flame{i}": (CUT / f"k_flame{i}.png", 160) for i in (1, 2, 3, 4)})
+ART.update({f"k_splash{i}": (CUT / f"k_splash{i}.png", 260) for i in range(1, 7)})
+ART.update({f"k_witch{i}": (CUT / f"k_witch{i}.png", 400) for i in (1, 2, 3, 4)})
+ART.update({f"k_herb{i}": (CUT / f"k_herb{i}.png", 160) for i in range(1, 6)})
+ART.update({f"k_cat{i}": (CUT / f"k_cat{i}.png", 300) for i in (1, 2)})
 ART.update({f"c_em_{k}": (CUT / f"c_em_{k}.png", 220) for k in ("demon", "minions", "notinplay", "youare", "selected", "thisplayer", "yourrole",
                                                                "yes", "no", "good", "evil", "general_good", "general_evil", "general_neither", "moon")})
 
@@ -108,9 +120,9 @@ def webp_uri(path, width, alpha_quality=100, quality=82):
 # маски гравюры (белое + прозрачность): прозрачность можно сжать с потерями — вдвое легче, на глаз не видно
 LOSSY_ALPHA = {"c_engr", "c_frontis", "c_wreath", "c_night", "c_dial", "c_win_good", "c_win_evil"}
 LOSSY_ALPHA |= {"h_flame", "h_burst", "h_fog", "h_batline", "h_skull_fire"}
-lossy = lambda k: k in LOSSY_ALPHA or k.startswith(("c_em_", "h_em_", "h_ghost", "h_smoke", "h_wisp", "h_soul", "h_cflame", "h_web_", "h_clown", "h_girl", "h_hugger", "h_acid", "d_crack", "d_beams", "d_impact"))
+lossy = lambda k: k in LOSSY_ALPHA or k.startswith(("c_em_", "h_em_", "h_ghost", "h_smoke", "h_wisp", "h_soul", "h_cflame", "h_web_", "h_clown", "h_girl", "h_hugger", "h_acid", "d_crack", "d_beams", "d_impact", "k_"))
 # пестрая мозаика витража жмётся плохо: окна (20 штук) и приглушённый витраж за ролью — качеством пониже, на глаз не видно
-quality = lambda k: 72 if k.startswith("d_pane") else 65 if k in ("d_reveal", "d_reveal_dark") else 82
+quality = lambda k: 72 if k.startswith("d_pane") else 65 if k in ("d_reveal", "d_reveal_dark") else 70 if k == "k_hut" else 76 if k.startswith("k_") else 82
 art = {k: webp_uri(p, w, 70 if lossy(k) else 100, quality(k)) for k, (p, w) in ART.items() if p.exists()}
 meta = json.loads((CUT / "meta.json").read_text(encoding="utf-8")) if (CUT / "meta.json").exists() else {}
 art_js = ("const ART = " + json.dumps(art, separators=(",", ":")) + ";\n"
@@ -147,7 +159,7 @@ for folder in sorted(REC_SRC.iterdir()) if REC_SRC.is_dir() else []:
         rec.append({"id": rid, "c": cat, "n": name, "src": f"rec/{out}"})
 art_js += "const MORNING_REC = " + json.dumps(rec, ensure_ascii=False) + ";\n"
 print("записей на утро:", len(rec), *[f"{c}: {sum(r['c'] == c for r in rec)}" for c in (0, 1, 2)])
-missing = [k for k, (p, _) in ART.items() if not p.exists() and not k.startswith(("d_pane", "d_nave", "d_reveal", "d_arch", "d_crack", "d_beams", "d_impact", "d_digit", "h_digit"))]  # витраж — по желанию
+missing = [k for k, (p, _) in ART.items() if not p.exists() and not k.startswith(("d_pane", "d_nave", "d_reveal", "d_arch", "d_crack", "d_beams", "d_impact", "d_digit", "h_digit", "k_"))]  # витраж и котёл — по желанию
 if missing:
     print("нет графики:", ", ".join(missing))
 

@@ -202,6 +202,7 @@ def beauty():
     meta["skins"] = skins()
     meta["hallow"] = halloween()
     meta["vitr"] = vitrage()
+    meta["kettle"] = cauldron()
     (OUT / "meta.json").write_text(json.dumps(meta), encoding="utf-8")
 
 
@@ -273,6 +274,129 @@ def vitrage():
     if cracks: out["cracks"] = cracks
     if n: print("витраж: окон", n, "стекло", out.get("glass"), "медальон", out.get("medal"))
     return out
+
+
+def cauldron():
+    """«Ведьмин котёл»: выдача ролей варкой зелья (prompts_cauldron.md, идея пользователя 2026-11-01) → art/cut, сведения — в meta.kettle.
+    Предметы на белом (полки, ингредиенты, котёл, рука, дрова, банка, ведьма, травы, кот) — белое прозрачное; огонь, пар и брызги
+    белым по чёрному — маски (цвет задаёт приложение). Доли — от размера вырезанной картинки."""
+    out = {}
+    def have(n): return (SRC / f"{n}.png").exists()
+    def save(name, im):
+        im.save(OUT / f"{name}.png"); out[name] = list(im.size)
+    r4 = lambda v: round(float(v), 4)
+    if have("k_hut"):
+        Image.open(SRC / "k_hut.png").convert("RGB").save(OUT / "k_hut.jpg", quality=90)
+    if have("k_shelf"):  # три доски по строкам листа; банки стоят на верхней плоскости доски — её середина (доля высоты картинки доски)
+        s = white_alpha(SRC / "k_shelf.png"); a = np.asarray(s)[..., 3] > 24
+        lab, _ = ndimage.label(a.any(axis=1)); runs = ndimage.find_objects(lab)
+        out["stand"] = []
+        for k, sl in enumerate(sorted(sorted(runs, key=lambda t: t[0].stop - t[0].start)[-3:], key=lambda t: t[0].start), 1):
+            y0, y1 = sl[0].start, sl[0].stop; ys, xs = np.nonzero(a[y0:y1])
+            b = s.crop((xs.min(), y0 + ys.min(), xs.max() + 1, y0 + ys.max() + 1)); save(f"k_shelf{k}", b)
+            cov = (np.asarray(b)[..., 3] > 24).mean(axis=1); plank = np.nonzero(cov > .6)[0]  # доска — строки почти во всю ширину
+            out["stand"].append(r4((plank.min() + (plank.max() - plank.min()) * .14) / b.height))
+    # 20 ингредиентов: два листа 5×2; кусок — в клетку своего центра (пробка над пузырьком, бородавки у мешочка, дымок над носком)
+    n = 0
+    for sheet in ("k_ingr1", "k_ingr2"):
+        if not have(sheet): continue
+        for im in grid_pieces(defringe(white_alpha(SRC / f"{sheet}.png", min_area=400)), 5, 2, dil=1):
+            save(f"k_ing{n}", alpha_bbox(im, thr=8)); n += 1
+    out["ing"] = n
+    # этап 3 (заметка пользователя 2026-11-01: «точно хорошая идея компоненты прям в банках в котёл кидать?»): те же 20 без банок и
+    # мешочков — их кладут в банку игрока и бросают в котёл; на полках остаются ингредиенты в таре
+    b = 0
+    for sheet in ("k_bits1", "k_bits2"):
+        if not have(sheet): continue
+        for im in grid_pieces(defringe(white_alpha(SRC / f"{sheet}.png", min_area=400)), 5, 2, dil=1):
+            save(f"k_bit{b}", alpha_bbox(im, thr=8)); b += 1
+    out["bits"] = b
+    if have("k_cauldron"):  # горловина — самое большое чёрное пятно (эллипс); передний край — котёл ниже середины горловины, без неё
+        c = white_alpha(SRC / "k_cauldron.png"); A = np.asarray(c).copy(); H = A.shape[0]
+        rgb = np.asarray(Image.open(SRC / "k_cauldron.png").convert("RGB")).astype(int)
+        dark = rgb.max(axis=2) < 28; lab, k = ndimage.label(dark)
+        mouth = ndimage.binary_fill_holes(lab == 1 + int(np.argmax(ndimage.sum(dark, lab, range(1, k + 1))))); ys, xs = np.nonzero(mouth)
+        cx, cy, rx, ry = (xs.min() + xs.max()) / 2, (ys.min() + ys.max()) / 2, (xs.max() - xs.min()) / 2, (ys.max() - ys.min()) / 2
+        by, bx = np.nonzero(A[..., 3] > 10); box = (bx.min(), by.min(), bx.max() + 1, by.max() + 1); W2, H2 = box[2] - box[0], box[3] - box[1]
+        F = A.copy(); F[..., 3] = np.where((np.arange(H)[:, None] > cy) & ~ndimage.binary_dilation(mouth, iterations=2), A[..., 3], 0)
+        save("k_cauldron", c.crop(box)); save("k_cauldron_front", Image.fromarray(F, "RGBA").crop(box))
+        out["mouth"] = [r4((cx - box[0]) / W2), r4((cy - box[1]) / H2), r4(rx / W2), r4(ry / H2)]
+    if have("k_hand"):  # три позы; в общей рамке — по середине рукава (верхние строки): при смене позы рука не прыгает
+        A = np.asarray(white_alpha(SRC / "k_hand.png")); a = A[..., 3] > 24
+        lab, k = ndimage.label(ndimage.binary_dilation(a, iterations=6)); objs = ndimage.find_objects(lab)
+        big = sorted((np.argsort(ndimage.sum(a, lab, range(1, k + 1)))[::-1][:3] + 1).tolist(), key=lambda i: objs[i - 1][1].start)
+        poses = []
+        for b in big:
+            m = ndimage.binary_dilation((lab == b) & a, iterations=2); ys, xs = np.nonzero(m)
+            sx = xs[ys < 40].mean() if (ys < 40).any() else xs.mean()
+            poses.append((m, sx, xs.min(), xs.max(), ys.max()))
+        L = int(np.ceil(max(p[1] - p[2] for p in poses))) + 6; R = int(np.ceil(max(p[3] - p[1] for p in poses))) + 6; Hh = max(p[4] for p in poses) + 7
+        for i, (m, sx, *_rest) in enumerate(poses, 1):
+            X = A.copy(); X[..., 3] = np.where(m, X[..., 3], 0); x0 = int(round(sx)) - L
+            fr = Image.new("RGBA", (L + R, Hh), (255, 255, 255, 0)); fr.alpha_composite(Image.fromarray(X, "RGBA").crop((max(0, x0), 0, x0 + L + R, Hh)), (max(0, -x0), 0))
+            save(f"k_hand{i}", fr)
+        # щепоть позы 1: когти сходятся у самой нижней точки — предмет чуть выше неё
+        m, sx, *_r = poses[0]; ys, xs = np.nonzero(m); low = ys.max(); lx = xs[ys >= low - 3].mean()
+        out["pinch"] = [r4((lx - sx + L) / (L + R)), r4((low - .03 * Hh) / Hh)]
+    if have("k_logs"): save("k_logs", alpha_bbox(white_alpha(SRC / "k_logs.png"), thr=10))
+    if have("k_flames"):  # 4 кадра пламени в общей рамке
+        for i, im in enumerate(grid_frames(light_mask(SRC / "k_flames.png", lift=12), 4, 1, pad=0), 1): save(f"k_flame{i}", alpha_pad(im))
+    if have("k_steam"): save("k_steam", alpha_bbox(light_mask(SRC / "k_steam.png", lift=10), thr=8))
+    if have("k_splash"):
+        for i, im in enumerate(grid_pieces(light_mask(SRC / "k_splash.png", lift=12), 3, 2, thr=20), 1): save(f"k_splash{i}", im)
+    if have("k_jar"):  # стекло: белое внутри — почти прозрачное (сквозь него видны ингредиенты), края и тона стекла — плотнее,
+        # пробка, бечёвка и бирка (цветные) — непрозрачные; цвет — как нарисован: на тёмной стене банка выглядит светлым стеклом
+        rgb = np.asarray(Image.open(SRC / "k_jar.png").convert("RGB")).astype(float)
+        sil = np.asarray(white_alpha(SRC / "k_jar.png", min_area=10 ** 9))[..., 3] / 255
+        c2a = (255 - rgb.min(axis=2)) / 255; sat = rgb.max(axis=2) - rgb.min(axis=2)
+        al = sil * np.clip(.16 + c2a * 1.6 + np.clip((sat - 22) / 18, 0, 1), 0, 1)
+        j = alpha_bbox(Image.fromarray(np.dstack([rgb, al * 255]).round().astype(np.uint8), "RGBA"), thr=10); save("k_jar", j)
+        # три места внутри: по ширине тела банки (самые широкие строки), по высоте — ниже горла
+        a = np.asarray(j)[..., 3] > 60; wid = a.sum(axis=1); body = np.nonzero(wid >= .9 * wid.max())[0]
+        xs = np.nonzero(a[body].any(axis=0))[0]; bx0, bx1 = xs.min(), xs.max(); y0, y1 = body.min(), np.nonzero(a.any(axis=1))[0].max()
+        out["jar"] = {"x": [r4((bx0 + (bx1 - bx0) * f) / j.width) for f in (.22, .5, .78)], "y": r4((y0 + (y1 - y0) * .5) / j.height),
+                      "s": r4((bx1 - bx0) * .25 / j.width)}
+    if have("k_witch"):  # ведьма свешивается сверху: 4 лица в общей рамке; белый фон между прядями — прозрачный
+        g = defringe(white_alpha(SRC / "k_witch.png", inner_thr=232, min_area=12))
+        for i, im in enumerate(grid_frames(g, 4, 1, pad=0), 1): save(f"k_witch{i}", alpha_pad(im))
+    if have("k_herbs"):  # пучки на бечёвках — свисают от верхнего края
+        for i, im in enumerate(grid_pieces(white_alpha(SRC / "k_herbs.png"), 5, 1), 1): save(f"k_herb{i}", alpha_bbox(im, thr=8))
+    if have("k_cat"):  # кот: глаза открыты / закрыты; где он сидит (низ лап) — доля высоты
+        c1, c2 = [alpha_pad(im) for im in grid_frames(defringe(white_alpha(SRC / "k_cat.png", inner_thr=232, min_area=12)), 2, 1, pad=0)]
+        save("k_cat1", c1); save("k_cat2", cat_blink(c1, c2))
+        a = np.asarray(c1)[..., 3] > 60; wid = a.sum(axis=1); out["cat_seat"] = r4(np.nonzero(wid >= .55 * wid.max())[0].max() / a.shape[0])
+    if n: print("котёл: ингредиентов", n, "горловина", out.get("mouth"), "щепоть", out.get("pinch"), "банка", out.get("jar"), "полки", out.get("stand"), "кот", out.get("cat_seat"))
+    return out
+
+
+def cat_blink(c1, c2, win=70, srch=30):
+    """Кот моргает: два рисунка чуть разные (шерсть, поза) — при смене кадра кот дёргался (заметка пользователя 2026-11-01). Кадр
+    «моргнул» — первый рисунок, а в нём только глаза из второго: второй совмещается с первым по голове (сдвиг с наименьшей разницей
+    яркости), глаза (жёлтые на первом) вставляются с мягким краем."""
+    A1, A2 = np.asarray(c1).astype(float), np.asarray(c2).astype(float)
+    r, g, b = A1[..., 0], A1[..., 1], A1[..., 2]
+    eye = (A1[..., 3] > 200) & (r > 140) & (g > 100) & (b < 110) & (r - b > 70)
+    lab, n = ndimage.label(eye)
+    if n < 1: return c2
+    big = np.argsort(ndimage.sum(eye, lab, range(1, n + 1)))[::-1][:2] + 1; ys, xs = np.nonzero(np.isin(lab, big))
+    y0, y1, x0, x1 = ys.min(), ys.max(), xs.min(), xs.max(); H, W = eye.shape
+    wy0, wy1, wx0, wx1 = max(0, y0 - win), min(H, y1 + win), max(0, x0 - win), min(W, x1 + win)
+    L1 = A1[wy0:wy1, wx0:wx1, :3].mean(axis=2)
+    best = None
+    for dy in range(-srch, srch + 1):
+        for dx in range(-srch, srch + 1):
+            sy0, sx0 = wy0 + dy, wx0 + dx
+            if sy0 < 0 or sx0 < 0 or sy0 + (wy1 - wy0) > H or sx0 + (wx1 - wx0) > W: continue
+            d = np.abs(A2[sy0:sy0 + wy1 - wy0, sx0:sx0 + wx1 - wx0, :3].mean(axis=2) - L1).mean()
+            if best is None or d < best[0]: best = (d, dx, dy)
+    _, dx, dy = best
+    S2 = np.zeros_like(A2); ys2, xs2 = slice(max(0, -dy), min(H, H - dy)), slice(max(0, -dx), min(W, W - dx))
+    S2[ys2, xs2] = A2[max(0, dy):max(0, dy) + (ys2.stop - ys2.start), max(0, dx):max(0, dx) + (xs2.stop - xs2.start)]
+    yy, xx = np.mgrid[0:H, 0:W]; cy, cx, ry, rx = (y0 + y1) / 2, (x0 + x1) / 2, (y1 - y0) / 2 + 22, (x1 - x0) / 2 + 22
+    m = ndimage.gaussian_filter((((yy - cy) / ry) ** 2 + ((xx - cx) / rx) ** 2 <= 1).astype(float), 6)[..., None]
+    out = A1.copy(); out[..., :3] = A1[..., :3] * (1 - m) + S2[..., :3] * m
+    print("кот моргает: сдвиг второго кадра", dx, dy, "глаза", (x0, y0, x1, y1))
+    return Image.fromarray(out.round().clip(0, 255).astype(np.uint8), "RGBA")
 
 
 def medallion(im):
@@ -634,11 +758,12 @@ def sheet_pieces(im, dil=10, min_px=400):
     return res
 
 
-def grid_pieces(mask, cols, rows, thr=24, pad=8):
+def grid_pieces(mask, cols, rows, thr=24, pad=8, dil=3):
     """Лист предметов ровной сеткой. Каждый связный кусок относится к клетке, где лежит его центр (предмет может заходить
-    за границу клетки, а части предмета — лежать отдельно: три ромба, звезда у месяца); чужое в рамку не попадает → квадрат."""
+    за границу клетки, а части предмета — лежать отдельно: три ромба, звезда у месяца); чужое в рамку не попадает → квадрат.
+    dil — насколько склеивать близкие куски (у ингредиентов котла соседи почти касаются — 1)."""
     W, H = mask.size; arr = np.asarray(mask); a = arr[..., 3]
-    lab, n = ndimage.label(ndimage.binary_dilation(a > thr, iterations=3))
+    lab, n = ndimage.label(ndimage.binary_dilation(a > thr, iterations=dil))
     cent = ndimage.center_of_mass(a > thr, lab, range(1, n + 1))
     cell = {}
     for i, (cy, cx) in enumerate(cent, 1):

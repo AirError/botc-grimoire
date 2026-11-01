@@ -1555,3 +1555,111 @@ html .wallov.crypt .wrfor { font-family: var(--f-wet, 'Rubik Wet Paint', 'Kurale
   .vitr .wreveal > .vfx { display: none; }
   .vitr .wreveal > .vrbg, .vitr .wreveal > :not(.vfx):not(.wrlater) { opacity: 1 !important; }
 }
+
+/* ---------- «Ведьмин котёл»: выдача ролей варкой зелья (ui.js kettleOverlay; prompts_cauldron.md, идея пользователя 2026-11-01) ---------- */
+.wallov.kettle { background: #0B0806; }
+.wallov.kettle .wall { max-width: none; background: #0B0806; box-shadow: none; overflow: hidden; }
+.wallov.kettle .wall::after { display: none; }
+.wallov.kettle .wall.roll { animation: kIn .8s ease-out both; }
+@keyframes kIn { from { opacity: 0; transform: scale(1.04); } to { opacity: 1; transform: none; } }
+.kroom { position: absolute; inset: 0; z-index: 0; overflow: hidden; }
+/* сцена шириной в панораму хижины: камера двигает её целиком */
+.kstage { position: absolute; left: 0; top: 0; height: 100%; }
+.kstage img, .kstage i { position: absolute; display: block; }
+.khut { inset: 0; background: var(--a-k-hut) left bottom / cover no-repeat; }
+.khut::after { content: ''; position: absolute; inset: 0; background: linear-gradient(180deg, rgba(8, 5, 3, .6), rgba(8, 5, 3, .15) 32%, rgba(8, 5, 3, .1) 70%, rgba(8, 5, 3, .4)); }
+/* полки: ряд — доска, на её верхней плоскости ингредиенты, на переднем крае — бирки */
+.kshelves { position: absolute; left: 0; display: flex; flex-direction: column; padding: 0 10px; overflow-y: auto; overflow-x: hidden; scrollbar-width: none; }
+.krow { position: relative; display: flex; justify-content: center; flex: none; margin: auto 0; } /* поровну по высоте; не влезли — прокрутка с самого верха */
+.kstage .kboard { left: -6px; right: -6px; height: var(--kbh); background-size: 100% 100%; background-repeat: no-repeat; z-index: 0; pointer-events: none; filter: drop-shadow(0 6px 6px rgba(0, 0, 0, .5)); }
+.king { position: relative; z-index: 1; width: var(--col); flex: none; display: flex; flex-direction: column; align-items: center; background: none; border: 0; padding: 0;
+  cursor: pointer; color: inherit; -webkit-tap-highlight-color: transparent; }
+.king:disabled { cursor: default; }
+.kimg { position: relative; display: block; width: 100%; height: var(--ki); }
+.kstage .kimg img { left: 50%; bottom: 0; max-width: 92%; max-height: 100%; transform: translateX(-50%); filter: drop-shadow(0 3px 3px rgba(0, 0, 0, .55)); transition: transform .15s; }
+.king:active:not(:disabled) .kimg img { transform: translateX(-50%) translateY(-5px) scale(.94); }
+.ktag { display: block; margin-top: calc(var(--kbh) * .1); max-width: calc(100% - 6px); padding: 3px 4px 4px; border-radius: 3px; background: #E8DCBC; color: #3A2716;
+  font: 700 var(--fs)/1.12 var(--f-tale, 'Kurale', Georgia, serif); text-align: center; overflow-wrap: break-word; hyphens: auto;
+  box-shadow: 0 2px 4px rgba(0, 0, 0, .55), inset 0 0 6px rgba(120, 80, 30, .35); transform: rotate(var(--tr, 0deg)); }
+/* шапка «Зелье варит» и банка под именем — поверх сцены, не едут с камерой */
+.ktop { position: absolute; left: 0; z-index: 5; padding: 0 12px; }
+.kettle .wturn > span, .kettle .wturn label { font-family: var(--f-tale); font-size: 17px; letter-spacing: .06em; text-transform: none; color: #E9C97E; text-shadow: 0 1px 4px #000, 0 0 10px #000; }
+.kettle .wturn b { font-size: 30px; text-shadow: 0 1px 4px #000, 0 0 12px rgba(243, 210, 140, .5); }
+.kjar { position: absolute; z-index: 4; }
+.kjarimg { position: absolute; inset: 0; width: 100%; height: 100%; z-index: 2; pointer-events: none; filter: drop-shadow(0 6px 10px rgba(0, 0, 0, .6)); }
+.kslot { position: absolute; z-index: 1; transform: translate(-50%, -50%); background: none; border: 0; padding: 0; cursor: pointer; }
+.kslot img { display: block; width: 100%; height: 100%; object-fit: contain; }
+.kslot.empty { z-index: 3; pointer-events: none; border: 2px dashed rgba(240, 225, 190, .35); border-radius: 50%; transform: translate(-50%, -50%) scale(.7); }
+.kbar { position: absolute; z-index: 5; transform: translateX(-50%); width: max-content; max-width: calc(100vw - 160px); display: flex; justify-content: center; text-align: center; }
+.kbar span { color: #EFE3C6; font: 600 14px/1.3 var(--f-tale, 'Kurale', Georgia, serif); padding: 7px 14px; border-radius: 999px; background: rgba(10, 7, 4, .62); text-shadow: 0 1px 3px #000; }
+.kgo { min-height: 54px; padding: 8px 28px; border-radius: 999px; border: 2px solid #E3C27A; color: #FFF6DA; cursor: pointer; white-space: nowrap;
+  font: 800 25px/1.1 var(--f-tale, 'Kurale', Georgia, serif); text-shadow: 0 1px 3px rgba(0, 0, 0, .7);
+  background: radial-gradient(ellipse at 50% 30%, #8FD66A, #3E7A2C 60%, #22451A); box-shadow: 0 0 22px rgba(130, 230, 90, .55), 0 6px 14px rgba(0, 0, 0, .6);
+  animation: kGo 1.4s ease-in-out infinite; }
+@keyframes kGo { 0%, 100% { transform: scale(1); } 50% { transform: scale(1.05); } }
+/* огонь: свечение, языки пламени (4 кадра по кругу, цвет — градиентом по маске), дрова */
+.kglow { border-radius: 50%; pointer-events: none; background: radial-gradient(closest-side, rgba(255, 150, 50, .6), rgba(255, 90, 20, .2) 60%, transparent); animation: kGlow 1.8s ease-in-out infinite alternate; }
+@keyframes kGlow { from { opacity: .6; transform: scale(.95); } to { opacity: 1; transform: scale(1.05); } }
+.kfl { transform-origin: 50% 100%; animation: kFlick 1.1s ease-in-out infinite alternate; }
+@keyframes kFlick { from { transform: scaleY(.9) skewX(-2deg); } to { transform: scaleY(1.07) skewX(2deg); } }
+.kfl i { inset: 0; opacity: 0; background: linear-gradient(0deg, #FFF4C8 0%, #FFC24A 28%, #FF7A1F 58%, #B3240C 100%);
+  -webkit-mask: var(--m) center / 100% 100% no-repeat; mask: var(--m) center / 100% 100% no-repeat; animation: kFr .6s step-end infinite; }
+.kfl i:nth-child(2) { animation-delay: -.15s; } .kfl i:nth-child(3) { animation-delay: -.3s; } .kfl i:nth-child(4) { animation-delay: -.45s; }
+@keyframes kFr { 0% { opacity: 1; } 25%, 100% { opacity: 0; } }
+.klogs, .kcaul { pointer-events: none; }
+/* зелье в горловине: цвет задаёт код (смесь ингредиентов), блик и тень по краю, пузыри; после трёх ингредиентов — кипит и светится */
+.kpot { border-radius: 50%; overflow: hidden; box-shadow: inset 0 -5px 12px rgba(0, 0, 0, .55), inset 0 4px 10px rgba(255, 255, 255, .15); }
+.kpot::after { content: ''; position: absolute; inset: 0; background: radial-gradient(ellipse at 42% 38%, rgba(255, 255, 255, .3), transparent 50%), radial-gradient(ellipse at 50% 50%, transparent 55%, rgba(0, 0, 0, .45)); }
+.kstage .kpglow, .kstage .kboil { inset: 0; opacity: 0; }
+.kpglow { background: radial-gradient(ellipse at 50% 50%, rgba(255, 250, 200, .75), transparent 70%); }
+.kstage.done .kpglow, .kstage.done .kboil { opacity: 1; }
+.kbub { left: var(--x); top: var(--y); width: var(--s); height: var(--s); margin: calc(var(--s) / -2) 0 0 calc(var(--s) / -2); border-radius: 50%;
+  background: radial-gradient(circle at 35% 30%, rgba(255, 255, 255, .75), rgba(255, 255, 255, .18) 55%, rgba(255, 255, 255, .05) 70%); border: 1px solid rgba(255, 255, 255, .35);
+  transform: scale(0); animation: kBub var(--du) var(--dl) ease-in infinite; }
+@keyframes kBub { 0% { transform: scale(0); opacity: .9; } 85% { transform: scale(1); opacity: .9; } 100% { transform: scale(1.35); opacity: 0; } }
+/* ингредиент в щепоти, падающий в котёл, всплеск в цвет зелья, пар */
+.kfi, .kci { opacity: 0; pointer-events: none; }
+.kfi img, .kci img { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: contain; }
+.ksp { opacity: 0; pointer-events: none; transform-origin: 50% 62%; -webkit-mask: var(--m) center / contain no-repeat; mask: var(--m) center / contain no-repeat; }
+.kst { opacity: 0; pointer-events: none; transform-origin: 50% 100%; background: linear-gradient(0deg, rgba(240, 236, 220, .95), rgba(225, 232, 236, .85));
+  -webkit-mask: var(--a-k-steam) center bottom / 100% 100% no-repeat; mask: var(--a-k-steam) center bottom / 100% 100% no-repeat; }
+.kstage.done .kst { opacity: .55; }
+/* кот на выступе стены моргает; травы переднего плана покачиваются и при проезде камеры движутся быстрее сцены */
+.kcat { pointer-events: none; }
+.kcat img { inset: 0; width: 100%; height: 100%; }
+.kcat .c2 { opacity: 0; animation: kBlink 5.5s infinite; }
+@keyframes kBlink { 0%, 88% { opacity: 0; } 89%, 92% { opacity: 1; } 93%, 100% { opacity: 0; } }
+.kherbs { position: absolute; left: 0; top: 0; height: 100%; z-index: 7; pointer-events: none; }
+.kherb { position: absolute; transform-origin: 50% 0; animation: kSway 4.5s ease-in-out infinite alternate; filter: brightness(.7) drop-shadow(0 8px 10px rgba(0, 0, 0, .6)); }
+@keyframes kSway { from { transform: rotate(-2.5deg); } to { transform: rotate(2.5deg); } }
+/* рука ведьмы: три позы, видна одна (ведёт код) */
+.kfx { position: absolute; inset: 0; z-index: 6; pointer-events: none; }
+.kfx > i { position: absolute; }
+.khand img { position: absolute; inset: 0; width: 100%; height: 100%; opacity: 0; filter: drop-shadow(0 10px 14px rgba(0, 0, 0, .55)); }
+/* роль из пара; ведьма выглядывает сверху с фразой */
+.kettle .wreveal.kreveal { background: none; animation: none; justify-content: flex-start; }
+.kreveal::before { content: ''; position: absolute; inset: 0; z-index: -1; background: radial-gradient(ellipse 85% 65% at 50% 52%, rgba(10, 7, 4, .42), rgba(6, 4, 3, .9)); opacity: 0; animation: kDark .6s 5s ease-out forwards; }
+@keyframes kDark { to { opacity: 1; } }
+.kreveal > :not(.kwitch):not(.wrlater) { opacity: 0; animation: kCardIn .7s 5.3s cubic-bezier(.2, .8, .3, 1.15) forwards; }
+.kreveal > .wrart { animation-delay: 5.2s; }
+@keyframes kCardIn { from { opacity: 0; transform: translateY(70px) scale(.8); } to { opacity: 1; transform: none; } }
+.kreveal .wrlater { animation-delay: 7.3s; color: #E9E1D2; text-shadow: 0 1px 3px #000; }
+.kreveal .wrart, .kreveal .wric { width: min(48vw, 220px); height: min(48vw, 220px); }
+.kreveal .wric { filter: drop-shadow(0 0 26px rgba(200, 255, 170, .35)); }
+.kreveal .wrfor { color: #E9C97E; text-shadow: 0 1px 4px #000; }
+.kreveal .wrname, .kreveal .wrteam, .kreveal .wrab { text-shadow: 0 1px 3px #000, 0 0 12px rgba(0, 0, 0, .95), 0 0 24px rgba(0, 0, 0, .8); }
+.kwitch { position: absolute; right: 2%; width: min(38vw, 220px); z-index: 3; pointer-events: none; transform: translateY(-110%); animation: kWitch .8s 6.3s cubic-bezier(.3, 1.45, .55, 1) forwards; }
+.kwitch img { display: block; width: 100%; height: auto; filter: drop-shadow(0 8px 14px rgba(0, 0, 0, .6)); }
+@keyframes kWitch { to { transform: translateY(-4%); } }
+.kbubble { position: absolute; right: 90%; top: 44%; width: max-content; max-width: min(56vw, 300px); padding: 10px 14px; border-radius: 18px; background: #F3EAD3; color: #2B1D12;
+  font: 700 17px/1.25 var(--f-tale, 'Kurale', Georgia, serif); text-align: left; box-shadow: 0 6px 16px rgba(0, 0, 0, .55); transform-origin: 100% 50%; transform: scale(0);
+  animation: kSay .4s 6.9s cubic-bezier(.3, 1.5, .5, 1) forwards; }
+.kbubble::after { content: ''; position: absolute; right: -9px; top: 50%; margin-top: -9px; border: 9px solid transparent; border-left-color: #F3EAD3; border-right: 0; }
+@keyframes kSay { to { transform: none; } }
+/* роль открыта до перезагрузки страницы — сразу всё на месте */
+.kreveal.know::before, .kreveal.know > *, .kreveal.know .kbubble { animation: none !important; opacity: 1 !important; transform: none; }
+.kreveal.know .kwitch { transform: translateY(-4%); }
+@media (prefers-reduced-motion: reduce) {
+  .kfl, .kfl i, .kglow, .kbub, .kherb, .kcat .c2, .kgo, .wallov.kettle .wall.roll { animation: none !important; }
+  .kfl i:first-child { opacity: 1; }
+}

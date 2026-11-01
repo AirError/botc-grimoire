@@ -282,11 +282,14 @@ const SKIN_KEY = 'botc-grimoire-skin';
 function skinLoad() { try { const v = localStorage.getItem(SKIN_KEY); return SKINS.some(s => s[0] === v) ? v : 'basic'; } catch (e) { return 'basic'; } }
 // вид выдачи ролей (просьба пользователя 2026-10-24): каменная стена, склеп или витраж — в любом оформлении, у каждого устройства свой.
 // Не выбран (или сменили оформление) — как в оформлении: «Хэллоуин» — склеп, «Витраж во тьме» — витраж, остальные — стена
-const DRAW_KINDS = [['wall', 'Каменная стена'], ['crypt', 'Склеп'], ['vitr', 'Витраж']], DRAW_KEY = 'botc-grimoire-drawkind';
+// «Ведьмин котёл» (идея пользователя 2026-11-01) — только с картинками (prompts_cauldron.md)
+const DRAW_KINDS = [['wall', 'Каменная стена'], ['crypt', 'Склеп'], ['vitr', 'Витраж'], ['cauldron', 'Котёл']], DRAW_KEY = 'botc-grimoire-drawkind';
 function drawKindLoad() { try { const v = localStorage.getItem(DRAW_KEY); return DRAW_KINDS.some(s => s[0] === v) ? v : null; } catch (e) { return null; } }
+const kettleArt = () => ['k_hut', 'k_cauldron', 'k_cauldron_front', 'k_jar', 'k_hand1', 'k_hand2', 'k_hand3', 'k_shelf1', 'k_ing19'].every(HAS_ART);
+const drawKindOk = k => k === 'crypt' ? HAS_ART('h_chest_box') && HAS_ART('h_crypt') : k === 'cauldron' ? kettleArt() : true;
 function drawKind() {
   const crypt = HAS_ART('h_chest_box') && HAS_ART('h_crypt'), k = UI.drawKind;
-  if (k === 'wall' || k === 'vitr' || (k === 'crypt' && crypt)) return k;
+  if (k === 'wall' || k === 'vitr' || (k === 'crypt' && crypt) || (k === 'cauldron' && kettleArt())) return k;
   return UI.skin === 'hallow' && crypt ? 'crypt' : UI.skin === 'glass' ? 'vitr' : 'wall';
 }
 // значки вкладок (в Basic скрыты): контур, у .f — заливка выбранной вкладки в «Витраже», .k — детали поверх заливки
@@ -330,7 +333,9 @@ function artVars() {
       'h_flame', 'h_burst', 'h_fog', 'h_web_tl', 'h_web_tr', 'h_candle3', 'h_pumpkin1', 'h_pumpkin3', 'h_spider_strip', 'h_web_full'],
       [1, 2, 3, 4, 5, 6].map(i => 'h_wisp' + i), [1, 2, 3, 4, 5, 6].map(i => 'h_soul' + i), [1, 2, 3, 4].map(i => 'h_smoke' + i), [1, 2, 3, 4].map(i => 'h_cflame' + i))
     // «Витраж во тьме»: выдача ролей витражом (prompts_vitrage.md)
-    .concat(['d_nave', 'd_reveal', 'd_arch', 'd_arch_broken', 'd_reveal_dark', 'd_reveal_glow', 'd_beams', 'd_impact', 'd_crack1', 'd_crack2'], [...Array(20).keys()].map(i => 'd_pane' + i));
+    .concat(['d_nave', 'd_reveal', 'd_arch', 'd_arch_broken', 'd_reveal_dark', 'd_reveal_glow', 'd_beams', 'd_impact', 'd_crack1', 'd_crack2'], [...Array(20).keys()].map(i => 'd_pane' + i))
+    // «Ведьмин котёл»: хижина, полки, пар; огонь и брызги — маски (цвет задаёт CSS)
+    .concat(['k_hut', 'k_steam', 'k_shelf1', 'k_shelf2', 'k_shelf3'], [1, 2, 3, 4].map(i => 'k_flame' + i), [1, 2, 3, 4, 5, 6].map(i => 'k_splash' + i));
   const el = document.createElement('style'); el.id = 'artvars';
   el.textContent = `:root{${keys.filter(HAS_ART).map(k => `--a-${k.replace(/_/g, '-')}:url("${ART[k]}");`).join('')}--frame-slice:${(typeof ART_META !== 'undefined' && ART_META.frame_slice) || 0};--drunk-slice:${(typeof ART_META !== 'undefined' && ART_META.drunk_slice) || 0};}`;
   document.head.appendChild(el);
@@ -1626,23 +1631,25 @@ function drawCard() {
   const waiting = d && !d.finished ? core.filter(p => !p.role) : [], hid = rolesHidden();
   // роли открыты — можно снова закрыть «шторкой» (например, перед тем как снова выкатить стену)
   const hideBtn = d && !hid ? '<button class="btn" data-act="rolesHide">Скрыть роли</button>' : '';
-  const cr = cryptOn(), vt = !cr && vitrOn(); // вместо стены — склеп с сундуками или витраж (по оформлению или по выбору)
+  const cr = cryptOn(), vt = !cr && vitrOn(), kt = kettleOn(); // вместо стены — склеп с сундуками, витраж или котёл (по оформлению или по выбору)
   // вид выдачи — до конца жребия можно сменить (заметка пользователя 2026-10-24)
-  const kinds = d && d.finished ? '' : `<div class="flabel"><span>Вид</span></div><div class="seg">${DRAW_KINDS.filter(([k]) => k !== 'crypt' || (HAS_ART('h_chest_box') && HAS_ART('h_crypt')))
+  const kinds = d && d.finished ? '' : `<div class="flabel"><span>Вид</span></div><div class="seg">${DRAW_KINDS.filter(([k]) => drawKindOk(k))
     .map(([k, t]) => `<button class="${drawKind() === k ? 'on' : ''}" aria-pressed="${drawKind() === k}" data-act="drawKind" data-arg="${k}">${t}</button>`).join('')}</div>`;
-  return `<div class="card drawcard"><h3>Выдача ролей · ${cr ? 'склеп' : vt ? 'витраж' : 'каменная стена'}</h3>${kinds}
-    <div class="small muted">${vt
-      ? `Игроки по кругу разбивают светящиеся окна витража — как тянут жетон из мешочка: роли разложены по окнам в случайном порядке, и какое окно игрок разобьёт, ту роль и получит. Где какая роль, не видит никто, и вы тоже. ${src} Пока игрок не разбил окно, в его карточке можно назначить роль или тип роли — назначенное выпадет ему из любого окна. Пьяница увидит роль, которой себя считает. Свернуть витраж — невидимой кнопкой в <b>левом нижнем углу</b> экрана; после него роли на экране закрыты, пока вы не нажмёте «Показать роли».`
+  return `<div class="card drawcard"><h3>Выдача ролей · ${cr ? 'склеп' : vt ? 'витраж' : kt ? 'ведьмин котёл' : 'каменная стена'}</h3>${kinds}
+    <div class="small muted">${kt
+      ? `Игроки по кругу варят зелье: каждый выбирает на полках три ингредиента и бросает их в котёл — как тянет жетон из мешочка. Роли разложены в случайном порядке, и от того, какие ингредиенты выбраны, зависит, какая роль выйдет из котла. Где какая роль, не видит никто, и вы тоже. ${src} Пока игрок не сварил зелье, в его карточке можно назначить роль или тип роли — назначенное выйдет при любых ингредиентах. Пьяница увидит роль, которой себя считает. Свернуть котёл — невидимой кнопкой в <b>левом нижнем углу</b> экрана; после него роли на экране закрыты, пока вы не нажмёте «Показать роли».`
+      : vt
+      ?`Игроки по кругу разбивают светящиеся окна витража — как тянут жетон из мешочка: роли разложены по окнам в случайном порядке, и какое окно игрок разобьёт, ту роль и получит. Где какая роль, не видит никто, и вы тоже. ${src} Пока игрок не разбил окно, в его карточке можно назначить роль или тип роли — назначенное выпадет ему из любого окна. Пьяница увидит роль, которой себя считает. Свернуть витраж — невидимой кнопкой в <b>левом нижнем углу</b> экрана; после него роли на экране закрыты, пока вы не нажмёте «Показать роли».`
       : cr
       ?`Игроки по кругу открывают сундуки со светящимися рунами — как тянут жетон из мешочка: роли разложены по сундукам в случайном порядке, и какой сундук игрок выберет, ту роль и получит. Где какая роль, не видит никто, и вы тоже. ${src} Пока игрок не открыл сундук, в его карточке можно назначить роль или тип роли — назначенное выпадет ему из любого сундука. Пьяница увидит роль, которой себя считает. Свернуть склеп — невидимой кнопкой в <b>левом нижнем углу</b> экрана; после него роли на экране закрыты, пока вы не нажмёте «Показать роли».`
       : `Игроки по кругу открывают светящиеся ячейки — как тянут жетон из мешочка: роли разложены по ячейкам в случайном порядке, и какую ячейку игрок выберет, ту роль и получит. Где какая роль, не видит никто, и вы тоже. ${src} Пока игрок не открыл ячейку, в его карточке можно назначить роль или тип роли — назначенное выпадет ему из любой ячейки. Пьяница увидит роль, которой себя считает. Свернуть стену — невидимой кнопкой в <b>левом нижнем углу</b> экрана; после неё роли на экране закрыты, пока вы не нажмёте «Показать роли».`}</div>
     ${!ok ? '<div class="warn">Нужно от 5 до 15 игроков (без Странников).</div>'
       : d && d.finished ? `<div class="note-ok">Роли выданы жребием. Заново их не раздать; роль можно сменить только на роль сценария, которой нет в игре.</div>${hideBtn}`
-      : d ? `<div class="note-ok">Жребий идёт: осталось ${cr ? 'сундуков' : vt ? 'окон' : 'ячеек'} — ${left}. Очередь: ${esc(E.nm(S, d.turn))}</div>
+      : d ? `<div class="note-ok">Жребий идёт: осталось ${cr ? 'сундуков' : vt ? 'окон' : kt ? 'зелий' : 'ячеек'} — ${left}. Очередь: ${esc(E.nm(S, d.turn))}</div>
         ${waiting.length ? `<div class="flabel"><span>Ещё не открыли — нажмите, чтобы назначить роль или тип</span></div><div class="seg">${waiting.map(p => `<button data-act="openP" data-arg="${p.id}">${esc(p.name)}${!hid && (S.assign || {})[p.id] ? ' → ' + esc(assignLabel(S.assign[p.id])) : ''}</button>`).join('')}</div>` : ''}
         <div class="row"><button class="btn primary" data-act="wallShow">Продолжить жребий</button><button class="btn danger" data-act="drawCancel">Отменить жребий</button>${hideBtn}</div>`
       : prob ? `<div class="warn">${esc(prob)}</div>`
-      : `${overMaxHtml()}<button class="btn primary wide" data-act="drawStart">${cr ? 'Открыть склеп' : vt ? 'Зажечь витраж' : 'Выкатить стену'}</button>`}</div>`;
+      : `${overMaxHtml()}<button class="btn primary wide" data-act="drawStart">${cr ? 'Открыть склеп' : vt ? 'Зажечь витраж' : kt ? 'Разжечь котёл' : 'Выкатить стену'}</button>`}</div>`;
 }
 // Teensyville на 7+ игроков: ролей может и хватить, но сценарий задуман для 5–6 (заметка пользователя 2026-10-28)
 const overMaxHtml = () => { const t = !E.scriptShort(S) && E.scriptOverMax(S); return t ? `<div class="warn">${esc(t)}. Ролей хватает, но сценарий задуман для маленькой игры.</div>` : ''; };
@@ -1703,7 +1710,7 @@ function assignHtml(p) {
     <select data-act="assign" data-arg="${p.id}">${opt('', 'Случайно (по умолчанию)')}
       ${teams.length ? `<optgroup label="Тип роли">${teams.map(t => opt('t:' + t, 'Любой: ' + E.TEAM_RU[t])).join('')}</optgroup>` : ''}
       ${['townsfolk', 'outsider', 'minion', 'demon'].map(t => { const rs = roles.filter(r => team(r) === t); return rs.length ? `<optgroup label="${TEAM_PL[t]}">${rs.map(r => opt('r:' + r, E.rname(r))).join('')}</optgroup>` : ''; }).join('')}
-    </select></div><div class="small muted">${cryptOn() ? 'Какой сундук склепа игрок ни откроет' : vitrOn() ? 'Какое окно витража игрок ни разобьёт' : 'Какую ячейку стены игрок ни откроет'} — выпадет назначенное. Только из ролей на игру; роли, выданные или назначенные другим, здесь не предлагаются.</div></div>`;
+    </select></div><div class="small muted">${cryptOn() ? 'Какой сундук склепа игрок ни откроет' : vitrOn() ? 'Какое окно витража игрок ни разобьёт' : kettleOn() ? 'Какие ингредиенты игрок ни бросит в котёл' : 'Какую ячейку стены игрок ни откроет'} — выпадет назначенное. Только из ролей на игру; роли, выданные или назначенные другим, здесь не предлагаются.</div></div>`;
 }
 /* «Хэллоуин»: склеп вместо стены (просьба пользователя 2026-10-18). Ячейка — сундук: короб и крышка отдельными картинками (крышка
    распахивается), руна — на замке; после выдачи — открытый пустой сундук с паутиной. При открытии из сундука вылетает случайная нечисть */
@@ -2264,8 +2271,232 @@ function hallowAfter() {
   const el = UI.openAt ? Date.now() - UI.openAt : 0;
   if (el > 60) document.querySelectorAll('.wreveal, .wcell.opened').forEach(n => n.getAnimations && n.getAnimations({ subtree: true }).forEach(a => { try { a.currentTime = el; } catch (e) { /* анимация без времени */ } }));
 }
+/* ---------- «Ведьмин котёл» (идея пользователя 2026-11-01; prompts_cauldron.md) ----------
+   Игрок выбирает на полках три ингредиента — они перелетают в банку под его именем; «В котёл!» — камера уезжает к котлу, рука ведьмы
+   берёт их из банки по одному и бросает в котёл, зелье меняет цвет и бурлит, из пара поднимается роль, сверху выглядывает ведьма
+   с фразой по типу роли, которую видит игрок. Сочетание ингредиентов выбирает ячейку жребия (как сундук склепа): роли разложены по
+   ячейкам в случайном порядке в начале жребия, где какая — не видит никто. Движение — кодом (Web Animations), как в склепе */
+// название на бирке (одобрены пользователем 2026-11-01) и цвет, который ингредиент даёт зелью; в длинных словах — мягкий перенос
+// (­): бирка на телефоне узкая, без него слово рвалось без дефиса
+const K_ING = [['Гнида обыкно­венная', '#9A7A4A'], ['Мухи-вонюхи', '#6E8F3A'], ['Сопли тролля, свежий урожай', '#7BD12E'], ['Жабий глаз', '#D8B536'],
+  ['Ушная сера великана', '#E0782A'], ['Носок мертвеца, непарный', '#8C8A84'], ['Слизь улиточья марино­ванная', '#8E8A3C'], ['Чих кикиморы', '#B9DC8A'],
+  ['Бородавка ведьмина сушёная', '#7A5530'], ['Хвост крысы-сплетницы', '#E58FA3'], ['Зубной камень дракона', '#D8C38E'], ['Пыль с гроба, первый отжим', '#A7A39A'],
+  ['Жабья икра в собствен­ном соку', '#4F6E2A'], ['Плесень подваль­ная элитная', '#4FA3A0'], ['Слёзы рассказ­чика', '#6FB6F0'], ['Перхоть оборотня', '#E8E4D8'],
+  ['Паучьи лапки хрустящие', '#B0702E'], ['Ногти упыря, нарезка', '#3A3634'], ['Сало летучей мыши', '#F2B9B5'], ['Вопль мандра­горы в банке', '#C49A5C']];
+// фразы ведьмы по типу роли, которую видит игрок (Пьяница — Горожанина, Безумец — Демона; одобрены пользователем 2026-11-01);
+// лицо ведьмы — по тому же типу (k_witch1–4)
+const K_PHR = [
+  ['townsfolk', 'Ладно, побудь пока на светлой стороне!'], ['townsfolk', 'Тьфу, опять добро сварилось. Где я напутала?'], ['townsfolk', 'Добро так добро. Только не испорти мне всё веселье!'],
+  ['outsider', 'Попробуй вывезти это.'], ['outsider', 'Ой… кажется, я переложила бородавок. Держись, дорогуша!'], ['outsider', 'Не повезло тебе, золотце. Но зелье есть зелье!'],
+  ['minion', 'Ты сегодня Зло, дорогуша!'], ['minion', 'Ой, чувствую, сегодня кто-то будет той ещё врушей!'], ['minion', 'Добро пожаловать в наш шабаш!'],
+  ['demon', 'Чёрт, ну и повезло же тебе, золотце!'], ['demon', 'Ты сегодня Зло, дорогуша! Самое главное Зло.'], ['demon', 'Вот это варево! Город теперь твой.']];
+const K_FACE = { townsfolk: 1, outsider: 2, minion: 3, demon: 4 };
+// что кладут в банку и бросают в котёл: ингредиент без тары (этап 3 промптов; заметка пользователя 2026-11-01 — «точно хорошая идея
+// компоненты прям в банках в котёл кидать?»), пока нет картинки — как на полке
+const kBit = i => ART['k_bit' + i] || ART['k_ing' + i];
+// время варки (мс от «В котёл!»): проезд камеры; три броска — рука берёт из банки (g), несёт и разжимает пальцы (через carry),
+// предмет падает (fall); колдовство над котлом, уход руки, пар, роль из пара
+const KT = { pan: 900, g: [1300, 2300, 3300], carry: 520, fall: 380, conj: 4250, exit: 5100, out: 5500, steam: 4400, card: 5300 };
+const kettleOn = () => drawKind() === 'cauldron';
+const KM = () => (typeof ART_META !== 'undefined' && ART_META.kettle) || {};
+const kSize = k => KM()[k] || [1, 1]; // размер картинки [w, h]
+const kReduced = () => !!(window.matchMedia && matchMedia('(prefers-reduced-motion: reduce)').matches);
+// вырез экрана сверху и полоска снизу (iPhone): сцена считается в пикселях
+function kSafe() {
+  const el = document.createElement('div'); el.style.cssText = 'position:fixed;visibility:hidden;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)';
+  document.body.appendChild(el); const cs = getComputedStyle(el), r = [parseFloat(cs.paddingTop) || 0, parseFloat(cs.paddingBottom) || 0]; el.remove(); return r;
+}
+/* Раскладка сцены. Хижина — панорама 3:2 во всю высоту экрана: на телефоне и iPad вертикально она шире экрана — слева полки (первый
+   экран), справа котёл, камера едет между ними; на широком экране альбомом (iPad, компьютер) панорама помещается — полки слева, котёл
+   справа, всё видно сразу. Телефон боком — тоже два экрана: на одном всё было бы слишком мелко (заметка пользователя 2026-11-01) */
+function kLayout() {
+  const W = window.innerWidth || 375, H = window.innerHeight || 700, m = KM(), [st, sb] = kSafe(), wide = W > H && H >= 600;
+  const Sw = Math.round(Math.max(H * 1.5, wide ? W : W * 1.8)), pan = Sw - W;
+  const shW = wide ? Math.round(Math.max(W * .46, Math.min(W * .56, 560))) : W, cw = wide ? Sw - shW : W, kx = Sw - cw / 2;
+  const [cW, cH] = kSize('k_cauldron'), kcw = Math.min(cw * .78, H * .36 * cW / cH), kch = kcw * cH / cW;
+  const [lW, lH] = kSize('k_logs'), lw = kcw * 1.3, lh = lw * lH / lW, floor = H - sb * .5 - H * .04;
+  const cb = floor - lh * .42, ct = cb - kch, cl = kx - kcw / 2;
+  const mo = m.mouth || [.5, .13, .34, .09], mx = cl + mo[0] * kcw, my = ct + mo[1] * kch, rx = mo[2] * kcw, ry = mo[3] * kch;
+  // банка — под шапкой (имя — выпадающим списком), полки — под банкой, над нижней кнопкой; альбомом банка — над котлом, полкам — вся высота
+  const [jW, jH] = kSize('k_jar'), jw = Math.round(wide ? Math.min(cw * .42, 260, H * .22 * jW / jH) : Math.min(shW * .52, H > 900 ? 300 : 240, H * .2 * jW / jH)), jh = Math.round(jw * jH / jW);
+  // телефон боком: банка справа от имени, полки — сразу под шапкой (и прокручиваются: по высоте места мало)
+  const land = W > H && !wide, jx = wide ? kx - pan : land ? W - 68 - jw / 2 : shW / 2, jt = wide ? st + 16 : land ? st + 6 : st + 78;
+  const top = wide || land ? st + 84 : jt + jh + 4, bot = sb + 70;
+  // полки: 3–5 рядов; в ряду — ингредиенты, под каждым бирка в 3 строки; берём ряды, при которых картинки крупнее
+  let best = null;
+  for (const rows of [3, 4, 5]) {
+    const per = Math.ceil(20 / rows), col = (shW - 20) / per, fs = hClamp(col * .135, 10, 14), tag = Math.round(fs * 1.15 * 3 + 8);
+    const item = Math.max(52, Math.floor(Math.min(col * .9, (H - top - bot) / rows - tag - 10))); // не меньше 52 px — тогда полки прокручиваются
+    if (!best || item > best.item) best = { rows, per, col, fs, tag, item };
+  }
+  const [hW, hH] = kSize('k_hand1'), pin = m.pinch || [.5, .81], hh = Math.max(H * .46, (my - kch * .62) / pin[1] + 40), hw = hh * hW / hH;
+  return { W, H, st, sb, Sw, pan, wide, shW, kx, kcw, kch, cl, ct, cb, lw, lh, floor, mx, my, rx, ry, jw, jh, jx, jt, top, bot, hh, hw, px: pin[0] * hw, py: pin[1] * hh, ...best };
+}
+// цвет зелья: мутно-зелёный, каждый ингредиент тянет к своему цвету; light — светлее (брызги видны на зелье того же цвета)
+function kPotCols(pk, light) {
+  const hx = c => [1, 3, 5].map(i => parseInt(c.slice(i, i + 2), 16)), mix = (a, b, k) => a.map((v, i) => Math.round(v + (b[i] - v) * k));
+  let c = hx('#3B5230'); const out = [c];
+  (pk || []).forEach(i => { c = mix(c, hx(K_ING[i][1]), .6); out.push(c); });
+  while (out.length < 4) out.push(out[out.length - 1]);
+  return out.map(v => `rgb(${(light ? mix(v, [255, 250, 230], .5) : v).join(',')})`);
+}
+// какая ячейка жребия: по сочетанию ингредиентов (порядок не важен) среди ещё не открытых
+function kCell(d, pk) {
+  const free = d.cells.map((c, i) => c.pid ? -1 : i).filter(i => i >= 0); if (!free.length) return -1;
+  const s = pk.slice().sort((a, b) => a - b);
+  return free[((s[0] * 20 + s[1]) * 20 + s[2]) % free.length];
+}
+// фраза ведьмы — случайная из типа показанной роли, без повторов за жребий, пока хватает (запоминается в жребии — перерисовка не меняет)
+function kPhrase(S, i) {
+  const d = S.draw, c = d.cells[i], t = team(E.drawShown(c)), all = K_PHR.map((p, k) => p[0] === (K_FACE[t] ? t : 'townsfolk') ? k : -1).filter(k => k >= 0);
+  const used = d.kphr || [], free = all.filter(k => !used.includes(k)), pool = free.length ? free : all;
+  c.phr = pool[Math.floor(Math.random() * pool.length)]; d.kphr = used.concat(c.phr);
+}
+function kettleOverlay(d) {
+  const L = kLayout(), m = KM(), turn = d.turn && E.P(S, d.turn), open = d.open !== null ? d.cells[d.open] : null, brew = !!open;
+  const anim = brew && !!UI.openAt && !kReduced();
+  if (!brew) UI.kbrew = null;
+  const pk = brew ? (UI.kbrew || []) : (UI.kpick || []), cols = kPotCols(pk), lite = kPotCols(pk, true), R = hRand(0x4b7);
+  const others = d.order.filter(id => (id === d.turn || !d.cells.some(c => c.pid === id)) && E.P(S, id));
+  const head = `<div class="wtop ktop" style="top:${L.st + 8}px;width:${L.shW}px"><span aria-hidden="true"></span>
+    <div class="wturn">${!turn ? '<b>Все роли выданы</b>' : others.length > 1
+      ? `<label for="wsel">Зелье варит</label><span class="wsel"><select id="wsel" data-act="drawTurn" aria-label="Кто варит зелье" ${brew ? 'disabled' : ''}>${others.map(id => `<option value="${id}" ${id === d.turn ? 'selected' : ''}>${esc(E.nm(S, id))}</option>`).join('')}</select><span aria-hidden="true">▾</span></span>`
+      : `<span>Зелье варит</span><b>${esc(turn.name)}</b>`}</div>
+    <button class="wbtn" data-act="undo" ${HISTORY.length ? '' : 'disabled'} aria-label="Отменить последнее">↶</button></div>`;
+  // банка под именем: три места (meta.kettle.jar — доли картинки банки); нажатие на ингредиент в банке — вынуть
+  const J = m.jar || { x: [.25, .5, .75], y: .66, s: .24 }, ss = Math.round(J.s * L.jw * 1.3);
+  const slots = [0, 1, 2].map(k => { const i = pk[k], pos = `left:${(J.x[k] * 100).toFixed(1)}%;top:${(J.y * 100).toFixed(1)}%;width:${ss}px;height:${ss}px`;
+    return i == null ? `<i class="kslot empty" style="${pos}"></i>`
+      : `<button class="kslot" data-act="kUnpick" data-arg="${k}" style="${pos}" ${brew ? 'disabled' : ''} aria-label="Вынуть из банки: ${esc(K_ING[i][0])}"><img src="${kBit(i)}" alt=""></button>`; }).join('');
+  const jar = `<div class="kjar" style="left:${Math.round(L.jx - L.jw / 2)}px;top:${L.jt}px;width:${L.jw}px;height:${L.jh}px;${brew && !anim ? 'opacity:0' : ''}">${slots}<img class="kjarimg" src="${ART.k_jar}" alt=""></div>`;
+  // полки: доска на ряд (три доски по кругу), ингредиент стоит на верхней плоскости доски, бирка — на её переднем крае
+  const [bW, bH] = kSize('k_shelf1'), bh = Math.round((L.shW - 8) * bH / bW), stand = m.stand || [.08, .09, .15];
+  let rows = '', n = 0;
+  for (let r = 0; r < L.rows; r++) {
+    let items = ''; const cnt = Math.min(L.per, 20 - n);
+    for (let q = 0; q < cnt; q++, n++) items += `<button class="king" data-act="kPick" data-arg="${n}" ${turn && !brew ? '' : 'disabled'} aria-label="${esc(K_ING[n][0])}">`
+      + `<span class="kimg"><img src="${ART['k_ing' + n]}" alt=""></span><span class="ktag" style="--tr:${((n * 37) % 7 - 3) * .7}deg">${esc(K_ING[n][0])}</span></button>`;
+    rows += `<div class="krow"><i class="kboard" style="background-image:var(--a-k-shelf${r % 3 + 1});top:${Math.round(L.item - stand[r % 3] * bh)}px"></i>${items}</div>`;
+  }
+  const shelves = `<div class="kshelves" style="top:${L.top}px;bottom:${L.bot}px;width:${L.shW}px;--col:${L.col.toFixed(1)}px;--ki:${L.item}px;--tag:${L.tag}px;--fs:${L.fs.toFixed(1)}px;--kbh:${bh}px">${rows}</div>`;
+  // кот сидит на выступе каменной стены хижины (доли панорамы; она во всю ширину сцены, низом к низу экрана)
+  const bgH = L.Sw / 1.5, bgT = L.H - bgH, [aW, aH] = kSize('k_cat1'), ch = bgH * .16, cwd = ch * aW / aH;
+  const cat = HAS_ART('k_cat1') ? `<i class="kcat" style="left:${Math.round(L.Sw * .703 - cwd / 2)}px;top:${Math.round(bgT + bgH * .368 - (m.cat_seat || .62) * ch)}px;width:${Math.round(cwd)}px;height:${Math.round(ch)}px">`
+    + `<img src="${ART.k_cat1}" alt="">${HAS_ART('k_cat2') ? `<img class="c2" src="${ART.k_cat2}" alt="">` : ''}</i>` : '';
+  // огонь: свечение, три языка (по 4 кадра), дрова; котёл сзади, зелье в горловине (пузыри), падающее, передний край, пар
+  const box = (x, y, w, h) => `left:${Math.round(x)}px;top:${Math.round(y)}px;width:${Math.round(w)}px;height:${Math.round(h)}px`;
+  const [fW, fH] = kSize('k_flame1');
+  // языки: за котлом по бокам (лижут бока) и маленькие спереди, между ножками
+  const fl = (list, y) => HAS_ART('k_flame1') ? list.map(([dx, k], q) => { const h = L.kch * k, w = h * fW / fH;
+    return `<i class="kfl" style="${box(L.kx + dx * L.kcw - w / 2, y - h, w, h)};animation-delay:${-q * .37}s">${[1, 2, 3, 4].map(f => `<i style="--m:var(--a-k-flame${f})"></i>`).join('')}</i>`; }).join('') : '';
+  const flames = fl([[-.42, .66], [0, .5], [.42, .66]], L.floor - L.lh * .45), flamesF = fl([[-.15, .3], [.17, .26]], L.floor - L.lh * .26);
+  const bub = (k, big) => [...Array(k)].map(() => { const a = R() * Math.PI * 2, rr = Math.sqrt(R()) * .62;
+    return `<i class="kbub" style="--x:${(50 + Math.cos(a) * rr * 50).toFixed(1)}%;--y:${(50 + Math.sin(a) * rr * 50).toFixed(1)}%;--s:${Math.round(L.ry * (big ? .5 : .32) * (.6 + R() * .7))}px;--du:${((big ? .9 : 1.8) + R()).toFixed(2)}s;--dl:-${(R() * 2).toFixed(2)}s"></i>`; }).join('');
+  const pot = `<i class="kpot" style="${box(L.mx - L.rx * .9, L.my - L.ry * .62, L.rx * 1.8, L.ry * 1.6)};background-color:${anim ? cols[0] : cols[3]}"><i class="kpglow"></i>${bub(6)}<i class="kboil">${bub(9, true)}</i></i>`;
+  const fire = `<i class="kglow" style="${box(L.kx - L.kcw, L.cb - L.kch * .9, L.kcw * 2, L.kch * 1.3)}"></i>${flames}`
+    + (HAS_ART('k_logs') ? `<img class="klogs" src="${ART.k_logs}" alt="" style="${box(L.kx - L.lw / 2, L.floor - L.lh, L.lw, L.lh)}">` : '')
+    + `<img class="kcaul" src="${ART.k_cauldron}" alt="" style="${box(L.cl, L.ct, L.kcw, L.kch)}">${pot}`;
+  const cs = Math.round(Math.min(L.jw * .42, 100)), sp = Math.round(L.kcw * .55);
+  const falls = anim ? pk.map((i, k) => `<i class="kfi" style="${box(-cs / 2, -cs / 2, cs, cs)}"><img src="${kBit(i)}" alt=""></i>`
+    + (HAS_ART('k_splash1') ? `<i class="ksp" style="${box(-sp / 2, -sp * .62, sp, sp)};--m:var(--a-k-splash${1 + (k * 2 + (UI.openAt || 0)) % 6});background:${lite[k + 1]}"></i>` : '')).join('') : '';
+  const [sW, sH] = kSize('k_steam'), sw = L.kcw * 1.25, sh = sw * sH / sW;
+  const steam = HAS_ART('k_steam') && brew ? `<i class="kst" style="${box(L.mx - sw / 2, L.my + L.ry * .4 - sh, sw, sh)}"></i>` : '';
+  const stage = `<div class="kstage ${brew ? 'brew' : ''} ${brew && !anim ? 'done' : ''}" style="width:${L.Sw}px;transform:translateX(${brew ? -L.pan : 0}px)">
+    <i class="khut"></i>${cat}${fire}${shelves}${falls}<img class="kcaul front" src="${ART.k_cauldron_front}" alt="" style="${box(L.cl, L.ct, L.kcw, L.kch)}">${flamesF}${steam}</div>`;
+  // пучки трав на переднем плане: ближе к зрителю — при проезде камеры движутся быстрее (между экранами и у правого края)
+  const span = L.pan * 1.35 - L.W, hx = span > 120 ? [[.2, 1], [.55, 3], [.86, 2]].map(([f, k]) => [L.W + span * f, k]) : [];
+  hx.push([L.pan * 1.35 + L.W - 54, 4]);
+  const herbs = `<div class="kherbs" style="width:${Math.round(L.pan * 1.35 + L.W + 120)}px;transform:translateX(${brew ? Math.round(-L.pan * 1.35) : 0}px)">${hx.filter(([, k]) => HAS_ART('k_herb' + k)).map(([x, k]) => {
+    const [w, h] = kSize('k_herb' + k), hh = L.H * .3, ww = hh * w / h; return `<img class="kherb" src="${ART['k_herb' + k]}" alt="" style="${box(x - ww / 2, -L.H * .03, ww, hh)}">`; }).join('')}</div>`;
+  const bar = brew ? '' : `<div class="kbar" style="left:${Math.round(L.shW / 2)}px;bottom:${L.sb + 14}px">${!turn ? '<span>Все роли выданы. Верните телефон рассказчику</span>'
+    : pk.length < 3 ? '<span>Выберите три ингредиента</span>' : '<button class="kgo" data-act="kBrew">В котёл!</button>'}</div>`;
+  // рука ведьмы и ингредиент в щепоти — поверх банки (передний план); падающий в котёл — в сцене, за передним краем котла
+  const fx = anim ? `<div class="kfx" aria-hidden="true">${pk.map(i => `<i class="kci" style="${box(-cs / 2, -cs / 2, cs, cs)}"><img src="${kBit(i)}" alt=""></i>`).join('')}`
+    + `<i class="khand" style="${box(-L.px, -L.py, L.hw, L.hh)};transform-origin:${L.px.toFixed(0)}px ${L.py.toFixed(0)}px">${[1, 2, 3].map(q => `<img class="kh${q}" src="${ART['k_hand' + q]}" alt="">`).join('')}</i></div>` : '';
+  // роль из пара; сверху выглядывает ведьма с фразой (лицо и фраза — по типу роли, которую видит игрок)
+  const reveal = open ? (() => { const op = E.P(S, open.pid), r = (op && seenRole(op)) || E.drawShown(open), al = isGoodRole(r) ? 'good' : 'evil', t = team(r), face = K_FACE[t] || 1;
+    const ph = K_PHR[open.phr] || K_PHR.find(p => p[0] === t) || K_PHR[0];
+    return `<div class="wreveal kreveal side-${al} ${anim ? '' : 'know'}" data-act="drawClose" role="dialog" aria-label="Ваша роль" style="padding-top:${Math.round(L.st + Math.min(L.H * .27, 230))}px">
+      <div class="wrfor">Ваша роль</div><div class="wrart">${ico(r, al, 'wric')}</div><div class="wrname">${esc(E.rname(r))}</div>
+      <div class="wrteam">${esc(E.TEAM_RU[t] || '')} · ${al === 'good' ? 'добро' : 'зло'}</div><div class="wrab">${esc(DATA.roles[r].ability)}</div>
+      <div class="shhint wrlater">Запомните роль и нажмите — котёл закипит для следующего</div>
+      ${HAS_ART('k_witch' + face) ? `<div class="kwitch" style="top:${L.st}px"><img src="${ART['k_witch' + face]}" alt=""><div class="kbubble">${esc(ph[1])}</div></div>` : ''}</div>`; })() : '';
+  return `<div class="ov wallov kettle ${brew ? 'busy' : ''}" role="dialog" aria-label="Ведьмин котёл: выдача ролей">
+    <div class="wall ${UI.wallAnim ? 'roll' : ''}"><div class="kroom">${stage}${herbs}${head}${jar}${bar}${fx}</div></div>
+    <button class="grimx" data-act="wallHide" aria-label="Свернуть котёл"></button>${reveal}</div>`;
+}
+// камера: сцена (и травы переднего плана — быстрее) от a до b
+function kCam(room, L, a, b, el) {
+  const go = (n, k) => { if (!n || !n.animate) return; const an = n.animate([{ transform: `translateX(${(a * k).toFixed(1)}px)` }, { transform: `translateX(${(b * k).toFixed(1)}px)` }],
+    { duration: KT.pan, easing: 'cubic-bezier(.5,0,.3,1)', fill: 'both' }); an.currentTime = el; };
+  go(room.querySelector('.kstage'), 1); go(room.querySelector('.kherbs'), 1.35);
+}
+// выбранный ингредиент перелетает с полки в банку (дугой, переворачиваясь)
+function kFlyIn(room, f, el) {
+  const img = room.querySelector(`.kslot[data-arg="${f.k}"] img`); if (!img) return;
+  const r = img.getBoundingClientRect(), dx = f.r.x - (r.left + r.width / 2), dy = f.r.y - (r.top + r.height / 2), s0 = hClamp(f.r.h / (r.height || 1), .4, 2.5);
+  const a = hAnim(img, u => { const e = hSmooth(u); return { x: dx * (1 - e), y: dy * (1 - e) - Math.sin(Math.PI * u) * 70, s: s0 + (1 - s0) * e, r: (1 - e) * -40 }; }, 460);
+  if (a) a.currentTime = el;
+}
+// варка: путь руки — опорные точки [время, x, y, дуга на отрезке] (точка — щепоть); кадры — через hAnim, перерисовка продолжает с того же места
+function kBrewAnim(room, L, el) {
+  kCam(room, L, 0, -L.pan, el);
+  const pk = UI.kbrew || [], rr = room.getBoundingClientRect(), T = KT.out, g = KT.g, rel = k => g[k] + KT.carry, set = a => { if (a) a.currentTime = el; };
+  const slots = [0, 1, 2].map(k => { const n = room.querySelector(`.kslot[data-arg="${k}"]`), b = n && n.getBoundingClientRect();
+    return b ? [b.left - rr.left + b.width / 2, b.top - rr.top + b.height / 2] : [L.jx, L.jt + L.jh * .66]; });
+  const M = [L.mx - L.pan, L.my], up = -L.H * .4, Rk = k => [M[0] + (k - 1) * L.rx * .3, M[1] - L.kch * .62], C = [M[0] + L.rx * .08, M[1] - L.kch * .5];
+  const P = [[0, slots[0][0], up], [KT.pan, slots[0][0], up], [g[0], ...slots[0]]];
+  for (let k = 0; k < 3; k++) {
+    const q = Rk(k); P.push([g[k] + 120, ...slots[k]], [rel(k), q[0], q[1], 60], [rel(k) + 80, q[0], q[1] - 14]);
+    if (k < 2) P.push([g[k + 1], ...slots[k + 1], 40]);
+  }
+  P.push([KT.conj, ...C], [KT.exit, ...C], [KT.out, C[0] + 40, up]);
+  const at = t => { for (let q = 1; q < P.length; q++) if (t <= P[q][0]) { const a = P[q - 1], b = P[q], u = hSmooth(hClamp((t - a[0]) / Math.max(1, b[0] - a[0]), 0, 1));
+    return [a[1] + (b[1] - a[1]) * u, a[2] + (b[2] - a[2]) * u - Math.sin(Math.PI * u) * (b[3] || 0)]; } const z = P[P.length - 1]; return [z[1], z[2]]; };
+  const wig = t => t > KT.conj && t < KT.exit ? Math.sin((t - KT.conj) / 140) * 7 : 0; // колдует — пальцы шевелятся над котлом
+  set(hAnim(room.querySelector('.khand'), u => { const t = u * T, p = at(t); return { x: p[0] + wig(t), y: p[1], r: wig(t) * .9 }; }, T));
+  // позы: щепоть; разжатые пальцы — сразу после броска; колдовство над котлом
+  const pose = t => { for (let k = 0; k < 3; k++) if (t >= rel(k) && t < rel(k) + 300) return 2; return t >= KT.conj - 300 ? 3 : 1; };
+  [1, 2, 3].forEach(q => set(hFade(room.querySelector('.kh' + q), u => pose(u * T) === q ? 1 : 0, T)));
+  const ci = room.querySelectorAll('.kci'), si = room.querySelectorAll('.kslot img'), fi = room.querySelectorAll('.kfi'), sp = room.querySelectorAll('.ksp'), Rn = hRand(UI.openAt || 5);
+  pk.forEach((_, k) => {
+    set(hFade(si[k], u => u * T < g[k] ? 1 : 0, T)); // в банке — пока рука не взяла
+    set(hAnim(ci[k], u => { const t = u * T, p = at(t); return { x: p[0], y: p[1], s: 1.1, r: Math.sin(t / 90) * 7, o: t >= g[k] && t < rel(k) ? 1 : 0 }; }, T));
+    // падает дугой и кувыркаясь, уходит за передний край котла (в сцене: экран + проезд камеры)
+    const s0 = [Rk(k)[0] + L.pan, Rk(k)[1]], h = [M[0] + (k - 1) * L.rx * .22 + L.pan, M[1] + L.ry * .25], spin = (Rn() < .5 ? -1 : 1) * (220 + Rn() * 240), t0 = rel(k), hit = t0 + KT.fall - 40;
+    set(hAnim(fi[k], u => { const t = u * T, v = hClamp((t - t0) / KT.fall, 0, 1);
+      return { x: s0[0] + (h[0] - s0[0]) * v, y: s0[1] + (h[1] - s0[1]) * v * v - Math.sin(Math.PI * v) * 22, r: spin * v, s: 1.1 - .45 * v * v, o: t >= t0 && t < t0 + KT.fall ? 1 - hRamp(v, .84, 1) : 0 }; }, T));
+    set(hAnim(sp[k], u => { const t = u * T, v = hClamp((t - hit) / 560, 0, 1);
+      return { x: h[0], y: M[1], s: .35 + .8 * hSmooth(v), o: t >= hit && t < hit + 560 ? Math.min(1, v * 6) * (1 - hRamp(v, .45, 1)) : 0 }; }, T));
+  });
+  // зелье меняет цвет от каждого ингредиента; после третьего — кипит и светится
+  const pot = room.querySelector('.kpot'), cols = kPotCols(pk);
+  if (pot && pot.animate) {
+    const kf = [{ offset: 0, backgroundColor: cols[0] }];
+    [0, 1, 2].forEach(k => { const h = rel(k) + KT.fall - 40; kf.push({ offset: h / T, backgroundColor: cols[k] }, { offset: (h + 240) / T, backgroundColor: cols[k + 1] }); });
+    kf.push({ offset: 1, backgroundColor: cols[3] }); set(pot.animate(kf, { duration: T, fill: 'both' }));
+  }
+  ['.kboil', '.kpglow'].forEach(s => set(hFade(room.querySelector(s), u => hRamp(u * T, g[2] + 700, KT.conj + 500), T)));
+  set(hFade(room.querySelector('.kjar'), u => 1 - hRamp(u * T, g[2] + 600, KT.conj + 200), T)); // пустая банка тает — пар и роль на первом плане
+  // пар поднимается из котла и стоит за ролью
+  const T2 = KT.card + 2400;
+  set(hAnim(room.querySelector('.kst'), u => { const t = u * T2, v = hSmooth(hRamp(t, KT.steam, KT.steam + 1200));
+    return { sx: .55 + .45 * v, sy: .12 + .88 * v, y: -hRamp(t, KT.steam + 1200, T2) * 30, o: .95 * v - .4 * hRamp(t, KT.steam + 1300, T2) }; }, T2));
+  // карточка роли и ведьма — CSS-анимации с задержками: перерисовка ставит их на то же место
+  document.querySelectorAll('.kreveal').forEach(n => n.getAnimations && n.getAnimations({ subtree: true }).forEach(a => { try { a.currentTime = el; } catch (e) { /* без времени */ } }));
+}
+// после перерисовки: перелёт в банку, возврат камеры к полкам, варка
+function kettleAfter() {
+  if (!UI.wall || !S.draw || !kettleOn()) return;
+  const room = document.querySelector('.kroom'); if (!room) return;
+  const now = Date.now(), L = kLayout(), rm = kReduced();
+  if (UI.kfly) { const el = now - UI.kfly.t; if (el > 480 || rm) UI.kfly = null; else kFlyIn(room, UI.kfly, el); }
+  if (UI.kback) { const el = now - UI.kback; if (el > KT.pan || rm || S.draw.open !== null) UI.kback = null; else kCam(room, L, -L.pan, 0, el); }
+  if (S.draw.open !== null && UI.openAt && !rm) kBrewAnim(room, L, now - UI.openAt);
+}
 function wallOverlay() {
   const d = S.draw; if (!UI.wall || !d) return '';
+  if (kettleOn()) return kettleOverlay(d);
   const turn = d.turn && E.P(S, d.turn), open = d.open !== null ? d.cells[d.open] : null, crypt = cryptOn(), vt = !crypt && vitrOn();
   const cells = d.cells.map((c, i) => {
     if (vt) return vitrCell(d, c, i, turn); // «Витраж во тьме»: окна витража вместо табличек
@@ -2626,7 +2857,7 @@ function render() {
   if (UI.tab === 'roles') filterRefs();
   paintSave();
   window.scrollTo(0, scrollY);
-  hallowAfter(); vitrAfter(); fitTokNames(); tabsPin();
+  hallowAfter(); vitrAfter(); kettleAfter(); fitTokNames(); tabsPin();
 }
 
 /* ------------------------------------------------------------ обработчики */
@@ -2895,7 +3126,7 @@ const A = {
   showRole: id => { const p = E.P(S, id), r = seenRole(p); UI.show = { screens: [{ caption: 'Ваша роль', items: [{ role: r, align: r === p.role ? p.align : undefined }] }], i: 0 }; render(); },
   showRef: rid => { UI.show = { screens: [{ caption: '', items: [{ role: rid, align: DATA.roles[rid].team === 'fabled' || DATA.roles[rid].team === 'loric' ? 'good' : undefined }] }], i: 0 }; render(); },
   // жребий: каменная стена
-  drawStart: () => { if (S.draw) return wallIn(); const pr = E.drawProblem(S); if (pr) return alertNote(pr); act(S => E.drawStart(S), 'жребий: стена'); wallIn(); },
+  drawStart: () => { if (S.draw) return wallIn(); const pr = E.drawProblem(S); if (pr) return alertNote(pr); UI.kpick = []; act(S => E.drawStart(S), 'жребий: стена'); wallIn(); },
   // Савант, Рыбак, Мецефель (день)
   // свои факты рассказчика (own) остаются, подбирается только факт другой правдивости
   savGen: id => draft(S => { const own = (S.day.picks['sav_' + id] || []).filter(x => x.own);
@@ -2966,7 +3197,18 @@ const A = {
       : pinSave(nw) ? { ok: true, t: 'Пароль изменён (на этом устройстве)' } : { ok: false, t: 'Не получилось сохранить: хранилище браузера недоступно' };
     render(); },
   rolesHide: () => { draft(S => { if (S.draw) S.draw.hidden = true; }); window.scrollTo(0, 0); },
-  drawTurn: (a, el) => { const id = el && el.value; if (id) draft(S => { S.draw.turn = id; }); },
+  drawTurn: (a, el) => { const id = el && el.value; if (id) { UI.kpick = []; draft(S => { S.draw.turn = id; }); } },
+  // котёл: ингредиент с полки — в банку (не больше трёх; полки не пустеют — можно и одинаковые), из банки — обратно
+  kPick: i => { const pk = UI.kpick = UI.kpick || []; if (!S.draw || S.draw.open !== null || !S.draw.turn || pk.length >= 3) return;
+    const im = document.querySelector(`.king[data-arg="${i}"] img`), r = im && im.getBoundingClientRect();
+    UI.kfly = r ? { k: pk.length, t: Date.now(), r: { x: r.left + r.width / 2, y: r.top + r.height / 2, h: r.height } } : null;
+    pk.push(+i); render(); },
+  kUnpick: k => { if (!UI.kpick || (S.draw && S.draw.open !== null)) return; UI.kpick.splice(+k, 1); UI.kfly = null; render(); },
+  // «В котёл!»: ячейка жребия — по сочетанию ингредиентов; роль из неё выйдет после варки (KT.card)
+  kBrew: () => { const d = S.draw, pk = UI.kpick || []; if (!d || d.open !== null || !d.turn || pk.length < 3) return;
+    const i = kCell(d, pk); if (i < 0) return;
+    UI.openAt = Date.now(); UI.kbrew = pk.slice(); UI.kpick = []; UI.kfly = null; UI.kback = null;
+    act(S => { if (E.drawOpen(S, i)) kPhrase(S, i); }, 'жребий: зелье сварено'); },
   drawOpen: i => { UI.openAt = Date.now();
     // склеп: откуда вылетает нечисть (центр сундука на стене) и кто — случайно; от краёв летит к середине (по месту сундука на экране:
     // столбцов 3 на телефоне, 4–5 на широком экране)
@@ -2984,9 +3226,10 @@ const A = {
     const fxs = HFX.filter(k => hfxOk(k) && k !== UI.openFx); UI.openFx = fxs[Math.floor(Math.random() * fxs.length)] || 'ghost';
     act(S => E.drawOpen(S, +i), 'жребий: ячейка открыта'); },
   // закрыть роль можно не раньше чем через 2 секунды — чтобы игрок успел прочитать и не закрыл случайно (было 3 с; просьба пользователя 2026-10-18)
-  drawClose: () => { if (UI.openAt && Date.now() - UI.openAt < 2000) return; UI.openAt = null;
+  drawClose: () => { if (UI.openAt && Date.now() - UI.openAt < 2000 + (kettleOn() ? KT.card : 0)) return; UI.openAt = null;
+    if (kettleOn()) { UI.kbrew = null; UI.kpick = []; UI.kback = Date.now(); } // котёл: камера возвращается к полкам
     UI.cracking = S.draw.open; act(S => E.drawClose(S), 'жребий: ячейка закрыта'); setTimeout(() => { UI.cracking = null; }, 1600); },
-  drawCancel: () => { UI.wall = false; act(S => E.drawCancel(S), 'жребий отменён'); },
+  drawCancel: () => { UI.wall = false; UI.kpick = []; act(S => E.drawCancel(S), 'жребий отменён'); },
   edRole: (id, el) => act(S => E.storytellerRole(S, E.P(S, id), el.value || null), 'роль ' + E.nm(S, id)),
   // смерть по решению рассказчика — настоящая: ночью попадёт в объявление на рассвете, сработают последствия
   edKill: id => { const why = (document.getElementById('edWhy-' + id) || {}).value || ''; act(S => E.storytellerKill(S, id, null, why), 'смерть: ' + E.nm(S, id)); },
@@ -3172,6 +3415,8 @@ let resizeTimer = null;
 document.addEventListener('pointerdown', e => { UI.tap = { x: e.clientX, y: e.clientY, t: Date.now() }; }, { capture: true, passive: true });
 // перестроить при повороте экрана: Гримуар кругом; витраж и склеп — столбцы под новый экран (не посреди раскрытия)
 window.addEventListener('resize', () => {
+  // котёл: сцена считается в пикселях — перестроить (и посреди варки: анимации продолжатся с того же места)
+  if (UI.wall && S.draw && kettleOn()) { clearTimeout(resizeTimer); resizeTimer = setTimeout(render, 150); return; }
   // роль открыта на витраже — только заново поставить медальон под знак роли
   if (UI.wall && S.draw && S.draw.open !== null && vitrOn()) { clearTimeout(resizeTimer); resizeTimer = setTimeout(vitrAlign, 150); return; }
   if (!UI.grimShow && !(UI.wall && S.draw && S.draw.open === null && (vitrOn() || cryptOn()))) return;
