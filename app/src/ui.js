@@ -770,7 +770,7 @@ function prepDefs(mid) {
     ...flag('ftHerring', 'Ложная цель Гадалки (добрый игрок): для Гадалки он «Демон»', 'fortuneteller', good),
     ...flag('goodTwin', 'Добрый близнец', 'eviltwin', good),
     ...flag('puzzleDrunk', 'Головоломщик: кто пьян всю игру (вики: почти всегда лучше Горожанин; сам игрок не знает)', 'puzzlemaster', p => !E.isTraveller(p) && !!p.role && p.role !== 'puzzlemaster'),
-    ...flag('fauxPaw', 'Оборотень: «Кошачья лапка» — добрый игрок, который определяется злым, пока Оборотень жив (Оборотень его не убьёт)', 'lycanthrope', p => good(p) && p.role !== 'lycanthrope'));
+    ...flag('fauxPaw', 'Оборотень: «Кошачья лапка» — добрый игрок, которого Оборотень не убьёт (для остальных ролей — обычный добрый)', 'lycanthrope', p => good(p) && p.role !== 'lycanthrope'));
   if (!mid && (S.flags.marionetteNeed || S.players.some(p => p.role === 'marionette'))) { // Марионетка: сосед Демона с доброй ролью (вики)
     const cur = S.players.find(p => p.role === 'marionette'), nb = E.demonSeatNeighbours(S);
     out.push({ k: 'marionette', label: 'Марионетка — кто из соседей Демона ею станет (он будет считать себя своей ролью, как Пьяница)', cur: cur && cur.id, ask: !cur,

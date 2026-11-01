@@ -1744,13 +1744,16 @@ try {
     E.slayerShot(G, cn.id, im.id);
     ok('Каннибал-Истребитель стреляет в Демона — Демон умирает', !im.alive);
 
-    // Повар: «Кошачья лапка» по вики определяется злой — посчитана, но видно и число без неё
+    // Повар и Эмпат: «Кошачья лапка» злая только для Оборотня (решение пользователя 2026-11-01: «почему должен страдать Повар или Эмпат»)
     const C = game(['chef', 'lycanthrope', 'empath', 'monk', 'soldier', 'poisoner', 'imp'], 'nachtmahr');
     const paw = byRole(C, 'soldier'); C.flags.fauxPaw = paw.id; E.autoSetup(C, false); C.flags.fauxPaw = paw.id;
     const pi = C.players.indexOf(paw); C.players.splice(pi, 1); C.players.splice(C.players.indexOf(byRole(C, 'poisoner')) + 1, 0, paw); // лапка рядом с Отравителем
     E.startGame(C);
     const cs = E.stepSpec(C, C.night.steps.find(s => s.id === 'chef')), ci = cs.info(Object.assign({}, cs.defaults));
-    ok('Повар: лапка рядом со злым — пара посчитана, в подсказке число без лапки', ci.lines.some(l => /без неё пар было бы/.test(l)), ci.lines.join(' | '));
+    ok('Повар: лапка между двумя злыми — пар 0 (лапка добрая), без пометок про лапку', E.fauxPawOn(C, paw) && ci.show === '0' && !ci.lines.some(l => /лапк/i.test(l)), ci.show + ' | ' + ci.lines.join(' | '));
+    const emp = byRole(C, 'empath'); C.players.splice(C.players.indexOf(emp), 1); C.players.splice(C.players.indexOf(paw) + 1, 0, emp); // Эмпат рядом с лапкой
+    const es = E.stepSpec(C, C.night.steps.find(s => s.id === 'empath')), nb = E.aliveNeighbours(C, emp);
+    ok('Эмпат: лапка-сосед не считается злой', nb.includes(paw) && es.info({}).show === String(nb.filter(q => q.align === 'evil').length), es.info({}).show + ' ' + nb.map(q => q.name).join(','));
   }
 
   for (const k of Object.keys(DATA.scripts)) ok('сценарий ' + k + ' — все роли в данных', DATA.scripts[k].roles.every(r => DATA.roles[r]));
