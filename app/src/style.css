@@ -1578,8 +1578,9 @@ html .wallov.crypt .wrfor { font-family: var(--f-wet, 'Rubik Wet Paint', 'Kurale
 .kimg { position: relative; display: block; width: 100%; height: var(--ki); }
 .kstage .kimg img { left: 50%; bottom: 0; max-width: 92%; max-height: 100%; transform: translateX(-50%); filter: drop-shadow(0 3px 3px rgba(0, 0, 0, .55)); transition: transform .15s; }
 .king:active:not(:disabled) .kimg img { transform: translateX(-50%) translateY(-5px) scale(.94); }
-.ktag { display: block; margin-top: calc(var(--kbh) * .1); max-width: calc(100% - 6px); padding: 3px 4px 4px; border-radius: 3px; background: #E8DCBC; color: #3A2716;
-  font: 700 var(--fs)/1.12 var(--f-tale, 'Kurale', Georgia, serif); text-align: center; overflow-wrap: break-word; hyphens: auto;
+/* бирка: слова целиком (шрифт подобран в kTagFit по ширине самого длинного слова), без переносов внутри слова */
+.ktag { display: block; margin-top: calc(var(--kbh) * .1); width: calc(100% - 6px); padding: 3px 4px 4px; border-radius: 3px; background: #E8DCBC; color: #3A2716;
+  font: 700 var(--tfs, 12px)/1.12 'Kurale', 'Alegreya Sans', Georgia, serif; text-align: center; overflow-wrap: normal; word-break: normal; hyphens: manual;
   box-shadow: 0 2px 4px rgba(0, 0, 0, .55), inset 0 0 6px rgba(120, 80, 30, .35); transform: rotate(var(--tr, 0deg)); }
 /* шапка «Зелье варит» и банка под именем — поверх сцены, не едут с камерой */
 .ktop { position: absolute; left: 0; z-index: 5; padding: 0 12px; }

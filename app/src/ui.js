@@ -2276,13 +2276,36 @@ function hallowAfter() {
    берёт их из банки по одному и бросает в котёл, зелье меняет цвет и бурлит, из пара поднимается роль, сверху выглядывает ведьма
    с фразой по типу роли, которую видит игрок. Сочетание ингредиентов выбирает ячейку жребия (как сундук склепа): роли разложены по
    ячейкам в случайном порядке в начале жребия, где какая — не видит никто. Движение — кодом (Web Animations), как в склепе */
-// название на бирке (одобрены пользователем 2026-11-01) и цвет, который ингредиент даёт зелью; в длинных словах — мягкий перенос
-// (­): бирка на телефоне узкая, без него слово рвалось без дефиса
-const K_ING = [['Гнида обыкно­венная', '#9A7A4A'], ['Мухи-вонюхи', '#6E8F3A'], ['Сопли тролля, свежий урожай', '#7BD12E'], ['Жабий глаз', '#D8B536'],
-  ['Ушная сера великана', '#E0782A'], ['Носок мертвеца, непарный', '#8C8A84'], ['Слизь улиточья марино­ванная', '#8E8A3C'], ['Чих кикиморы', '#B9DC8A'],
+// название на бирке (одобрены пользователем 2026-11-01) и цвет, который ингредиент даёт зелью
+const K_ING = [['Гнида обыкновенная', '#9A7A4A'], ['Мухи-вонюхи', '#6E8F3A'], ['Сопли тролля, свежий урожай', '#7BD12E'], ['Жабий глаз', '#D8B536'],
+  ['Ушная сера великана', '#E0782A'], ['Носок мертвеца, непарный', '#8C8A84'], ['Слизь улиточья маринованная', '#8E8A3C'], ['Чих кикиморы', '#B9DC8A'],
   ['Бородавка ведьмина сушёная', '#7A5530'], ['Хвост крысы-сплетницы', '#E58FA3'], ['Зубной камень дракона', '#D8C38E'], ['Пыль с гроба, первый отжим', '#A7A39A'],
-  ['Жабья икра в собствен­ном соку', '#4F6E2A'], ['Плесень подваль­ная элитная', '#4FA3A0'], ['Слёзы рассказ­чика', '#6FB6F0'], ['Перхоть оборотня', '#E8E4D8'],
-  ['Паучьи лапки хрустящие', '#B0702E'], ['Ногти упыря, нарезка', '#3A3634'], ['Сало летучей мыши', '#F2B9B5'], ['Вопль мандра­горы в банке', '#C49A5C']];
+  ['Жабья икра в собственном соку', '#4F6E2A'], ['Плесень подвальная элитная', '#4FA3A0'], ['Слёзы рассказчика', '#6FB6F0'], ['Перхоть оборотня', '#E8E4D8'],
+  ['Паучьи лапки хрустящие', '#B0702E'], ['Ногти упыря, нарезка', '#3A3634'], ['Сало летучей мыши', '#F2B9B5'], ['Вопль мандрагоры в банке', '#C49A5C']];
+/* Бирка: слова не переносятся — целиком на новую строку, составное — по дефису (заметка пользователя 2026-11-01: «убери переносы слов…
+   сделай покрупнее названия»). Шрифт — самый крупный (от base вниз), при котором каждое слово влезает в ширину и строк не больше трёх;
+   ширина слов — по canvas тем же шрифтом (с запасом 5%: жирный Kurale синтетический) */
+const K_TAG_FONT = "'Kurale', 'Alegreya Sans', Georgia, serif", kTagCache = new Map();
+let kCanvas = null;
+function kTagFit(name, w, base) {
+  const key = `${name}|${Math.round(w)}|${base}`; if (kTagCache.has(key)) return kTagCache.get(key);
+  // шрифт ещё не загружен — мерим запасным, а когда Kurale догрузится, перемеряем (loadingdone ниже)
+  try { if (document.fonts && !document.fonts.check(`700 12px ${K_TAG_FONT}`)) document.fonts.load(`700 12px ${K_TAG_FONT}`); } catch (e) { /* без FontFace API */ }
+  const x = (kCanvas = kCanvas || document.createElement('canvas')).getContext('2d');
+  const toks = []; name.split(' ').forEach(word => word.replace(/-/g, '-\u0000').split('\u0000').forEach((t, i) => toks.push([t, i ? '' : ' '])));
+  let res = null;
+  for (let fs = base; fs >= 9.5 && !res; fs -= .5) {
+    x.font = `700 ${fs}px ${K_TAG_FONT}`; const m = s => x.measureText(s).width * 1.05;
+    let lines = 1, line = '', ok = true;
+    for (const [t, sep] of toks) {
+      if (m(t) > w) { ok = false; break; }
+      const c = line ? line + sep + t : t;
+      if (m(c) <= w) line = c; else { lines++; line = t; }
+    }
+    if (ok && lines <= 3) res = [fs, lines];
+  }
+  res = res || [9.5, 3]; kTagCache.set(key, res); return res;
+}
 // фразы ведьмы по типу роли, которую видит игрок (Пьяница — Горожанина, Безумец — Демона; одобрены пользователем 2026-11-01);
 // лицо ведьмы — по тому же типу (k_witch1–4)
 const K_PHR = [
@@ -2312,22 +2335,28 @@ function kSafe() {
 function kLayout() {
   const W = window.innerWidth || 375, H = window.innerHeight || 700, m = KM(), [st, sb] = kSafe(), wide = W > H && H >= 600;
   const Sw = Math.round(Math.max(H * 1.5, wide ? W : W * 1.8)), pan = Sw - W;
-  const shW = wide ? Math.round(Math.max(W * .46, Math.min(W * .56, 560))) : W, cw = wide ? Sw - shW : W, kx = Sw - cw / 2;
+  const shW = wide ? Math.round(Math.max(W * .46, Math.min(W * .56, 680))) : W, cw = wide ? Sw - shW : W, kx = Sw - cw / 2; // полки пошире — бирки крупнее
   const [cW, cH] = kSize('k_cauldron'), kcw = Math.min(cw * .78, H * .36 * cW / cH), kch = kcw * cH / cW;
   const [lW, lH] = kSize('k_logs'), lw = kcw * 1.3, lh = lw * lH / lW, floor = H - sb * .5 - H * .04;
   const cb = floor - lh * .42, ct = cb - kch, cl = kx - kcw / 2;
   const mo = m.mouth || [.5, .13, .34, .09], mx = cl + mo[0] * kcw, my = ct + mo[1] * kch, rx = mo[2] * kcw, ry = mo[3] * kch;
   // банка — под шапкой (имя — выпадающим списком), полки — под банкой, над нижней кнопкой; альбомом банка — над котлом, полкам — вся высота
-  const [jW, jH] = kSize('k_jar'), jw = Math.round(wide ? Math.min(cw * .42, 260, H * .22 * jW / jH) : Math.min(shW * .52, H > 900 ? 300 : 240, H * .2 * jW / jH)), jh = Math.round(jw * jH / jW);
+  // на телефоне банка поменьше — полкам с крупными бирками нужно место
+  const [jW, jH] = kSize('k_jar'), jw = Math.round(wide ? Math.min(cw * .42, 260, H * .22 * jW / jH) : Math.min(shW * .52, H > 900 ? 300 : 240, H * (H > 900 ? .2 : .155) * jW / jH)), jh = Math.round(jw * jH / jW);
   // телефон боком: банка справа от имени, полки — сразу под шапкой (и прокручиваются: по высоте места мало)
   const land = W > H && !wide, jx = wide ? kx - pan : land ? W - 68 - jw / 2 : shW / 2, jt = wide ? st + 16 : land ? st + 6 : st + 78;
   const top = wide || land ? st + 84 : jt + jh + 4, bot = sb + 70;
-  // полки: 3–5 рядов; в ряду — ингредиенты, под каждым бирка в 3 строки; берём ряды, при которых картинки крупнее
+  // полки: 3–6 рядов; в ряду — ингредиенты, под каждым бирка. Шрифт у всех бирок один — самый крупный, при котором у каждой слова влезают
+  // и строк не больше трёх (kTagFit). Берём ряды, при которых он не меньше 11 px, а картинки крупнее; не влезло по высоте — картинки
+  // не меньше 46 px, полки прокручиваются
   let best = null;
-  for (const rows of [3, 4, 5]) {
-    const per = Math.ceil(20 / rows), col = (shW - 20) / per, fs = hClamp(col * .135, 10, 14), tag = Math.round(fs * 1.15 * 3 + 8);
-    const item = Math.max(52, Math.floor(Math.min(col * .9, (H - top - bot) / rows - tag - 10))); // не меньше 52 px — тогда полки прокручиваются
-    if (!best || item > best.item) best = { rows, per, col, fs, tag, item };
+  const [bW0, bH0] = kSize('k_shelf1'), bh = (shW - 8) * bH0 / bW0; // доска — во всю ширину; бирка отступает от неё на 0,1 её высоты
+  for (const rows of [3, 4, 5, 6]) {
+    const per = Math.ceil(20 / rows), col = (shW - 20) / per, base = hClamp(col * .16, 12, 18);
+    const small = Math.min(...K_ING.map(([n]) => kTagFit(n, col - 14, base)[0])), fits = K_ING.map(([n]) => kTagFit(n, col - 14, small));
+    const tag = Math.ceil(Math.max(...fits.map(([f, l]) => f * 1.12 * l)) + 8 + bh * .1 + 2);
+    const item = Math.max(46, Math.floor(Math.min(col * .9, (H - top - bot) / rows - tag - 10))), ok = small >= 11;
+    if (!best || (ok && !best.ok) || (ok === best.ok && (ok ? item > best.item : small > best.small))) best = { rows, per, col, fits, small, tag, item, ok };
   }
   const [hW, hH] = kSize('k_hand1'), pin = m.pinch || [.5, .81], hh = Math.max(H * .46, (my - kch * .62) / pin[1] + 40), hw = hh * hW / hH;
   return { W, H, st, sb, Sw, pan, wide, shW, kx, kcw, kch, cl, ct, cb, lw, lh, floor, mx, my, rx, ry, jw, jh, jx, jt, top, bot, hh, hw, px: pin[0] * hw, py: pin[1] * hh, ...best };
@@ -2375,10 +2404,12 @@ function kettleOverlay(d) {
   for (let r = 0; r < L.rows; r++) {
     let items = ''; const cnt = Math.min(L.per, 20 - n);
     for (let q = 0; q < cnt; q++, n++) items += `<button class="king" data-act="kPick" data-arg="${n}" ${turn && !brew ? '' : 'disabled'} aria-label="${esc(K_ING[n][0])}">`
-      + `<span class="kimg"><img src="${ART['k_ing' + n]}" alt=""></span><span class="ktag" style="--tr:${((n * 37) % 7 - 3) * .7}deg">${esc(K_ING[n][0])}</span></button>`;
+      + `<span class="kimg"><img src="${ART['k_ing' + n]}" alt=""></span><span class="ktag" style="--tr:${((n * 37) % 7 - 3) * .7}deg;--tfs:${L.fits[n][0]}px">${esc(K_ING[n][0])}</span></button>`;
     rows += `<div class="krow"><i class="kboard" style="background-image:var(--a-k-shelf${r % 3 + 1});top:${Math.round(L.item - stand[r % 3] * bh)}px"></i>${items}</div>`;
   }
-  const shelves = `<div class="kshelves" style="top:${L.top}px;bottom:${L.bot}px;width:${L.shW}px;--col:${L.col.toFixed(1)}px;--ki:${L.item}px;--tag:${L.tag}px;--fs:${L.fs.toFixed(1)}px;--kbh:${bh}px">${rows}</div>`;
+  // всё влезло — без прокрутки (иначе крутились бы кронштейны нижней доски); не влезло — полки прокручиваются
+  const fit = L.rows * (L.item + L.tag + 10) <= L.H - L.top - L.bot;
+  const shelves = `<div class="kshelves" style="top:${L.top}px;bottom:${L.bot}px;width:${L.shW}px;overflow-y:${fit ? 'hidden' : 'auto'};--col:${L.col.toFixed(1)}px;--ki:${L.item}px;--tag:${L.tag}px;--kbh:${bh}px">${rows}</div>`;
   // кот сидит на выступе каменной стены хижины (доли панорамы; она во всю ширину сцены, низом к низу экрана)
   const bgH = L.Sw / 1.5, bgT = L.H - bgH, [aW, aH] = kSize('k_cat1'), ch = bgH * .16, cwd = ch * aW / aH;
   const cat = HAS_ART('k_cat1') ? `<i class="kcat" style="left:${Math.round(L.Sw * .703 - cwd / 2)}px;top:${Math.round(bgT + bgH * .368 - (m.cat_seat || .62) * ch)}px;width:${Math.round(cwd)}px;height:${Math.round(ch)}px">`
@@ -2494,6 +2525,9 @@ function kettleAfter() {
   if (UI.kback) { const el = now - UI.kback; if (el > KT.pan || rm || S.draw.open !== null) UI.kback = null; else kCam(room, L, -L.pan, 0, el); }
   if (S.draw.open !== null && UI.openAt && !rm) kBrewAnim(room, L, now - UI.openAt);
 }
+// бирки котла меряются шрифтом Kurale: догрузился шрифт — перемерить и перерисовать
+if (document.fonts && document.fonts.addEventListener) document.fonts.addEventListener('loadingdone', () => {
+  if (!kTagCache.size) return; kTagCache.clear(); if (UI.wall && S && S.draw && kettleOn()) render(); });
 function wallOverlay() {
   const d = S.draw; if (!UI.wall || !d) return '';
   if (kettleOn()) return kettleOverlay(d);
