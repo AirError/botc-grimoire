@@ -358,7 +358,7 @@ def cauldron():
                       "s": r4((bx1 - bx0) * .25 / j.width)}
     if have("k_witch"):  # ведьма свешивается сверху: 4 лица в общей рамке; белый фон между прядями — прозрачный
         g = defringe(white_alpha(SRC / "k_witch.png", inner_thr=232, min_area=12))
-        for i, im in enumerate(grid_frames(g, 4, 1, pad=0), 1): save(f"k_witch{i}", alpha_pad(im))
+        for i, im in enumerate(grid_frames(g, 4, 1, pad=0), 1): save(f"k_witch{i}", erase_poly(alpha_pad(im), K_WITCH_ERASE.get(i)))
     if have("k_herbs"):  # пучки на бечёвках — свисают от верхнего края
         for i, im in enumerate(grid_pieces(white_alpha(SRC / "k_herbs.png"), 5, 1), 1): save(f"k_herb{i}", alpha_bbox(unwhite(im), thr=8))
     if have("k_cat"):  # кот: глаза открыты / закрыты; где он сидит (низ лап) — доля высоты
@@ -405,6 +405,21 @@ def white_holes(im, min_px=25, ring=2, dark=150):
 # что на полке в стекле (банки, бутылки, колпак) и что без тары рыхлое и светлое (пыль, перхоть) — номера ингредиентов от 0;
 # перечницу с перхотью не чистим: её сыплющиеся хлопья белые и мелкие — кайма съедала их целиком
 K_GLASS, K_GLASS_BITS, K_KEEP = {0, 1, 3, 6, 7, 13, 14, 19}, {11, 15}, {15}
+
+
+# ведьма «тсс» (лицо 3): одна рука у губ, а GPT нарисовал ещё и поднятую над шляпой — третью (заметка пользователя 2026-11-01: «что за
+# лишняя рука у ведьмы? убери поднятую руку»). Стирается многоугольник (доли рамки лица: x, y) — поднятая рука с рукавом слева от шляпы
+K_WITCH_ERASE = {3: [(0, 0), (.395, 0), (.39, .175), (.335, .25), (.25, .28), (.228, .34), (.222, .415), (0, .415)]}
+
+
+def erase_poly(im, poly, soft=5):
+    """Стереть часть картинки (многоугольник в долях размера) с мягким краем."""
+    if not poly: return im
+    from PIL import ImageDraw
+    m = Image.new("L", im.size, 0); ImageDraw.Draw(m).polygon([(x * im.width, y * im.height) for x, y in poly], fill=255)
+    m = np.asarray(m.filter(ImageFilter.GaussianBlur(soft))).astype(float) / 255
+    A = np.asarray(im).copy(); A[..., 3] = (A[..., 3] * (1 - m)).round().astype(np.uint8)
+    return Image.fromarray(A, "RGBA")
 
 
 def cat_blink(c1, c2, win=70, srch=30):
