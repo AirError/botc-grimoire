@@ -91,8 +91,13 @@ def night_frame(front, back, fade=48):
 
 
 def white_alpha(src, edge_thr=240, inner_thr=250, min_area=8):
-    """То же, что clean, но без обрезки: RGBA во весь кадр (чтобы обрезать пару картинок одинаково)."""
-    im = Image.open(src).convert("RGB")
+    """То же, что clean, но без обрезки: RGBA во весь кадр (чтобы обрезать пару картинок одинаково).
+    Картинка уже с прозрачным фоном (так теперь просим в промптах, 2026-11-01) — берётся как есть."""
+    raw = Image.open(src)
+    if raw.mode in ("RGBA", "LA") or (raw.mode == "P" and "transparency" in raw.info):
+        rgba = raw.convert("RGBA")
+        if np.asarray(rgba)[..., 3].min() < 250: return rgba
+    im = raw.convert("RGB")
     a = np.asarray(im).astype(int)
     lab, _ = ndimage.label(a.min(axis=2) > edge_thr)
     edge = set(lab[0, :]) | set(lab[-1, :]) | set(lab[:, 0]) | set(lab[:, -1]); edge.discard(0)
