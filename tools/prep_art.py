@@ -301,7 +301,7 @@ def cauldron():
     for sheet in ("k_ingr1", "k_ingr2"):
         if not have(sheet): continue
         for im in grid_pieces(defringe(white_alpha(SRC / f"{sheet}.png", min_area=400)), 5, 2, dil=1):
-            save(f"k_ing{n}", alpha_bbox(im, thr=8)); n += 1
+            save(f"k_ing{n}", alpha_bbox(im if n in K_KEEP else unwhite(im, n in K_GLASS), thr=8)); n += 1
     out["ing"] = n
     # этап 3 (заметка пользователя 2026-11-01: «точно хорошая идея компоненты прям в банках в котёл кидать?»): те же 20 без банок и
     # мешочков — их кладут в банку игрока и бросают в котёл; на полках остаются ингредиенты в таре
@@ -309,7 +309,7 @@ def cauldron():
     for sheet in ("k_bits1", "k_bits2"):
         if not have(sheet): continue
         for im in grid_pieces(defringe(white_alpha(SRC / f"{sheet}.png", min_area=400)), 5, 2, dil=1):
-            save(f"k_bit{b}", alpha_bbox(im, thr=8)); b += 1
+            save(f"k_bit{b}", alpha_bbox(unwhite(im, b in K_GLASS_BITS), thr=8)); b += 1
     out["bits"] = b
     if have("k_cauldron"):  # горловина — самое большое чёрное пятно (эллипс); передний край — котёл ниже середины горловины, без неё
         c = white_alpha(SRC / "k_cauldron.png"); A = np.asarray(c).copy(); H = A.shape[0]
@@ -349,7 +349,7 @@ def cauldron():
         rgb = np.asarray(Image.open(SRC / "k_jar.png").convert("RGB")).astype(float)
         sil = np.asarray(white_alpha(SRC / "k_jar.png", min_area=10 ** 9))[..., 3] / 255
         c2a = (255 - rgb.min(axis=2)) / 255; sat = rgb.max(axis=2) - rgb.min(axis=2)
-        al = sil * np.clip(.16 + c2a * 1.6 + np.clip((sat - 22) / 18, 0, 1), 0, 1)
+        al = sil * np.clip(.07 + c2a * 1.6 + np.clip((sat - 22) / 18, 0, 1), 0, 1)  # белое внутри — едва заметная дымка стекла
         j = alpha_bbox(Image.fromarray(np.dstack([rgb, al * 255]).round().astype(np.uint8), "RGBA"), thr=10); save("k_jar", j)
         # три места внутри: по ширине тела банки (самые широкие строки), по высоте — ниже горла
         a = np.asarray(j)[..., 3] > 60; wid = a.sum(axis=1); body = np.nonzero(wid >= .9 * wid.max())[0]
@@ -360,13 +360,31 @@ def cauldron():
         g = defringe(white_alpha(SRC / "k_witch.png", inner_thr=232, min_area=12))
         for i, im in enumerate(grid_frames(g, 4, 1, pad=0), 1): save(f"k_witch{i}", alpha_pad(im))
     if have("k_herbs"):  # пучки на бечёвках — свисают от верхнего края
-        for i, im in enumerate(grid_pieces(white_alpha(SRC / "k_herbs.png"), 5, 1), 1): save(f"k_herb{i}", alpha_bbox(im, thr=8))
+        for i, im in enumerate(grid_pieces(white_alpha(SRC / "k_herbs.png"), 5, 1), 1): save(f"k_herb{i}", alpha_bbox(unwhite(im), thr=8))
     if have("k_cat"):  # кот: глаза открыты / закрыты; где он сидит (низ лап) — доля высоты
         c1, c2 = [alpha_pad(im) for im in grid_frames(defringe(white_alpha(SRC / "k_cat.png", inner_thr=232, min_area=12)), 2, 1, pad=0)]
         save("k_cat1", c1); save("k_cat2", cat_blink(c1, c2))
         a = np.asarray(c1)[..., 3] > 60; wid = a.sum(axis=1); out["cat_seat"] = r4(np.nonzero(wid >= .55 * wid.max())[0].max() / a.shape[0])
     if n: print("котёл: ингредиентов", n, "горловина", out.get("mouth"), "щепоть", out.get("pinch"), "банка", out.get("jar"), "полки", out.get("stand"), "кот", out.get("cat_seat"))
     return out
+
+
+def unwhite(im, glass=False, band=10):
+    """Остатки белого фона (заметка пользователя 2026-11-01: «у части картинок остался белый фон»): светлая бесцветная кайма у края
+    вырезки — прозрачная; glass — стекло банок и бутылок, нарисованное на белом: светлое бесцветное внутри — прозрачнее, чем светлее
+    (сквозь стекло видна стена хижины). Цветное светлое (яички, сало, перхоть) не трогаем — у него есть оттенок."""
+    A = np.asarray(im).copy(); rgb = A[..., :3].astype(float); L = rgb.min(axis=2); sat = rgb.max(axis=2) - L
+    al = A[..., 3].astype(float); pale = (sat < 26) & (L > 196)
+    near = ndimage.distance_transform_edt(al >= 24) <= band
+    k = np.clip((250 - L) / 54, 0, 1)
+    al = np.where(pale & (near | glass), al * k, al)
+    A[..., 3] = al.round().astype(np.uint8)
+    return Image.fromarray(A, "RGBA")
+
+
+# что на полке в стекле (банки, бутылки, колпак) и что без тары рыхлое и светлое (пыль, перхоть) — номера ингредиентов от 0;
+# перечницу с перхотью не чистим: её сыплющиеся хлопья белые и мелкие — кайма съедала их целиком
+K_GLASS, K_GLASS_BITS, K_KEEP = {0, 1, 3, 6, 7, 13, 14, 19}, {11, 15}, {15}
 
 
 def cat_blink(c1, c2, win=70, srch=30):
