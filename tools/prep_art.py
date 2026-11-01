@@ -301,7 +301,7 @@ def cauldron():
     for sheet in ("k_ingr1", "k_ingr2"):
         if not have(sheet): continue
         for im in grid_pieces(defringe(white_alpha(SRC / f"{sheet}.png", min_area=400)), 5, 2, dil=1):
-            save(f"k_ing{n}", alpha_bbox(im if n in K_KEEP else unwhite(im, n in K_GLASS), thr=8)); n += 1
+            save(f"k_ing{n}", alpha_bbox(im if n in K_KEEP else unwhite(white_holes(im), n in K_GLASS), thr=8)); n += 1
     out["ing"] = n
     # этап 3 (заметка пользователя 2026-11-01: «точно хорошая идея компоненты прям в банках в котёл кидать?»): те же 20 без банок и
     # мешочков — их кладут в банку игрока и бросают в котёл; на полках остаются ингредиенты в таре
@@ -309,7 +309,7 @@ def cauldron():
     for sheet in ("k_bits1", "k_bits2"):
         if not have(sheet): continue
         for im in grid_pieces(defringe(white_alpha(SRC / f"{sheet}.png", min_area=400)), 5, 2, dil=1):
-            save(f"k_bit{b}", alpha_bbox(unwhite(im, b in K_GLASS_BITS), thr=8)); b += 1
+            save(f"k_bit{b}", alpha_bbox(unwhite(white_holes(im), b in K_GLASS_BITS), thr=8)); b += 1
     out["bits"] = b
     if have("k_cauldron"):  # горловина — самое большое чёрное пятно (эллипс); передний край — котёл ниже середины горловины, без неё
         c = white_alpha(SRC / "k_cauldron.png"); A = np.asarray(c).copy(); H = A.shape[0]
@@ -379,6 +379,26 @@ def unwhite(im, glass=False, band=10):
     k = np.clip((250 - L) / 54, 0, 1)
     al = np.where(pale & (near | glass), al * k, al)
     A[..., 3] = al.round().astype(np.uint8)
+    return Image.fromarray(A, "RGBA")
+
+
+def white_holes(im, min_px=25, ring=2, dark=150):
+    """Белые «окошки» внутри рисунка — фон, со всех сторон закрытый предметом (между лапкой и яйцами, внутри петель бантика): от края
+    кадра до них вырезка не доходит (заметка пользователя 2026-11-01: «хвост крысы и гнида с белыми пятнами»). Окошко — светлое бесцветное
+    пятно, обведённое тёмным контуром (блик окружён цветом предмета — его не трогаем); делается прозрачным с мягким краем."""
+    A = np.asarray(im).copy(); rgb = A[..., :3].astype(float); L = rgb.min(axis=2); M = rgb.max(axis=2)
+    op = A[..., 3] > 128; cand = op & (L > 228) & (M - L < 18)
+    lab, n = ndimage.label(cand); hole = np.zeros_like(cand)
+    for i, sl in enumerate(ndimage.find_objects(lab), 1):
+        if sl is None: continue
+        sl = tuple(slice(max(0, s.start - ring - 1), s.stop + ring + 1) for s in sl)
+        comp = lab[sl] == i
+        if comp.sum() < min_px: continue
+        rim = ndimage.binary_dilation(comp, iterations=ring) & ~comp & op[sl]
+        if rim.any() and M[sl][rim].mean() < dark: hole[sl] |= comp
+    if hole.any():
+        soft = ndimage.gaussian_filter(ndimage.binary_dilation(hole, iterations=1).astype(float), .8)
+        A[..., 3] = (A[..., 3] * (1 - np.clip(soft * 1.6, 0, 1))).round().astype(np.uint8)
     return Image.fromarray(A, "RGBA")
 
 
