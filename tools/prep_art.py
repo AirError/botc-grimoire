@@ -361,9 +361,10 @@ def cauldron():
         xs = np.nonzero(a[body].any(axis=0))[0]; bx0, bx1 = xs.min(), xs.max(); y0, y1 = body.min(), np.nonzero(a.any(axis=1))[0].max()
         out["jar"] = {"x": [r4((bx0 + (bx1 - bx0) * f) / j.width) for f in (.22, .5, .78)], "y": r4((y0 + (y1 - y0) * .5) / j.height),
                       "s": r4((bx1 - bx0) * .25 / j.width)}
-    if have("k_witch"):  # ведьма свешивается сверху: 4 лица в общей рамке; белый фон между прядями — прозрачный
+    if have("k_witch"):  # ведьма выглядывает сверху: 4 лица; белый фон между прядями — прозрачный. Версия 2 (2026-11-01: поднятые руки
+        # только у хохочущей) — по силуэтам, а не по клеткам: коготь хохочущей заходит в клетку соседки; все — по верху (шляпа срезана краем)
         g = defringe(white_alpha(SRC / "k_witch.png", inner_thr=232, min_area=12))
-        for i, im in enumerate(grid_frames(g, 4, 1, pad=0), 1): save(f"k_witch{i}", erase_poly(alpha_pad(im), K_WITCH_ERASE.get(i)))
+        for i, im in enumerate(blob_poses(g, n=4, dil=3, top=True), 1): save(f"k_witch{i}", alpha_pad(im))
     if have("k_herbs"):  # пучки на бечёвках — свисают от верхнего края
         for i, im in enumerate(grid_pieces(white_alpha(SRC / "k_herbs.png"), 5, 1), 1): save(f"k_herb{i}", alpha_bbox(unwhite(im), thr=8))
     if have("k_cat"):  # кот: глаза открыты / закрыты; где он сидит (низ лап) — доля высоты
@@ -410,21 +411,6 @@ def white_holes(im, min_px=25, ring=2, dark=150):
 # что на полке в стекле (банки, бутылки, колпак) и что без тары рыхлое и светлое (пыль, перхоть) — номера ингредиентов от 0;
 # перечницу с перхотью не чистим: её сыплющиеся хлопья белые и мелкие — кайма съедала их целиком
 K_GLASS, K_GLASS_BITS, K_KEEP = {0, 1, 3, 6, 7, 13, 14, 19}, {11, 15}, {15}
-
-
-# ведьма «тсс» (лицо 3): одна рука у губ, а GPT нарисовал ещё и поднятую над шляпой — третью (заметка пользователя 2026-11-01: «что за
-# лишняя рука у ведьмы? убери поднятую руку»). Стирается многоугольник (доли рамки лица: x, y) — поднятая рука с рукавом слева от шляпы
-K_WITCH_ERASE = {3: [(0, 0), (.395, 0), (.39, .175), (.335, .25), (.25, .28), (.228, .34), (.222, .415), (0, .415)]}
-
-
-def erase_poly(im, poly, soft=5):
-    """Стереть часть картинки (многоугольник в долях размера) с мягким краем."""
-    if not poly: return im
-    from PIL import ImageDraw
-    m = Image.new("L", im.size, 0); ImageDraw.Draw(m).polygon([(x * im.width, y * im.height) for x, y in poly], fill=255)
-    m = np.asarray(m.filter(ImageFilter.GaussianBlur(soft))).astype(float) / 255
-    A = np.asarray(im).copy(); A[..., 3] = (A[..., 3] * (1 - m)).round().astype(np.uint8)
-    return Image.fromarray(A, "RGBA")
 
 
 def cat_blink(c1, c2, win=70, srch=30):
@@ -644,9 +630,10 @@ def defringe(im, band=4, lo=185, hi=235):
     return Image.fromarray(A, "RGBA")
 
 
-def blob_poses(im, n=2, dil=6):
+def blob_poses(im, n=2, dil=6, top=False):
     """Позы на листе, заходящие за середину (сеткой не разрезать): n самых крупных кусков слева направо, мелкие куски (кончики лап) —
-    к ближайшему крупному. Каждая поза — по центру общего холста: масштаб твари при смене поз не меняется."""
+    к ближайшему крупному. Каждая поза — по центру общего холста: масштаб твари при смене поз не меняется; top — по верхнему краю
+    (фигура срезана верхним краем кадра)."""
     A = np.asarray(im); a = A[..., 3] > 24
     lab, k = ndimage.label(ndimage.binary_dilation(a, iterations=dil)); objs = ndimage.find_objects(lab)
     big = sorted((np.argsort(ndimage.sum(a, lab, range(1, k + 1)))[::-1][:n] + 1).tolist(), key=lambda i: objs[i - 1][1].start)
@@ -661,7 +648,7 @@ def blob_poses(im, n=2, dil=6):
         X = A.copy(); X[..., 3] = np.where(m, X[..., 3], 0); res.append(alpha_bbox(Image.fromarray(X, "RGBA"), thr=8))
     W, H = max(r.width for r in res), max(r.height for r in res); out = []
     for r in res:
-        c = Image.new("RGBA", (W, H), (255, 255, 255, 0)); c.alpha_composite(r, ((W - r.width) // 2, (H - r.height) // 2)); out.append(c)
+        c = Image.new("RGBA", (W, H), (255, 255, 255, 0)); c.alpha_composite(r, ((W - r.width) // 2, 0 if top else (H - r.height) // 2)); out.append(c)
     return out
 
 
