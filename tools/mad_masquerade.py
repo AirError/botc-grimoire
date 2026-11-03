@@ -191,15 +191,16 @@ JS = """<script>
       // вписанная картина (soft) — до нижней лозы рамки (внутри неё); миниатюра в рамке — до низа области текста;
       // старая вырезка — до низа листа
       const lim = i < groups.length - 1 ? Math.max(end(a), end(b)) - gap * mm
-                : soft ? pg.bottom - 8 * mm : mini ? flow.getBoundingClientRect().bottom : pg.bottom - 1.5 * mm;
+                : soft ? pg.bottom - 5.5 * mm : mini ? flow.getBoundingClientRect().bottom : pg.bottom - 1.5 * mm;
       const r = (lim - end(short)) / mm - 1;
-      if (r > room) { room = r; best = short; top = end(short) + 0.5 * mm; bottom = lim; where = g.c.dataset.team; }
+      if (r > room) { room = r; best = short; top = end(short) + (soft ? -0.5 : 0.5) * mm; bottom = lim; where = g.c.dataset.team; }
     });
     if (best && room >= 9 && mini) {
       // миниатюра: самый крупный прямоугольник в просвете, по центру просвета — аккуратно, без наложений
       const cr = best.getBoundingClientRect(), ar = scene.naturalWidth / scene.naturalHeight;
       // размытым краям можно чуть зайти за край колонки (до лозы рамки слева и в межколонник справа)
-      const L = cr.left, R = cr.right;
+      // размытым краям можно чуть зайти в межколонник и на поле (их край почти прозрачный)
+      const L = cr.left - (soft ? 1.5 * mm : 0), R = cr.right + (soft ? 1.5 * mm : 0);
       let h = Math.min(bottom - top - (soft ? 0 : mm), 60 * mm), w = h * ar;
       if (w > R - L) { w = R - L; h = w / ar; }
       room = h / mm;
