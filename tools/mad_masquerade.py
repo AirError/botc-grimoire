@@ -114,7 +114,7 @@ body { -webkit-print-color-adjust: exact; print-color-adjust: exact; font-family
 @media screen { .page { margin: 8mm auto; box-shadow: 0 1mm 4mm rgba(0,0,0,.35); } }
 .frame { position: absolute; inset: 0; width: 210mm; height: 297mm; display: block; }
 .art { mix-blend-mode: multiply; }
-:root { --ab: 10pt; --gap: var(--gap0); --gap0: 1.8mm; --title: 52mm; --hpad-l: %(hl)s; --hpad-r: %(hr)s; --side: %(side)s; --bottom: %(bottom)s; }
+:root { --ab: 10pt; --gap: var(--gap0); --gap0: 1.8mm; --title: 60mm; --hpad-l: %(hl)s; --hpad-r: %(hr)s; --side: %(side)s; --bottom: %(bottom)s; }
 .content { position: absolute; left: var(--side); right: var(--side); top: 7mm; bottom: var(--bottom); display: flex; flex-direction: column; }
 /* шапка между угловыми фигурками рамки */
 .head { flex: none; display: flex; align-items: center; gap: 1.2mm; padding: 0 var(--hpad-r) 0 var(--hpad-l); }
@@ -160,6 +160,7 @@ JS = """<script>
   function balance() {
     if (scene) scene.remove();
     for (const g of groups) {
+      if (g.c.dataset.split) { place(g, +g.c.dataset.split); continue; }  // делёж задан вручную (SPLIT)
       const n = g.roles.length, hs = [];
       for (let k = 1; k < n; k++) { place(g, k); hs[k] = g.c.getBoundingClientRect().height; }
       const mn = Math.min(...hs.slice(1)), off = k => Math.abs(k - n / 2);
@@ -177,29 +178,35 @@ JS = """<script>
   // пляска — в самый большой просвет под более короткой колонкой секции, уже после подгонки (текст не теснит);
   // для нижней секции просвет считается до низа листа (картинке можно зайти на поле с лозой — пользователь разрешил)
   let room = 0, where = 'нет места';
-  const mini = scene && scene.classList.contains('mini');
+  const mini = scene && (scene.classList.contains('mini') || scene.classList.contains('soft'));
+  const soft = scene && scene.classList.contains('soft');
   if (scene) {
     const page = document.querySelector('.page'), pg = page.getBoundingClientRect();
     const end = col => col.lastElementChild.getBoundingClientRect().bottom;
     let best = null, top = 0, bottom = 0;
     groups.forEach((g, i) => {
       const [a, b] = g.cols, short = end(a) <= end(b) ? a : b;
-      // размытая картинка может дойти до низа листа; миниатюра в рамке — только до низа области текста
+      // вписанная картина (soft) — до нижней лозы рамки (внутри неё); миниатюра в рамке — до низа области текста;
+      // старая вырезка — до низа листа
       const lim = i < groups.length - 1 ? Math.max(end(a), end(b)) - gap * mm
-                : mini ? flow.getBoundingClientRect().bottom : pg.bottom - 1.5 * mm;
+                : soft ? pg.bottom - 8 * mm : mini ? flow.getBoundingClientRect().bottom : pg.bottom - 1.5 * mm;
       const r = (lim - end(short)) / mm - 1;
       if (r > room) { room = r; best = short; top = end(short) + 0.5 * mm; bottom = lim; where = g.c.dataset.team; }
     });
     if (best && room >= 9 && mini) {
       // миниатюра: самый крупный прямоугольник в просвете, по центру просвета — аккуратно, без наложений
       const cr = best.getBoundingClientRect(), ar = scene.naturalWidth / scene.naturalHeight;
-      let h = Math.min(bottom - top - mm, 60 * mm), w = h * ar;
-      if (w > cr.width) { w = cr.width; h = w / ar; }
+      // размытым краям можно чуть зайти за край колонки (до лозы рамки слева и в межколонник справа)
+      const L = cr.left, R = cr.right;
+      let h = Math.min(bottom - top - (soft ? 0 : mm), 60 * mm), w = h * ar;
+      if (w > R - L) { w = R - L; h = w / ar; }
       room = h / mm;
-      Object.assign(scene.style, { left: (cr.left + (cr.width - w) / 2 - pg.left) + 'px', width: w + 'px',
-                                   top: (top + (bottom - top - h) / 2 - pg.top) + 'px', height: h + 'px' });
+      // вписанная картина стоит на нижней лозе, миниатюра — по центру просвета
+      const y = soft ? bottom - h : top + (bottom - top - h) / 2;
+      Object.assign(scene.style, { left: (L + (R - L - w) / 2 - pg.left) + 'px', width: w + 'px',
+                                   top: (y - pg.top) + 'px', height: h + 'px' });
       page.appendChild(scene);
-      where += ', миниатюра';
+      where += soft ? ', вписана' : ', миниатюра';
     } else if (best && room >= 9) {
       const cr = best.getBoundingClientRect(), ar = scene.naturalWidth / scene.naturalHeight;
       // последняя строка текста над картинкой: небо у пляски прозрачное, поэтому картинка поднимается на строку вверх,
@@ -227,11 +234,32 @@ JS = """<script>
 </script>"""
 
 
+# делёж ролей по колонкам вручную: у Демонов двое слева, Фань Гу справа — под ним место для пляски (почти вдвое больше)
+SPLIT = {"demon": 2}
+
+
+def scene_soft(aspect=3.3, inset=30, fx=0.11, fy=0.24):
+    """Пляска «вписана в лист» (пользователь: так лучше): из миниатюры scene_mini.png берётся только сама картина —
+    без белого поля и золотой рамки (inset px), обрезается снизу до пропорции aspect (шпиль башни целиком)
+    и получает плавно размытые края, которые растворяются в пергаменте."""
+    im = ba.Image.open(ART / "scene_mini.png").convert("RGB")
+    a = np.asarray(im).astype(int)
+    ys, xs = np.where(a.min(axis=2) < 235)
+    x0, y0, x1, y1 = xs.min() + inset, ys.min() + inset, xs.max() - inset, ys.max() - inset
+    y1 = min(y1, y0 + round((x1 - x0) / aspect))
+    im = im.crop((x0, y0, x1, y1)).convert("RGBA")
+    W, H = im.size
+    ramp = lambda n, f: np.clip(np.minimum(np.arange(n), np.arange(n)[::-1]) / (f * n), 0, 1)
+    sx, sy = ramp(W, fx), ramp(H, fy)
+    m = np.outer(sy * sy * (3 - 2 * sy), sx * sx * (3 - 2 * sx))
+    im.putalpha(ba.Image.fromarray((m * 255).round().astype(np.uint8)))
+    return ba.uri(im, maxw=1500)
+
+
 def scene_html():
-    """Пляска: миниатюра в золотой рамке (scene_mini.png, правка по промпту 2026-11-03), иначе — старая с размытыми краями."""
+    """Пляска: вписанная в лист картина с размытыми краями (из scene_mini.png), иначе — старая вырезка с размытыми краями."""
     if (ART / "scene_mini.png").exists():
-        ba.ART = ART  # фон вокруг миниатюры — только от края кадра: светлые кости скелетов внутри не трогаем
-        return f'<img class="scene mini" src="{ba.uri(ba.cut("scene_mini", inner_thr=256), maxw=1500)}" alt="">'
+        return f'<img class="scene soft" src="{scene_soft()}" alt="">'
     return f'<img class="scene" src="{feathered("scene", maxw=1300)}" alt="">'
 
 
@@ -246,7 +274,7 @@ def build_roles():
         m = art(medal, maxh=300) if medal else None
         secs += (f'<div class="sh" style="color:{COL[t]}">' + (f'<img class="medal art" src="{m}" alt="">' if m else "") +
                  f'<span class="lbl">{label}</span><i class="rule"></i>{note}</div>'
-                 f'<div class="cols" data-team="{label}">' + "".join(f'<div class="col">{p}</div>' for p in parts) + "</div>")
+                 f'<div class="cols" data-team="{label}"' + (f' data-split="{SPLIT[t]}"' if t in SPLIT else '') + '>' + "".join(f'<div class="col">{p}</div>' for p in parts) + "</div>")
     page = (f'<div class="page"><img class="frame" src="{bg()}" alt="">'
             f'<div class="content"><div class="head">'
             f'<img class="title art" src="{art("title", maxw=900)}" alt="Mad Masquerade">'
