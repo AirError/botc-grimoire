@@ -180,8 +180,9 @@ JS = """<script>
   // пляска — в самый большой просвет под более короткой колонкой секции, уже после подгонки (текст не теснит);
   // для нижней секции просвет считается до низа листа (картинке можно зайти на поле с лозой — пользователь разрешил)
   let room = 0, where = 'нет места';
-  const mini = scene && (scene.classList.contains('mini') || scene.classList.contains('soft'));
-  const soft = scene && scene.classList.contains('soft');
+  const mini = scene && ['mini', 'soft', 'dance'].some(c => scene.classList.contains(c));
+  const dance = scene && scene.classList.contains('dance');
+  const soft = scene && (scene.classList.contains('soft') || dance);  // обе стоят на нижней лозе
   if (scene) {
     const page = document.querySelector('.page'), pg = page.getBoundingClientRect();
     const end = col => col.lastElementChild.getBoundingClientRect().bottom;
@@ -191,16 +192,16 @@ JS = """<script>
       // вписанная картина (soft) — до нижней лозы рамки (внутри неё); миниатюра в рамке — до низа области текста;
       // старая вырезка — до низа листа
       const lim = i < groups.length - 1 ? Math.max(end(a), end(b)) - gap * mm
-                : soft ? pg.bottom - 5.5 * mm : mini ? flow.getBoundingClientRect().bottom : pg.bottom - 1.5 * mm;
+                : dance ? pg.bottom - 8 * mm : soft ? pg.bottom - 5.5 * mm : mini ? flow.getBoundingClientRect().bottom : pg.bottom - 1.5 * mm;
       const r = (lim - end(short)) / mm - 1;
-      if (r > room) { room = r; best = short; top = end(short) + (soft ? -0.5 : 0.5) * mm; bottom = lim; where = g.c.dataset.team; }
+      if (r > room) { room = r; best = short; top = end(short) + (dance ? 1.5 : soft ? -0.5 : 0.5) * mm; bottom = lim; where = g.c.dataset.team; }
     });
     if (best && room >= 9 && mini) {
       // миниатюра: самый крупный прямоугольник в просвете, по центру просвета — аккуратно, без наложений
       const cr = best.getBoundingClientRect(), ar = scene.naturalWidth / scene.naturalHeight;
       // размытым краям можно чуть зайти за край колонки (до лозы рамки слева и в межколонник справа)
       // размытым краям можно чуть зайти в межколонник и на поле (их край почти прозрачный)
-      const L = cr.left - (soft ? 1.5 * mm : 0), R = cr.right + (soft ? 1.5 * mm : 0);
+      const L = cr.left - (soft && !dance ? 1.5 * mm : 0), R = cr.right + (soft && !dance ? 1.5 * mm : 0);
       let h = Math.min(bottom - top - (soft ? 0 : mm), 60 * mm), w = h * ar;
       if (w > R - L) { w = R - L; h = w / ar; }
       room = h / mm;
@@ -260,16 +261,42 @@ def scene_soft(aspect=3.3, inset=30, fx=0.11, fy=0.24):
 
 
 def scene_html():
-    """Пляска: вписанная в лист картина с размытыми краями (из scene_mini.png), иначе — старая вырезка с размытыми краями."""
+    """Пляска: минималистичная маргиналия dance.png (пользователь: пёстрая сцена — «мешанина»), иначе — вписанная
+    картина с размытыми краями (из scene_mini.png), иначе — старая вырезка."""
+    if (ART / "dance.png").exists():
+        return f'<img class="scene dance art" src="{art("dance", maxw=1500)}" alt="">'
     if (ART / "scene_mini.png").exists():
         return f'<img class="scene soft" src="{scene_soft()}" alt="">'
     return f'<img class="scene" src="{feathered("scene", maxw=1300)}" alt="">'
 
 
+# Порядок ролей в секции — стандартный порядок официального конструктора (SAO): группы по началу английского текста
+# способности, внутри группы — короче раньше. Просьба пользователя: «первыми Аристократ, Повар, Сыщик, потом…».
+SAO = ["You start knowing", "Each dusk*", "Each night", "Each night*", "Each day", "Once per game, at night",
+       "Once per game, at night*", "Once per game, during the day", "Once per game", "On your 1st night",
+       "On your 1st day", "You think", "You are", "You have", "You do not know", "You might", "You",
+       "When you die", "When you learn that you died", "When", "If you die", "If you died", "If you are “mad”",
+       "If you", "If the Demon dies", "If the Demon kills", "If the Demon", "If both", "If there are 5 or more players alive",
+       "If", "All players", "All", "The 1st time", "The", "Minions"]
+EN = {r["id"]: r.get("ability", "") for r in json.loads((ROOT / "app" / "data" / "roles.json").read_text(encoding="utf-8"))}
+
+
+PIN = {"noble": -3, "chef": -2, "investigator": -1}  # пользователь: «первыми Аристократ, Повар, Сыщик»
+
+
+def sao_key(rid):
+    if rid in PIN:
+        return -1, PIN[rid]
+    s = EN[rid]
+    hits = [i for i, p in enumerate(SAO) if s.startswith(p)]
+    group = max(hits, key=lambda i: len(SAO[i])) if hits else len(SAO)  # самое длинное совпавшее начало
+    return group, len(s)
+
+
 def build_roles():
     secs = ""
     for t, label, medal in TEAMS:
-        roles = [r for r in ids if team[r] == t]
+        roles = sorted([r for r in ids if team[r] == t], key=sao_key)
         k = (len(roles) + 1) // 2
         parts = ["".join(role_html(r) for r in part) for part in (roles[:k], roles[k:])]
         # сноска — в строке шапки Демонов справа: освобождает колонку под пляску
