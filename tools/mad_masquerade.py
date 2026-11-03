@@ -95,12 +95,13 @@ body { -webkit-print-color-adjust: exact; print-color-adjust: exact; font-family
 :root { --ab: 10pt; --gap: var(--gap0); --gap0: 1.6mm; }
 .content { position: absolute; left: 11mm; right: 11mm; top: 7mm; bottom: 11.5mm; display: flex; flex-direction: column; }
 /* шапка между колпаком (слева) и маской (справа) рамки */
-.head { flex: none; display: flex; align-items: center; gap: 3mm; padding: 0 17mm 0 22mm; }
+.head { flex: none; display: flex; align-items: center; gap: 1.2mm; padding: 0 15mm 0 22mm; }
 .title { flex: none; display: block; width: 36mm; height: auto; }  /* меньше — ниже шапка: +0.3 pt тексту */
 /* align-items: flex-start — иначе колонка растягивает подпись по ширине (было «очень растянуто») */
-.side { flex: 1; min-width: 0; display: flex; flex-direction: column; align-items: flex-start; justify-content: flex-end; align-self: stretch; padding-bottom: 2mm; }
+.side { flex: 1; min-width: 0; display: flex; flex-direction: column; align-items: flex-start; justify-content: flex-end; align-self: stretch; padding-bottom: 1.6mm; }
 .by { display: block; height: 6.5mm; width: auto; flex: none; }
-.tower { flex: none; display: block; width: 48mm; height: auto; }
+/* башня — во всю высоту шапки (высоту задаёт название), шапку не увеличивает */
+.tower { flex: none; display: block; width: 76mm; height: auto; max-height: 24mm; object-fit: contain; }
 .flow { flex: 1 1 auto; min-height: 0; overflow: hidden; display: flex; flex-direction: column; }
 .sh { flex: none; display: flex; align-items: center; gap: 2mm; margin: 1mm 0 0.4mm; }
 .sh .medal { flex: none; width: 6.5mm; height: 6.5mm; object-fit: contain; }
@@ -115,7 +116,8 @@ body { -webkit-print-color-adjust: exact; print-color-adjust: exact; font-family
 .nm { font-weight: 800; font-size: calc(var(--ab) + 0.8pt); line-height: 1; }
 .tx b { font-weight: 800; }
 .extra { padding-left: 11.7mm; font-size: calc(var(--ab) * 0.88); font-weight: 700; }
-.scene { display: block; width: auto; max-width: 100%%; margin: 0.5mm auto 0; object-fit: contain; border-radius: 1.5mm; }
+/* пляска ставится поверх листа (absolute) от конца короткой колонки до нижнего края, заходя на поле с лозой */
+.scene { display: block; position: absolute; object-fit: contain; }
 """ % {"ink": INK, "gold": GOLD}
 
 JS = """<script>
@@ -146,19 +148,26 @@ JS = """<script>
     root.setProperty('--gap', gap + 'mm'); balance();
     if (over()) { gap = Math.round((gap - 0.1) * 10) / 10; root.setProperty('--gap', gap + 'mm'); balance(); break; }
   }
-  // пляска — в самый большой просвет под более короткой колонкой секции, уже после подгонки (текст не теснит)
+  // пляска — в самый большой просвет под более короткой колонкой секции, уже после подгонки (текст не теснит);
+  // для нижней секции просвет считается до низа листа (картинке можно зайти на поле с лозой — пользователь разрешил)
   let room = 0, where = 'нет места';
   if (scene) {
+    const page = document.querySelector('.page'), pg = page.getBoundingClientRect();
     const end = col => col.lastElementChild.getBoundingClientRect().bottom;
-    let best = null;
-    for (const g of groups) {
+    let best = null, top = 0, bottom = 0;
+    groups.forEach((g, i) => {
       const [a, b] = g.cols, short = end(a) <= end(b) ? a : b;
-      const r = (Math.max(end(a), end(b)) - end(short)) / mm - gap - 1;
-      if (r > room) { room = r; best = short; where = g.c.dataset.team; }
-    }
-    if (best && room >= 9) { scene.style.height = Math.min(room, 32) + 'mm'; best.appendChild(scene); } else where = 'нет места';
-  }
-  document.body.dataset.fit = 'ab=' + ab + 'pt gap=' + gap + 'mm scene=' + room.toFixed(1) + 'mm (' + where + ') overflow=' + over();
+      const lim = i === groups.length - 1 ? pg.bottom - 3.5 * mm : Math.max(end(a), end(b)) - gap * mm;
+      const r = (lim - end(short)) / mm - 1;
+      if (r > room) { room = r; best = short; top = end(short) + mm; bottom = lim; where = g.c.dataset.team; }
+    });
+    if (best && room >= 9) {
+      const cr = best.getBoundingClientRect();
+      Object.assign(scene.style, { left: (cr.left - pg.left) + 'px', width: cr.width + 'px',
+                                   top: (top - pg.top) + 'px', height: Math.min(bottom - top, 40 * mm) + 'px' });
+      page.appendChild(scene);
+    } else where = 'нет места';
+  }  document.body.dataset.fit = 'ab=' + ab + 'pt gap=' + gap + 'mm scene=' + room.toFixed(1) + 'mm (' + where + ') overflow=' + over();
 })();
 </script>"""
 
