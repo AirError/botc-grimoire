@@ -83,8 +83,14 @@ def erase_bottom_corners(im, w=175, h=300, inset=6, strip=52, shift=300, thr=26)
 
 
 def bg():
+    """Новая рамка (bg2.png, маленькие углы — по промпту 2026-11-03) берётся как есть; старая — со стёртыми нижними углами."""
+    if (ART / "bg2.png").exists():
+        return ba.uri(ba.fit_a4(ba.Image.open(ART / "bg2.png").convert("RGB")), quality=90)
     im = erase_bottom_corners(ba.fit_a4(ba.Image.open(ART / "bg.png").convert("RGB")))
     return ba.uri(im, quality=90)
+
+
+NEW_FRAME = (ART / "bg2.png").exists()
 
 
 def ability(rid):
@@ -108,16 +114,17 @@ body { -webkit-print-color-adjust: exact; print-color-adjust: exact; font-family
 @media screen { .page { margin: 8mm auto; box-shadow: 0 1mm 4mm rgba(0,0,0,.35); } }
 .frame { position: absolute; inset: 0; width: 210mm; height: 297mm; display: block; }
 .art { mix-blend-mode: multiply; }
-:root { --ab: 10pt; --gap: var(--gap0); --gap0: 1.8mm; }
+:root { --ab: 10pt; --gap: var(--gap0); --gap0: 1.8mm; --title: 52mm; --hpad-l: %(hl)s; --hpad-r: %(hr)s; }
 .content { position: absolute; left: 11mm; right: 11mm; top: 7mm; bottom: 11.5mm; display: flex; flex-direction: column; }
-/* шапка между колпаком (слева) и маской (справа) рамки */
-.head { flex: none; display: flex; align-items: center; gap: 1.2mm; padding: 0 15mm 0 22mm; }
-.title { flex: none; display: block; width: 36mm; height: auto; }  /* меньше — ниже шапка: +0.3 pt тексту */
+/* шапка между угловыми фигурками рамки */
+.head { flex: none; display: flex; align-items: center; gap: 1.2mm; padding: 0 var(--hpad-r) 0 var(--hpad-l); }
+/* название крупнее (замечание пользователя «название мелкое»), башня — под его высоту */
+.title { flex: none; display: block; width: var(--title); height: auto; }
 /* align-items: flex-start — иначе колонка растягивает подпись по ширине (было «очень растянуто») */
 .side { flex: 1; min-width: 0; display: flex; flex-direction: column; align-items: flex-start; justify-content: flex-end; align-self: stretch; padding-bottom: 1.6mm; }
 .by { display: block; height: 6.5mm; width: auto; flex: none; }
 /* башня — во всю высоту шапки (высоту задаёт название), шапку не увеличивает */
-.tower { flex: none; display: block; width: 76mm; height: auto; max-height: 24mm; object-fit: contain; }
+.tower { flex: none; display: block; width: 80mm; height: auto; max-height: calc(var(--title) * 0.66); object-fit: contain; margin-left: auto; }
 .flow { flex: 1 1 auto; min-height: 0; overflow: hidden; display: flex; flex-direction: column; }
 .sh { flex: none; display: flex; align-items: center; gap: 2mm; margin: 1mm 0 0.4mm; }
 .sh .medal { flex: none; width: 6.5mm; height: 6.5mm; object-fit: contain; }
@@ -136,7 +143,9 @@ body { -webkit-print-color-adjust: exact; print-color-adjust: exact; font-family
 /* пляска ставится поверх листа (absolute) от конца короткой колонки до нижнего края, заходя на поле с лозой;
    без multiply — картинка лежит поверх рамки, лоза её не перекрывает (замечание пользователя) */
 .scene { display: block; position: absolute; object-fit: contain; }
-""" % {"ink": INK, "gold": GOLD}
+/* миниатюра в золотой рамке (scene_mini.png) — прямоугольник: ни на текст, ни на рамку листа не заходит */
+.scene.mini { filter: drop-shadow(0 0.4mm 0.6mm rgba(60,40,20,.35)); }
+""" % {"ink": INK, "gold": GOLD, "hl": "9mm" if NEW_FRAME else "22mm", "hr": "8mm" if NEW_FRAME else "15mm"}
 
 JS = """<script>
 (async function () {
@@ -167,17 +176,30 @@ JS = """<script>
   // пляска — в самый большой просвет под более короткой колонкой секции, уже после подгонки (текст не теснит);
   // для нижней секции просвет считается до низа листа (картинке можно зайти на поле с лозой — пользователь разрешил)
   let room = 0, where = 'нет места';
+  const mini = scene && scene.classList.contains('mini');
   if (scene) {
     const page = document.querySelector('.page'), pg = page.getBoundingClientRect();
     const end = col => col.lastElementChild.getBoundingClientRect().bottom;
     let best = null, top = 0, bottom = 0;
     groups.forEach((g, i) => {
       const [a, b] = g.cols, short = end(a) <= end(b) ? a : b;
-      const lim = i === groups.length - 1 ? pg.bottom - 1.5 * mm : Math.max(end(a), end(b)) - gap * mm;  // края размыты — можно до самого низа
+      // размытая картинка может дойти до низа листа; миниатюра в рамке — только до низа области текста
+      const lim = i < groups.length - 1 ? Math.max(end(a), end(b)) - gap * mm
+                : mini ? flow.getBoundingClientRect().bottom : pg.bottom - 1.5 * mm;
       const r = (lim - end(short)) / mm - 1;
       if (r > room) { room = r; best = short; top = end(short) + 0.5 * mm; bottom = lim; where = g.c.dataset.team; }
     });
-    if (best && room >= 9) {
+    if (best && room >= 9 && mini) {
+      // миниатюра: самый крупный прямоугольник в просвете, по центру просвета — аккуратно, без наложений
+      const cr = best.getBoundingClientRect(), ar = scene.naturalWidth / scene.naturalHeight;
+      let h = Math.min(bottom - top - mm, 60 * mm), w = h * ar;
+      if (w > cr.width) { w = cr.width; h = w / ar; }
+      room = h / mm;
+      Object.assign(scene.style, { left: (cr.left + (cr.width - w) / 2 - pg.left) + 'px', width: w + 'px',
+                                   top: (top + (bottom - top - h) / 2 - pg.top) + 'px', height: h + 'px' });
+      page.appendChild(scene);
+      where += ', миниатюра';
+    } else if (best && room >= 9) {
       const cr = best.getBoundingClientRect(), ar = scene.naturalWidth / scene.naturalHeight;
       // последняя строка текста над картинкой: небо у пляски прозрачное, поэтому картинка поднимается на строку вверх,
       // если шпиль башни (середина картинки) правее конца этой строки; влево можно зайти на поле с лозой
@@ -204,6 +226,13 @@ JS = """<script>
 </script>"""
 
 
+def scene_html():
+    """Пляска: миниатюра в золотой рамке (scene_mini.png, правка по промпту 2026-11-03), иначе — старая с размытыми краями."""
+    if (ART / "scene_mini.png").exists():
+        return f'<img class="scene mini" src="{art("scene_mini", maxw=1500)}" alt="">'
+    return f'<img class="scene" src="{feathered("scene", maxw=1300)}" alt="">'
+
+
 def build_roles():
     secs = ""
     for t, label, medal in TEAMS:
@@ -221,7 +250,7 @@ def build_roles():
             f'<img class="title art" src="{art("title", maxw=900)}" alt="Mad Masquerade">'
             f'<div class="side"><img class="by art" src="{art("by", maxw=600)}" alt="by Alex"></div>'
             f'<img class="tower art" src="{art("header", maxw=1100)}" alt=""></div>'
-            f'<div class="flow">{secs}<img class="scene" src="{feathered("scene", maxw=1300)}" alt=""></div></div></div>')
+            f'<div class="flow">{secs}{scene_html()}</div></div></div>')
     html = (f'<!doctype html><html lang="ru"><head><meta charset="utf-8"><title>Mad Masquerade — роли</title>'
             f'{FONTS}<style>{CSS}</style></head><body>{page}{JS}</body></html>')
     path = OUT / "Mad Masquerade — роли.html"
