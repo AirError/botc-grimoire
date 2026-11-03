@@ -679,7 +679,7 @@ function fabledZone() {
 /* ------------------------------------------------------------ экраны */
 // сценарий — выпадающим списком (решение пользователя: везде списком)
 function scriptSelect() {
-  const groups = [['Ваши сценарии', ['ecbe', 'blindhunt']], ['Сценарии Ильи', ['bonappetit', 'nachtmahr']], ['Teensyville (5–6 игроков)', ['leech', 'overtheriver', 'nogreaterjoy', 'deaddontsleep']], ['Базовая коробка', ['tb', 'bmr', 'snv']], ['Сообщество', ['catfishing', 'reptiles2', 'oasis', 'pies', 'uncertain']]];
+  const groups = [['Ваши сценарии', ['ecbe', 'blindhunt', 'madmasquerade']], ['Сценарии Ильи', ['bonappetit', 'nachtmahr']], ['Teensyville (5–6 игроков)', ['leech', 'overtheriver', 'nogreaterjoy', 'deaddontsleep']], ['Базовая коробка', ['tb', 'bmr', 'snv']], ['Сообщество', ['catfishing', 'reptiles2', 'oasis', 'pies', 'uncertain']]];
   const known = new Set(groups.flatMap(g => g[1])), rest = Object.keys(DATA.scripts).filter(k => !known.has(k));
   const opt = k => `<option value="${k}" ${S.script.key === k ? 'selected' : ''}>${esc(DATA.scripts[k].name)}</option>`;
   return `<select class="scriptsel" data-act="script" aria-label="Сценарий">${S.script.key === 'custom' ? `<option value="custom" selected>Свой: ${esc(S.script.name)}</option>` : ''}
@@ -775,7 +775,7 @@ function prepDefs(mid) {
     ...flag('ftHerring', 'Ложная цель Гадалки (добрый игрок): для Гадалки он «Демон»', 'fortuneteller', good),
     ...flag('goodTwin', 'Добрый близнец', 'eviltwin', good),
     ...flag('puzzleDrunk', 'Головоломщик: кто пьян всю игру (вики: почти всегда лучше Горожанин; сам игрок не знает)', 'puzzlemaster', p => !E.isTraveller(p) && !!p.role && p.role !== 'puzzlemaster'),
-    ...flag('fauxPaw', 'Оборотень: «Кошачья лапка» — добрый игрок, которого Оборотень не убьёт (для остальных ролей — обычный добрый)', 'lycanthrope', p => good(p) && p.role !== 'lycanthrope'));
+    ...flag('fauxPaw', 'Оборотень: «Кошачья лапка» — добрый игрок, который определяется злым для всех ролей, пока Оборотень жив (Оборотень его не убьёт)', 'lycanthrope', p => good(p) && p.role !== 'lycanthrope'));
   if (!mid && (S.flags.marionetteNeed || S.players.some(p => p.role === 'marionette'))) { // Марионетка: сосед Демона с доброй ролью (вики)
     const cur = S.players.find(p => p.role === 'marionette'), nb = E.demonSeatNeighbours(S);
     out.push({ k: 'marionette', label: 'Марионетка — кто из соседей Демона ею станет (он будет считать себя своей ролью, как Пьяница)', cur: cur && cur.id, ask: !cur,
@@ -895,7 +895,8 @@ function viewNight() {
       ${spec.active ? '' : `<div class="warn">Не просыпается: ${esc(spec.reason)}</div>`}
       ${spec.active && spec.bounds && spec.bounds.length ? boundsHtml(spec.bounds) : ''}
       ${(spec.warn || []).map(w => `<div class="warn">${esc(w)}</div>`).join('')}
-      ${fields.map(f => fieldHtml(f, inp)).join('')}
+      ${st.id === 'alhadikhia' && spec.active ? alhStepHtml(inp, 'top') : ''}
+      ${fields.map(f => fieldHtml(f, inp) + (st.id === 'alhadikhia' && spec.active && f.key === 't' ? alhStepHtml(inp) : '')).join('')}
       ${goon ? `<div class="warn">${esc(goon)}</div>` : ''}
       ${info && (info.show || (info.evil || []).length || (info.ann || []).length || (info.lines || []).filter(Boolean).length) ? revealHtml(info, spec.dist) : ''}
       ${st.id === 'dawn' ? morningHtml(true) : ''}
@@ -928,18 +929,19 @@ function bellWav() {
   for (let i = 0; i < n; i++) v.setInt16(44 + i * 2, Math.round(x[i] / (pk || 1) * .85 * 32767), true);
   return new Blob([buf], { type: 'audio/wav' });
 }
-// звук — колокол пользователя (BELL_SRC: mp3 в base64, встроен сборкой), иначе синтез; в плеер — через Blob (Safari надёжнее)
-function bellBlob() {
-  if (typeof BELL_SRC === 'undefined' || !BELL_SRC) return bellWav();
-  const s = atob(BELL_SRC), b = new Uint8Array(s.length); for (let i = 0; i < s.length; i++) b[i] = s.charCodeAt(i);
-  return new Blob([b], { type: 'audio/mpeg' });
+// звуки таймера: колокол пользователя (BELL_SRC; нет — синтез) и тиканье за минуту до конца (TICK_SRC, заметка пользователя 2026-11-03) —
+// mp3 в base64, встроены сборкой; в плеер — через Blob (Safari надёжнее)
+const b64Blob = (s64, type) => { const s = atob(s64), b = new Uint8Array(s.length); for (let i = 0; i < s.length; i++) b[i] = s.charCodeAt(i); return new Blob([b], { type }); };
+const SND = {}, SND_SRC = {
+  bell: () => typeof BELL_SRC !== 'undefined' && BELL_SRC ? b64Blob(BELL_SRC, 'audio/mpeg') : bellWav(),
+  tick: () => typeof TICK_SRC !== 'undefined' && TICK_SRC ? b64Blob(TICK_SRC, 'audio/mpeg') : null };
+function sndAudio(k) { if (SND[k] === undefined) { try { const b = SND_SRC[k](); SND[k] = b ? new Audio(URL.createObjectURL(b)) : null; if (SND[k]) SND[k].preload = 'auto'; } catch (e) { SND[k] = null; } } return SND[k]; }
+function bellPrime() { // в нажатии: проиграть беззвучно и остановить — потом колокол и тиканье зазвучат и без нажатия (iPhone)
+  for (const k of Object.keys(SND_SRC)) { const a = sndAudio(k); if (!a || a.primed) continue; a.primed = true; a.muted = true;
+    try { const p = a.play(); if (p && p.then) p.then(() => { a.pause(); a.currentTime = 0; a.muted = false; }).catch(() => { a.muted = false; a.primed = false; }); else { a.pause(); a.muted = false; } } catch (e) { a.muted = false; } }
 }
-function bellAudio() { if (bellAudio.a === undefined) { try { bellAudio.a = new Audio(URL.createObjectURL(bellBlob())); bellAudio.a.preload = 'auto'; } catch (e) { bellAudio.a = null; } } return bellAudio.a; }
-function bellPrime() { // в нажатии: проиграть беззвучно и остановить — потом колокол зазвучит и без нажатия
-  const a = bellAudio(); if (!a || bellAudio.primed) return; bellAudio.primed = true; a.muted = true;
-  try { const p = a.play(); if (p && p.then) p.then(() => { a.pause(); a.currentTime = 0; a.muted = false; }).catch(() => { a.muted = false; bellAudio.primed = false; }); else { a.pause(); a.muted = false; } } catch (e) { a.muted = false; }
-}
-function bellPlay() { const a = bellAudio(); if (!a) return; try { a.muted = false; a.currentTime = 0; const p = a.play(); if (p && p.catch) p.catch(() => {}); } catch (e) { /* без звука */ } }
+function sndPlay(k) { const a = sndAudio(k); if (!a) return; try { a.muted = false; a.currentTime = 0; const p = a.play(); if (p && p.catch) p.catch(() => {}); } catch (e) { /* без звука */ } }
+function sndStop(k) { const a = SND[k]; if (a) try { a.pause(); } catch (e) { /* без звука */ } }
 const dayTimer = () => S && S.phase === 'day' && S.day ? S.day.timer : null;
 function timerBarHtml() {
   const t = S.day.timer;
@@ -964,16 +966,74 @@ function timerEndHtml() {
     <div class="tmrbell" aria-hidden="true">🔔</div><h3 class="tmrend">День подошёл к концу</h3>
     <button class="btn primary wide" data-act="timerEndClose">Понятно</button></div></div>`;
 }
-// раз в секунду: время на экране; кончилось — окно и колокол (один раз)
+// раз в секунду: время на экране; осталась минута — тиканье (один раз на это время конца: +1 мин — снова); кончилось — окно и колокол
 function timerTick() {
   const t = dayTimer(); if (!t || t.done) return;
   const left = t.end - Date.now(), el = document.getElementById('dtime');
   if (el) { el.textContent = fmtLeft(left); el.closest('.daytimer').classList.toggle('low', left < 60000); }
-  if (left <= 0) { UI.timerEnd = true; draft(S => { S.day.timer.done = true; }); bellPlay(); }
+  if (left <= 60000 && left > 52000 && t.tick !== t.end) { draft(S => { S.day.timer.tick = S.day.timer.end; }); sndPlay('tick'); }
+  if (left <= 0) { UI.timerEnd = true; draft(S => { S.day.timer.done = true; }); sndStop('tick'); sndPlay('bell'); }
 }
 setInterval(timerTick, 1000);
 // после перезагрузки страницы с идущим таймером — «разбудить» плеер первым же нажатием
 document.addEventListener('pointerdown', () => { const t = dayTimer(); if (t && !t.done) bellPrime(); }, { passive: true });
+
+/* ---------- ход Аль-Адихии (заметка пользователя 2026-11-03): выбрали троих (кругом или плиткой) → «Спросить игроков» → три окна по
+   очереди: имя и две картинки — свеча (жить) и череп (умереть). Нажимает рассказчик — что ответил игрок (уточнение пользователя: «выбор
+   нажимает рассказчик, не игроки»); после третьего окно закрывается, итог — на шаге. Пока идёт шаг — тихая музыка */
+function alhAskHtml() {
+  const a = UI.alhAsk; if (!a) return '';
+  const st = S.phase === 'night' && E.currentStep(S), ids = (S.draft && S.draft.inp && S.draft.inp.t) || [];
+  if (!st || st.id !== 'alhadikhia' || ids.length !== 3 || a.i > 2) { UI.alhAsk = null; return ''; }
+  const p = E.P(S, ids[a.i]), pic = (k, alt) => art(k, 'alhimg') || `<span class="alhemo">${alt}</span>`;
+  return `<div class="ov alhov" role="dialog" aria-label="Жить или умереть"><button class="wbtn alhx" data-act="alhClose" aria-label="Закрыть">×</button><div class="alhbox">
+    <div class="alhno">${a.i + 1} / 3</div><div class="alhlab">Аль-Адихия выбирает</div>
+    <div class="alhname">${esc(p ? p.name : '')}</div><div class="alhq">Жить или умереть?</div>
+    <div class="alhpick"><button class="alhbtn live" data-act="alhPick" data-arg="live">${pic('al_live', '🕯')}<span>Жить</span></button>
+      <button class="alhbtn die" data-act="alhPick" data-arg="die">${pic('al_die', '💀')}<span>Умереть</span></button></div></div></div>`;
+}
+// музыка (ALHAD_MUSIC — app_build.py: audio/alhadikhia/*): шаг предлагает включить трек; играет тихо и по кругу, пока идёт шаг Аль-Адихии,
+// потом затихает сама. Громкость: <audio>.volume, а на iPhone (там она не меняется) — через Web Audio
+const ALH_TRACKS = typeof ALHAD_MUSIC === 'undefined' ? [] : ALHAD_MUSIC;
+const ALH = { a: null, id: null, g: null, ac: null };
+const alhVol = () => { try { const v = parseFloat(localStorage.getItem('botc-grimoire-alhvol')); return v > 0 && v <= 1 ? v : .2; } catch (e) { return .2; } };
+function alhSetVol(v) { if (ALH.g) ALH.g.gain.value = v; else if (ALH.a) ALH.a.volume = v; }
+function alhPlay(id) {
+  const r = ALH_TRACKS.find(x => x.id === id); if (!r) return;
+  alhStop();
+  const b = REC_BLOB[r.id], a = new Audio(typeof b === 'string' ? b : r.src), v = alhVol();
+  a.loop = true; a.volume = v; ALH.a = a; ALH.id = id;
+  if (Math.abs(a.volume - v) > .01 && location.protocol !== 'file:') try {
+    const AC = window.AudioContext || window.webkitAudioContext, ac = ALH.ac || (ALH.ac = new AC());
+    if (ac.resume) ac.resume();
+    const g = ac.createGain(); g.gain.value = v; ac.createMediaElementSource(a).connect(g); g.connect(ac.destination); ALH.g = g;
+  } catch (e) { /* громкость не поменять — играет как есть */ }
+  a.play().catch(() => { alhStop(); alertNote(`Не удалось воспроизвести «${r.n}»`); });
+  render();
+}
+function alhStop(fade) {
+  const { a, g } = ALH; if (!a) return;
+  ALH.a = null; ALH.id = null; ALH.g = null;
+  if (!fade) { a.pause(); return; }
+  const T = 1600, t0 = Date.now(), v0 = g ? g.gain.value : a.volume;
+  const iv = setInterval(() => { const k = (Date.now() - t0) / T;
+    if (k >= 1) { clearInterval(iv); a.pause(); return; }
+    try { if (g) g.gain.value = v0 * (1 - k); else a.volume = v0 * (1 - k); } catch (e) { /* затухание не важно */ } }, 50);
+}
+function alhMusicHtml() {
+  if (!ALH_TRACKS.length) return '';
+  recPrefetch(ALH_TRACKS);
+  return `<div class="tale alhmus"><div class="lab">Музыка на ход Аль-Адихии — тихо, по кругу</div>
+    <div class="reclist">${ALH_TRACKS.map(r => `<button class="btn ${ALH.id === r.id ? 'on' : ''}" data-act="alhPlay" data-arg="${r.id}" aria-pressed="${ALH.id === r.id}">${ALH.id === r.id ? '▶ ' : ''}${esc(r.n)}</button>`).join('')}</div>
+    ${ALH.id ? `<div class="row alhvol"><button class="btn" data-act="alhVol" data-arg="-1">Тише</button><button class="btn" data-act="alhVol" data-arg="1">Громче</button><button class="btn" data-act="alhStop">■ Стоп</button></div>` : ''}</div>`;
+}
+// на шаге: музыка вверху, после выбора троих — «Спросить игроков»
+function alhStepHtml(inp, where) {
+  if (where === 'top') return alhMusicHtml();
+  if ((inp.t || []).length !== 3) return '';
+  const asked = [0, 1, 2].every(i => inp['c' + i]);
+  return `<button class="btn ${asked ? '' : 'primary'} wide alhgo" data-act="alhAsk">${asked ? 'Спросить игроков заново' : 'Подтвердить выбор — спросить игроков'}</button>`;
+}
 
 function viewDay() {
   const d = S.day, th = E.voteThreshold(S), blk = E.block(S), alive = E.aliveCount(S), picks = d.picks || (d.picks = {});
@@ -2941,6 +3001,8 @@ function render() {
   if (UI.prevPhase === 'night' && S.phase === 'day' && S.day && !S.day.timerAsked && !S.day.timer) UI.timerAsk = true;
   if (S.phase !== 'day') { UI.timerAsk = false; UI.timerEnd = false; }
   UI.prevPhase = S.phase;
+  // музыка Аль-Адихии — только пока идёт её шаг
+  if (ALH.a && !(S.phase === 'night' && (E.currentStep(S) || {}).id === 'alhadikhia')) alhStop(true);
   // ночью — принудительный OLED: чистый чёрный фон, светятся только текст и иконки
   document.documentElement.classList.toggle('oled', S.phase === 'night');
   // днём и на остальных экранах — всегда светлая тема, даже если телефон переключился на тёмную
@@ -2966,13 +3028,13 @@ function render() {
       <button class="hundo" data-act="undo" ${last ? '' : 'disabled'} aria-label="${last ? esc('Отменить: ' + last.label) : 'Нечего отменять'}" title="${last ? esc('Отменить: ' + last.label) : ''}">↶</button><span class="save"></span></header>
     <main>${body}</main>
     <nav class="tabs">${[['game', S.phase === 'night' ? 'Ночь' : S.phase === 'day' ? 'День' : 'Игра', S.phase === 'night' ? 'night' : S.phase === 'day' ? 'day' : 'setup'], ['table', 'Гримуар'], ['log', 'Журнал'], ['roles', 'Роли'], ['menu', 'Ещё']].map(([k, l, ic]) => `<button class="${UI.tab === k ? 'on' : ''}" data-act="tab" data-arg="${k}">${tabIco(ic || k)}<span class="tl">${l}</span></button>`).join('')}</nav>
-    ${legendOverlay()}${wallOverlay()}${grimOverlay()}${ringOverlay()}${sheetOverlay()}${editOverlay()}${fateOverlay()}${statOverlay()}${tipHtml()}${savFactsHtml()}${ghostLostHtml()}${pinAskHtml()}${polOverlay()}${gossipAskHtml()}${prepOverlay()}${prepPickHtml()}${exeAskHtml()}${exeResHtml()}${showOverlay()}${noteViewOverlay()}${timerAskHtml()}${timerEndHtml()}${testWelcomeHtml()}${splashHtml()}`;
+    ${legendOverlay()}${wallOverlay()}${grimOverlay()}${ringOverlay()}${sheetOverlay()}${editOverlay()}${fateOverlay()}${statOverlay()}${tipHtml()}${savFactsHtml()}${ghostLostHtml()}${pinAskHtml()}${polOverlay()}${gossipAskHtml()}${prepOverlay()}${prepPickHtml()}${exeAskHtml()}${exeResHtml()}${showOverlay()}${noteViewOverlay()}${timerAskHtml()}${timerEndHtml()}${alhAskHtml()}${testWelcomeHtml()}${splashHtml()}`;
   // круг рассадки — только на подготовке, круг номинации — только днём, Гримуар кругом — во время игры (после смены фазы закрываются сами)
   if ((UI.ring === 'seat' && S.phase !== 'setup') || ((UI.ring === 'nom' || UI.ring === 'pick' || UI.ring === 'exile') && S.phase !== 'day') || UI.ring === 'grim') UI.ring = null;
   // под полноэкранными слоями страница не прокручивается
   if (UI.fate && !(S.phase === 'day' && S.day.picks && S.day.picks.fate)) UI.fate = false; // день кончился — выбор казни закрыт
   if (UI.stat && S.phase !== 'day') UI.stat = false;
-  document.documentElement.classList.toggle('locked', !!((UI.splash && UI.skin !== 'basic') || UI.show || UI.legend || UI.ring || UI.noteView || UI.edit || UI.fate || UI.stat || UI.tip || UI.savFacts || UI.ghostLost || UI.pinAsk || UI.testWelcome || UI.timerAsk || UI.timerEnd || E.politiciansPending(S).length || UI.gossipAsk || UI.exeAsk || UI.exeRes || (UI.open && E.P(S, UI.open)) || (UI.wall && S.draw) || (UI.grimShow && S.phase === 'night')));
+  document.documentElement.classList.toggle('locked', !!((UI.splash && UI.skin !== 'basic') || UI.show || UI.legend || UI.ring || UI.noteView || UI.edit || UI.fate || UI.stat || UI.tip || UI.savFacts || UI.ghostLost || UI.pinAsk || UI.testWelcome || UI.timerAsk || UI.timerEnd || UI.alhAsk || E.politiciansPending(S).length || UI.gossipAsk || UI.exeAsk || UI.exeRes || (UI.open && E.P(S, UI.open)) || (UI.wall && S.draw) || (UI.grimShow && S.phase === 'night')));
   app.querySelectorAll('details > summary').forEach(s => { if (opened.has(s.textContent)) s.parentElement.open = true; });
   if (UI.tab === 'roles') filterRefs();
   paintSave();
@@ -3231,9 +3293,18 @@ const A = {
   timerOwn: () => { const v = parseFloat(((document.getElementById('timerOwn') || {}).value || '').replace(',', '.'));
     if (!(v > 0) || v > 180) { const el = document.getElementById('timerOwn'); if (el) el.focus(); return; } A.timerSet(v); },
   timerNo: () => { UI.timerAsk = false; draft(S => { S.day.timerAsked = true; }); },
-  timerAdd: m => { bellPrime(); draft(S => { const t = S.day.timer; if (!t) return; t.end = Math.max(t.end, Date.now()) + (+m) * 60000; t.done = false; }); },
-  timerStop: () => draft(S => { S.day.timer = null; }),
-  timerEndClose: () => { UI.timerEnd = false; const a = bellAudio(); if (a) try { a.pause(); } catch (e) { /* без звука */ } render(); },
+  timerAdd: m => { bellPrime(); sndStop('tick'); draft(S => { const t = S.day.timer; if (!t) return; t.end = Math.max(t.end, Date.now()) + (+m) * 60000; t.done = false; }); },
+  timerStop: () => { sndStop('tick'); draft(S => { S.day.timer = null; }); },
+  // Аль-Адихия: окна «жить или умереть» по очереди; нажатие в первые 0,6 с после смены окна не считается (двойное нажатие)
+  alhAsk: () => { UI.alhAsk = { i: 0, t: Date.now() }; render(); },
+  alhPick: v => { const a = UI.alhAsk; if (!a || a.i > 2 || Date.now() - a.t < 600) return;
+    const k = 'c' + a.i; UI.alhAsk = a.i < 2 ? { i: a.i + 1, t: Date.now() } : null; inpDraft(k, inp => { inp[k] = v; }); },
+  alhClose: () => { UI.alhAsk = null; render(); },
+  alhPlay: id => { if (ALH.id === id) alhStop(true); else alhPlay(id); render(); },
+  alhStop: () => { alhStop(true); render(); },
+  alhVol: d => { const v = Math.min(1, Math.max(.04, alhVol() * (+d > 0 ? 1.5 : 1 / 1.5)));
+    try { localStorage.setItem('botc-grimoire-alhvol', String(v)); } catch (e) { /* без хранилища — до перезагрузки */ } alhSetVol(v); },
+  timerEndClose: () => { UI.timerEnd = false; sndStop('bell'); render(); },
   swapSeat: id => { if (!UI.swapA || UI.swapA === id) { UI.swapA = UI.swapA === id ? null : id; return render(); }
     const a = UI.swapA; UI.swapA = null;
     act(S => { const i = S.players.findIndex(p => p.id === a), j = S.players.findIndex(p => p.id === id); if (i < 0 || j < 0) return;

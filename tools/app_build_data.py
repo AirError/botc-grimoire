@@ -134,6 +134,15 @@ scripts = {
         "moonchild", "politician", "damsel", "puzzlemaster",
         "godfather", "poisoner", "witch", "mastermind",
         "imp"]},
+    # Mad Masquerade (by Alex, 2026-11-03) — состав и порядок из mad_masquerade/src/script.json (как на листе пользователя).
+    # Ассасин здесь называется «Убийца» (names, как на листе). Экспериментальные: Оборотень, Фокусник, Аристократ, Каннибал,
+    # Голем, Аль-Адихия
+    "madmasquerade": {"name": "Mad Masquerade", "roles": [
+        "lycanthrope", "magician", "innkeeper", "savant", "chef", "noble", "empath", "dreamer", "investigator", "oracle",
+        "cannibal", "fool", "slayer",
+        "moonchild", "golem", "sweetheart", "klutz",
+        "pithag", "poisoner", "assassin", "eviltwin",
+        "alhadikhia", "vigormortis", "fanggu"], "names": {"assassin": "Убийца"}},
     # сценарии Ильи (2026-10-19; группа «Сценарии Ильи») — составы из bon_appetit/src/script.json и nachtmahr/src/script.json.
     # Экспериментальные: Управляющий, Каннибал, Ловчий, Девица, Психопат, Казали; в Nachtmahr — ещё Оборотень, Банши, Фокусник,
     # Страшила (Паникёр). Ловчий и Страшила — названия пользователя (USER_NAME)

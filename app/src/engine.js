@@ -144,10 +144,9 @@ function vortoxActive(S) { return holders(S, 'vortox').some(v => demonAlive(v) &
 
 // Оборотень (вики): «один из добрых игроков определяется злым» — «Кошачья лапка», пока у Оборотня есть способность (жив, трезв)
 const fauxPawOn = (S, q) => hasTok(q, 'fauxpaw', 'lycanthrope') && S.players.some(l => actsAs(l) === 'lycanthrope' && l.alive && !abilityOff(S, l));
-// для Оборотня злой — злой или «Кошачья лапка» (он её не убьёт). Для остальных ролей лапка — обычный добрый игрок: решение пользователя
-// 2026-11-01 («почему должен страдать Повар или Эмпат из-за чужой ложной цели?»; вики: «registers as evil» без исключений). Как ложная
-// цель Гадалки — только для своей роли
-const lycEvil = (S, q) => q.align === 'evil' || fauxPawOn(S, q);
+// определяется злым: злой — или «Кошачья лапка», для всех ролей (вики: «registers as evil»; заметка пользователя 2026-11-03 «учитывай
+// ложную цель Оборотня для других ролей как злого» — v80 «злая только для Оборотня» отменено). Затворника и Шпиона решает рассказчик — regNote
+const regEvil = (S, q) => q.align === 'evil' || fauxPawOn(S, q);
 // Оборотень убил доброго этой ночью — Демон этой ночью не убивает (вики)
 const lycBlock = S => S.phase === 'night' && !!(S.night && S.night.data.lycKill);
 // Пиявица (вики): хозяин — игрок, отравленный ею в 1-ю ночь (жетон яда с by — кто Пиявица); пока хозяин жив, Пиявица не может
@@ -1587,7 +1586,7 @@ function fabledSpec(S, step, first) {
     more: inp => (inp.t || []).length === 3 ? [PL('f', 1, 'Кто из них получает ложное число', q => inp.t.includes(q.id))] : [],
     info: inp => {
       const vs = (inp.t || []).map(id => P(S, id)); if (vs.length !== 3) return { show: 'Посетителей не 3 — Герцогиня не действует', lines: [] };
-      const n = vs.filter(q => q.align === 'evil').length, f = inp.f && P(S, inp.f[0]);
+      const n = vs.filter(q => regEvil(S, q)).length, f = inp.f && P(S, inp.f[0]);
       const fake = stable(S, 'duchessFake', () => pick([0, 1, 2, 3].filter(x => x !== n)));
       return { show: `Злых посетителей: ${n}`, lines: [`Покажите это число двоим, ${f ? f.name : 'третьему'} — любое другое (подсказка: ${fake})`, ...regNote(S, inp.t)],
         tokens: vs.map(q => ({ label: q.name, caption: CARD.selected, role: 'duchess', text: String(f && q.id === f.id ? fake : n) })) };
@@ -1775,12 +1774,17 @@ const TEXT = (key, label) => ({ type: 'text', key, label });
 const notSelf = p => q => q.id !== p.id;
 const aliveOnly = q => q.alive;
 const both = (a, b) => q => a(q) && b(q);
-const regNote = (S, ids) => {
+const regNote = (S, ids, noPaw) => {
   const ps = ids.map(id => P(S, id)).filter(Boolean), out = [];
   if (ps.some(q => q.role === 'recluse')) out.push('Среди выбранных Затворник: может определиться злым, Приспешником или Демоном — решите сами.');
   if (ps.some(q => q.role === 'spy')) out.push('Среди выбранных Шпион: может определиться добрым, Горожанином или Изгоем — решите сами.');
+  const paw = !noPaw && ps.find(q => fauxPawOn(S, q));
+  if (paw) out.push(`Среди выбранных «Кошачья лапка» Оборотня (${paw.name}): добрый, но определяется злым — посчитан злым.`);
   return out;
 };
+// «Кошачья лапка» изменила число (Повар, Эмпат): посчитана злой; рядом — число без неё
+const pawAlt = (S, ps, c, alt, what) => { const paw = ps.find(q => fauxPawOn(S, q));
+  return paw && alt !== c ? [`«Кошачья лапка» (${paw.name}) определяется злой — посчитана; без неё ${what} было бы ${alt}`] : []; };
 // случайное значение, закреплённое на эту ночь (чтобы подсказки не менялись при перерисовке)
 // случайная рекомендация не меняется от перерисовки; хранится отдельно (night.data.st) — переигрывание ночи (правка из журнала) её сохраняет
 function stable(S, key, fn) { const d = S.night.data.st || (S.night.data.st = {}); if (!(key in d)) d[key] = fn(); return d[key]; }
@@ -1916,8 +1920,8 @@ function infoPair(team) {
 }
 
 // Повар, Эмпат, Часовщик, Оракул: число. Рекомендация при искажении — на 1 больше или меньше верного
-// сколько игроков могут оказаться злыми для чужой информации: злые и Затворник (может определиться злым)
-const evilLike = (S, except) => S.players.filter(q => q !== except && (q.align === 'evil' || q.role === 'recluse')).length;
+// сколько игроков могут оказаться злыми для чужой информации: злые, Затворник (может определиться злым), «Кошачья лапка»
+const evilLike = (S, except) => S.players.filter(q => q !== except && (regEvil(S, q) || q.role === 'recluse')).length;
 // ложь пьяному/отравленному — правдоподобная (заметка пользователя 2026-10-27: «у Эмпата никак не может быть 3!»): только число,
 // которое могло бы выпасть (compute даёт min/max), лучше соседнее с верным
 function plausibleFake(truth, lo, hi) {
@@ -1964,13 +1968,13 @@ const LOGIC = {
   librarian: infoPair('outsider'),
   investigator: infoPair('minion'),
   chef: countInfo((S) => {
-    const ps = S.players, n = ps.length; let c = 0; // «Кошачья лапка» Оборотня — добрая (решение пользователя 2026-11-01)
-    for (let i = 0; i < n; i++) if (ps[i].align === 'evil' && ps[(i + 1) % n].align === 'evil') c++;
-    return { n: c, max: Math.max(0, evilLike(S) - 1), lines: regNote(S, ps.map(q => q.id)) }; // пар не больше, чем злых минус один
+    const ps = S.players, n = ps.length, pairs = ev => { let c = 0; for (let i = 0; i < n; i++) if (ev(ps[i]) && ev(ps[(i + 1) % n])) c++; return c; };
+    const c = pairs(q => regEvil(S, q)), alt = pairs(q => q.align === 'evil'); // «Кошачья лапка» Оборотня — тоже злой
+    return { n: c, max: Math.max(0, evilLike(S) - 1), lines: [...pawAlt(S, ps, c, alt, 'пар'), ...regNote(S, ps.map(q => q.id), true)] }; // пар не больше, чем злых минус один
   }, 'Пар соседей-злодеев (покажите пальцами)'),
   empath: countInfo((S, p) => {
-    const nb = aliveNeighbours(S, p);
-    return { n: nb.filter(q => q.align === 'evil').length, max: Math.min(nb.length, evilLike(S, p)), lines: [`Соседи: ${nb.map(q => q.name).join(' и ')}`, ...regNote(S, nb.map(q => q.id))] };
+    const nb = aliveNeighbours(S, p), c = nb.filter(q => regEvil(S, q)).length, alt = nb.filter(q => q.align === 'evil').length;
+    return { n: c, max: Math.min(nb.length, evilLike(S, p)), lines: [`Соседи: ${nb.map(q => q.name).join(' и ')}`, ...pawAlt(S, nb, c, alt, 'злых'), ...regNote(S, nb.map(q => q.id), true)] };
   }, 'Злых среди живых соседей'),
   fortuneteller: (S, p, first, off) => {
     const truth = inp => (inp.t || []).map(id => P(S, id)).some(q => q && (isDemon(q) || q.id === S.flags.ftHerring));
@@ -2356,10 +2360,10 @@ const LOGIC = {
     return { inputs: [y.field], info: inp => ({ show: y.shown(inp) ? 'ДА — кивните' : 'НЕТ — покачайте головой', lines: [`Приспешник сегодня ${truth ? 'номинировал' : 'не номинировал'}`, ...y.lines(inp)] }),
       apply: inp => { log(S, `Глашатай (${p.name}): ${y.shown(inp) ? 'да' : 'нет'}`, 'info'); y.record(inp); } };
   },
-  oracle: countInfo(S => ({ n: S.players.filter(q => !q.alive && q.align === 'evil').length, max: Math.min(S.players.filter(q => !q.alive).length, evilLike(S)) }), 'Мёртвых злых игроков'),
+  oracle: countInfo(S => ({ n: S.players.filter(q => !q.alive && regEvil(S, q)).length, max: Math.min(S.players.filter(q => !q.alive).length, evilLike(S)) }), 'Мёртвых злых игроков'),
   seamstress: (S, p, first, off) => {
     if (once(S, p, 'seamstress')) return { active: false, reason: 'Способность уже использована' };
-    const same = inp => { const ps = (inp.t || []).map(id => P(S, id)); return ps.length === 2 && ps[0].align === ps[1].align; };
+    const same = inp => { const ps = (inp.t || []).map(id => P(S, id)); return ps.length === 2 && regEvil(S, ps[0]) === regEvil(S, ps[1]); };
     return { inputs: [PL('t', 2, 'Швея выбирает 2 игроков (можно пропустить)', notSelf(p), { min: 0 })],
       more: inp => (inp.t || []).length === 2 ? [yesNo(S, p, same(inp)).field] : [],
       info: inp => { if ((inp.t || []).length < 2) return null; const y = yesNo(S, p, same(inp));
@@ -2811,10 +2815,10 @@ const LOGIC = {
     if (!first) return { active: false, reason: 'Аристократ узнаёт только в свою первую ночь' };
     const dist = distortion(S, p), others = S.players.filter(q => q.id !== p.id && !isTraveller(q));
     const def = stable(S, `noble:${p.id}:${dist ? 'f' : 't'}`, () => {
-      const ev = shuffle(others.filter(q => q.align === 'evil')), gd = shuffle(others.filter(q => q.align === 'good'));
+      const ev = shuffle(others.filter(q => regEvil(S, q))), gd = shuffle(others.filter(q => !regEvil(S, q)));
       return seatSort(S, (dist ? (Math.random() < 0.5 ? gd.slice(0, 3) : ev.slice(0, 2).concat(gd.slice(0, 1))) : ev.slice(0, 1).concat(gd.slice(0, 2))).map(q => q.id));
     });
-    const evilN = inp => (inp.t || []).filter(id => P(S, id) && P(S, id).align === 'evil').length;
+    const evilN = inp => (inp.t || []).filter(id => P(S, id) && regEvil(S, P(S, id))).length;
     return { inputs: [PL('t', 3, `Покажите 3 игроков: ровно 1 злой${dist ? ' (рекомендация — ложная)' : ''}`, notSelf(p))], defaults: { t: def },
       info: inp => (inp.t || []).length === 3 ? { show: seatSort(S, inp.t).map(id => nm(S, id)).join(', '), lines: [evilN(inp) === 1 ? 'Информация верная' : `Злых среди них: ${evilN(inp)} — информация ложная`,
           dist && dist.must && evilN(inp) === 1 ? 'Вортокс: нужна ЛОЖНАЯ информация' : '', ...regNote(S, inp.t)], tokens: [{ players: seatSort(S, inp.t), lead: 'Только один из этих игроков злой:' }] } : null,
@@ -2875,7 +2879,7 @@ const LOGIC = {
   // На рассвете объявить, кто из троих жив, кто мёртв (заметка пользователя 2026-10-14: «их выбор и последствия, воскрешение»)
   alhadikhia: (S, p, first, off, base) => {
     if (demonExorcised(S, p, base)) return {};
-    const ch = [{ v: 'live', l: 'Жить (кивнул)' }, { v: 'die', l: 'Умереть (покачал)' }];
+    const ch = [{ v: 'live', l: 'Жить' }, { v: 'die', l: 'Умереть' }]; // ответ игрока рассказчик отмечает в окнах по очереди (ui.js, alhAsk) или здесь
     return {
       inputs: [PL('t', 3, 'Аль-Адихия выбирает 3 игроков по порядку (можно никого)', () => true, { min: 0 })],
       more: inp => (inp.t || []).length === 3 ? inp.t.map((id, i) => CHOICE('c' + i, `${i + 1}. ${nm(S, id)}: «Вы выбираете жить?»`, ch)) : [],
@@ -2883,7 +2887,7 @@ const LOGIC = {
         if (!ids.length) return { show: 'Никого — объявлять нечего', lines: [] };
         const res = alhOutcome(S, ids, inp);
         return { show: `Объявите всем: Аль-Адихия выбрал ${ids.map(id => nm(S, id)).join(', ')} — тишина!`, lines: [
-            'Будите по очереди (1, 2, 3): «Аль-Адихия выбрал [имя]. Вы выбираете жить?» Кивок — жить, покачал — умереть',
+            'Будите по очереди (1, 2, 3): «Аль-Адихия выбрал [имя]. Вы выбираете жить?» Кивок — жить, покачал — умереть; ответ отметьте — «Спросить игроков»',
             res ? res.text : 'Отметьте выбор каждого', off ? 'Демон пьян или отравлен: способность не работает — никто не умирает и не оживает' : ''] }; },
       apply: inp => {
         const ids = inp.t || []; S.night.data.alh = ids.slice();
@@ -2902,7 +2906,7 @@ const LOGIC = {
     if (!first) return { active: false, reason: 'Управляющий узнаёт только в свою первую ночь' };
     const dist = distortion(S, p), others = S.players.filter(q => q.id !== p.id && !isTraveller(q));
     const def = stable(S, `steward:${p.id}:${dist ? 'f' : 't'}`, () => {
-      const good = others.filter(q => q.align !== 'evil'), evil = others.filter(q => q.align === 'evil');
+      const good = others.filter(q => !regEvil(S, q)), evil = others.filter(q => q.align === 'evil');
       const c = dist && evil.length ? evil : good; return c.length ? [pick(c).id] : [];
     });
     return { inputs: [PL('t', 1, `Укажите на 1 доброго игрока${dist ? ' (рекомендация — ложная)' : ''}`, notSelf(p))], defaults: { t: def },
@@ -2950,13 +2954,13 @@ const LOGIC = {
     inputs: [PL('t', 1, 'Кого выбирает Оборотень (только живого)', aliveOnly)],
     info: inp => { const t = inp.t && P(S, inp.t[0]); if (!t) return null;
       if (off) return { secret: true, show: `${t.name} не умирает: Оборотень ${abilityOff(S, p)}`, lines: ['Демон этой ночью убивает как обычно'] };
-      if (lycEvil(S, t)) return { secret: true, show: `${t.name} ${t.align === 'evil' ? 'злой' : '— «Кошачья лапка», для Оборотня злой'}: ничего не происходит`, lines: ['Демон этой ночью убивает как обычно'] };
+      if (regEvil(S, t)) return { secret: true, show: `${t.name} ${t.align === 'evil' ? 'злой' : '— «Кошачья лапка», определяется злым'}: ничего не происходит`, lines: ['Демон этой ночью убивает как обычно'] };
       const g = deathGuard(S, t, 'ability');
       return { secret: true, show: g ? `${t.name} добрый, но не умирает: ${g}` : `${t.name} добрый — умирает`, lines: [g ? 'Демон этой ночью убивает как обычно' : 'Демон этой ночью не убивает: разбудите его как обычно, но его выбор никого не убьёт'] }; },
     apply: inp => { const t = P(S, inp.t[0]);
       log(S, `Оборотень (${p.name}) выбирает ${t.name}${off ? ' — не работает' : ''}`, 'action');
-      if (off) { if (!lycEvil(S, t)) recordAbn(S, p, `${t.name} не умер`, abnSource(S, p)); return; }
-      if (lycEvil(S, t)) return;
+      if (off) { if (!regEvil(S, t)) recordAbn(S, p, `${t.name} не умер`, abnSource(S, p)); return; }
+      if (regEvil(S, t)) return;
       if (attemptKill(S, t, 'ability', 'lycanthrope').died) { S.night.data.lycKill = p.id; log(S, 'Оборотень убил доброго — Демон этой ночью не убивает', 'effect'); } },
   }),
   // Банши: шаг ночи — только если Демон убил её этой ночью и способность была (afterDeath); объявить всем
@@ -3392,7 +3396,7 @@ function klutzChoose(S, pid) {
   const k = P(S, S.flags.klutzPending), t = P(S, pid), off = S.flags.klutzOff; S.flags.klutzPending = null; S.flags.klutzOff = null;
   log(S, `Растяпа (${k.name}) выбирает ${t.name}${off ? ` — способность не работает (${off}): ничего не происходит` : ''}`, 'day');
   if (off) return;
-  if (t.align === 'evil') endGame(S, k.align === 'evil' ? 'good' : 'evil', `Растяпа выбрал злого игрока (${t.name})`);
+  if (regEvil(S, t)) endGame(S, k.align === 'evil' ? 'good' : 'evil', `Растяпа выбрал злого игрока (${t.name}${t.align === 'evil' ? '' : ' — «Кошачья лапка» Оборотня, определяется злым'})`);
 }
 
 

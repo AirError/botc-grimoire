@@ -208,6 +208,9 @@ def beauty():
     meta["hallow"] = halloween()
     meta["vitr"] = vitrage()
     meta["kettle"] = cauldron()
+    for src, name in (("al_live", "al_live"), ("al_die", "al_die")):  # Аль-Адихия: свеча — жить, череп — умереть (картинки пользователя 2026-11-03)
+        if (SRC / f"{src}.png").exists():
+            alpha_bbox(defringe(white_alpha(SRC / f"{src}.png", min_area=400)), thr=8).save(OUT / f"{name}.png")
     (OUT / "meta.json").write_text(json.dumps(meta), encoding="utf-8")
 
 

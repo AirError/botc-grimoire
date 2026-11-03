@@ -1752,16 +1752,24 @@ try {
     E.slayerShot(G, cn.id, im.id);
     ok('Каннибал-Истребитель стреляет в Демона — Демон умирает', !im.alive);
 
-    // Повар и Эмпат: «Кошачья лапка» злая только для Оборотня (решение пользователя 2026-11-01: «почему должен страдать Повар или Эмпат»)
+    // «Кошачья лапка» определяется злой для всех ролей (заметка пользователя 2026-11-03; v80 «только для Оборотня» отменено)
     const C = game(['chef', 'lycanthrope', 'empath', 'monk', 'soldier', 'poisoner', 'imp'], 'nachtmahr');
     const paw = byRole(C, 'soldier'); C.flags.fauxPaw = paw.id; E.autoSetup(C, false); C.flags.fauxPaw = paw.id;
-    const pi = C.players.indexOf(paw); C.players.splice(pi, 1); C.players.splice(C.players.indexOf(byRole(C, 'poisoner')) + 1, 0, paw); // лапка рядом с Отравителем
+    const pi = C.players.indexOf(paw); C.players.splice(pi, 1); C.players.splice(C.players.indexOf(byRole(C, 'poisoner')) + 1, 0, paw); // лапка между Отравителем и Чёртом
     E.startGame(C);
     const cs = E.stepSpec(C, C.night.steps.find(s => s.id === 'chef')), ci = cs.info(Object.assign({}, cs.defaults));
-    ok('Повар: лапка между двумя злыми — пар 0 (лапка добрая), без пометок про лапку', E.fauxPawOn(C, paw) && ci.show === '0' && !ci.lines.some(l => /лапк/i.test(l)), ci.show + ' | ' + ci.lines.join(' | '));
+    ok('Повар: лапка между двумя злыми — 2 пары, в подсказке число без лапки', E.fauxPawOn(C, paw) && ci.show === '2' && ci.lines.some(l => /без неё пар было бы 0/.test(l)), ci.show + ' | ' + ci.lines.join(' | '));
     const emp = byRole(C, 'empath'); C.players.splice(C.players.indexOf(emp), 1); C.players.splice(C.players.indexOf(paw) + 1, 0, emp); // Эмпат рядом с лапкой
     const es = E.stepSpec(C, C.night.steps.find(s => s.id === 'empath')), nb = E.aliveNeighbours(C, emp);
-    ok('Эмпат: лапка-сосед не считается злой', nb.includes(paw) && es.info({}).show === String(nb.filter(q => q.align === 'evil').length), es.info({}).show + ' ' + nb.map(q => q.name).join(','));
+    ok('Эмпат: лапка-сосед считается злой', nb.includes(paw) && es.info({}).show === String(nb.filter(q => q.align === 'evil').length + 1), es.info({}).show + ' ' + nb.map(q => q.name).join(','));
+
+    const K = game(['noble', 'lycanthrope', 'klutz', 'monk', 'soldier', 'poisoner', 'imp'], 'madmasquerade');
+    const kp = byRole(K, 'soldier'); K.flags.fauxPaw = kp.id; E.autoSetup(K, false); K.flags.fauxPaw = kp.id; E.startGame(K);
+    const ns = E.stepSpec(K, K.night.steps.find(s => s.id === 'noble'));
+    const ni = ns.info({ t: [kp.id, byRole(K, 'monk').id, byRole(K, 'klutz').id] });
+    ok('Аристократ: лапка среди троих — «ровно 1 злой», информация верная', /Информация верная/.test(ni.lines.join(' ')) && ni.lines.some(l => /Кошачья лапка/.test(l)), ni.lines.join(' | '));
+    K.flags.klutzPending = byRole(K, 'klutz').id; E.klutzChoose(K, kp.id);
+    ok('Растяпа выбрал лапку — добрые проигрывают', K.phase === 'over' && K.result.winner === 'evil', JSON.stringify(K.result));
   }
 
   for (const k of Object.keys(DATA.scripts)) ok('сценарий ' + k + ' — все роли в данных', DATA.scripts[k].roles.every(r => DATA.roles[r]));

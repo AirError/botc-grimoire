@@ -103,6 +103,7 @@ ART.update({f"k_splash{i}": (CUT / f"k_splash{i}.png", 260) for i in range(1, 7)
 ART.update({f"k_witch{i}": (CUT / f"k_witch{i}.png", 400) for i in (1, 2, 3, 4)})
 ART.update({f"k_herb{i}": (CUT / f"k_herb{i}.png", 160) for i in range(1, 6)})
 ART.update({f"k_cat{i}": (CUT / f"k_cat{i}.png", 300) for i in (1, 2)})
+ART.update({k: (CUT / f"{k}.png", 360) for k in ("al_live", "al_die")})  # Аль-Адихия: жить — свеча, умереть — череп
 ART.update({f"c_em_{k}": (CUT / f"c_em_{k}.png", 220) for k in ("demon", "minions", "notinplay", "youare", "selected", "thisplayer", "yourrole",
                                                                "yes", "no", "good", "evil", "general_good", "general_evil", "general_neither", "moon")})
 
@@ -158,12 +159,28 @@ for folder in sorted(REC_SRC.iterdir()) if REC_SRC.is_dir() else []:
         name = re.sub(r"[ _]+монтаж$", "", re.sub(r"^\d+[ _.\-]+", "", f.stem), flags=re.I).replace("_", " ").strip() or f.stem
         rec.append({"id": rid, "c": cat, "n": name, "src": f"rec/{out}"})
 art_js += "const MORNING_REC = " + json.dumps(rec, ensure_ascii=False) + ";\n"
+# музыка на шаг Аль-Адихии (заметка пользователя 2026-11-03: «приглушённо играет восточная музыка»): audio/alhadikhia/* — так же
+# файлами рядом (rec/), не в странице; название — имя файла без номера в начале
+music = []
+for f in sorted((ROOT / "audio" / "alhadikhia").iterdir()) if (ROOT / "audio" / "alhadikhia").is_dir() else []:
+    if f.suffix.lower() not in AUDIO:
+        continue
+    mid = hashlib.sha1(f"alhadikhia/{f.stem}".encode("utf-8")).hexdigest()[:10]
+    out = f"{mid}-{hashlib.sha1(f.read_bytes()).hexdigest()[:8]}{f.suffix.lower()}"
+    REC_OUT.mkdir(parents=True, exist_ok=True)
+    shutil.copy2(f, REC_OUT / out)
+    music.append({"id": mid, "n": re.sub(r"^\d+[ _.\-]+", "", f.stem).replace("_", " ").strip() or f.stem, "src": f"rec/{out}"})
+art_js += "const ALHAD_MUSIC = " + json.dumps(music, ensure_ascii=False) + ";\n"
 # колокол конца дня (таймер дня; файл пользователя 2026-11-02, audio/bell/*.mp3): встроен в страницу — короткий, нужен и без сети;
 # нет файла — приложение синтезирует удар само
 BELL_DIR = ROOT / "audio" / "bell"
 bell = next(iter(sorted(BELL_DIR.glob("*.mp3"))), None) if BELL_DIR.is_dir() else None
 art_js += "const BELL_SRC = " + json.dumps(base64.b64encode(bell.read_bytes()).decode() if bell else "") + ";\n"
-print("колокол:", bell.name if bell else "нет (синтез)")
+# тиканье за минуту до конца таймера (файл пользователя 2026-11-03, обрезан до ~6 с: audio/tick/*.mp3) — тоже в странице
+TICK_DIR = ROOT / "audio" / "tick"
+tick = next(iter(sorted(TICK_DIR.glob("*.mp3"))), None) if TICK_DIR.is_dir() else None
+art_js += "const TICK_SRC = " + json.dumps(base64.b64encode(tick.read_bytes()).decode() if tick else "") + ";\n"
+print("колокол:", bell.name if bell else "нет (синтез)", "| тиканье:", tick.name if tick else "нет", "| музыка Аль-Адихии:", len(music))
 print("записей на утро:", len(rec), *[f"{c}: {sum(r['c'] == c for r in rec)}" for c in (0, 1, 2)])
 missing = [k for k, (p, _) in ART.items() if not p.exists() and not k.startswith(("d_pane", "d_nave", "d_reveal", "d_arch", "d_crack", "d_beams", "d_impact", "d_digit", "h_digit", "k_"))]  # витраж и котёл — по желанию
 if missing:
