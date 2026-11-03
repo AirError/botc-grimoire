@@ -121,10 +121,12 @@ body { -webkit-print-color-adjust: exact; print-color-adjust: exact; font-family
 /* название крупнее (замечание пользователя «название мелкое»), башня — под его высоту */
 .title { flex: none; display: block; width: var(--title); height: auto; }
 /* align-items: flex-start — иначе колонка растягивает подпись по ширине (было «очень растянуто») */
-.side { flex: 1; min-width: 0; display: flex; flex-direction: column; align-items: flex-start; justify-content: flex-end; align-self: stretch; padding-bottom: 1.6mm; }
-.by { display: block; height: 6.5mm; width: auto; flex: none; }
+/* подпись — по центру промежутка между названием и башней, на уровне нижней строки названия (просьба пользователя) */
+.side { flex: 1; min-width: 0; display: flex; flex-direction: column; align-items: flex-start; justify-content: flex-end; align-self: stretch; padding: 0 0 1mm 3mm; }
+/* крупнее (просьба пользователя), пропорции сохраняются; правым краем может заходить под гирлянду башни (там пусто) */
+.by { display: block; height: 12.5mm; width: auto; flex: none; margin-right: -9mm; position: relative; z-index: 1; }
 /* башня — во всю высоту шапки (высоту задаёт название), шапку не увеличивает */
-.tower { flex: none; display: block; width: 80mm; height: auto; max-height: calc(var(--title) * 0.66); object-fit: contain; margin-left: auto; }
+.tower { flex: none; display: block; width: 94mm; height: auto; max-height: calc(var(--title) * 0.68); object-fit: contain; margin-left: auto; }  /* крупнее (просьба пользователя), не выше названия */
 .flow { flex: 1 1 auto; min-height: 0; overflow: hidden; display: flex; flex-direction: column; }
 .sh { flex: none; display: flex; align-items: center; gap: 2mm; margin: 1mm 0 0.4mm; }
 .sh .medal { flex: none; width: 6.5mm; height: 6.5mm; object-fit: contain; }
@@ -145,7 +147,7 @@ body { -webkit-print-color-adjust: exact; print-color-adjust: exact; font-family
 .scene { display: block; position: absolute; object-fit: contain; }
 /* миниатюра в золотой рамке (scene_mini.png) — прямоугольник: ни на текст, ни на рамку листа не заходит */
 .scene.mini { filter: drop-shadow(0 0.4mm 0.6mm rgba(60,40,20,.35)); }
-""" % {"ink": INK, "gold": GOLD, "hl": "9mm" if NEW_FRAME else "22mm", "hr": "8mm" if NEW_FRAME else "15mm",
+""" % {"ink": INK, "gold": GOLD, "hl": "4mm" if NEW_FRAME else "22mm", "hr": "0mm" if NEW_FRAME else "15mm",
          "side": "9.5mm" if NEW_FRAME else "11mm", "bottom": "8.5mm" if NEW_FRAME else "11.5mm"}  # тонкая новая рамка — поля уже
 
 JS = """<script>
