@@ -1710,3 +1710,4 @@ html .wallov.crypt .wrfor { font-family: var(--f-wet, 'Rubik Wet Paint', 'Kurale
 .card.testjump { padding: 8px 12px; border-style: dashed; }
 .testjump label { display: flex; flex-direction: column; gap: 4px; }
 .testjump select { width: 100%; }
+.testjump label + .testend { margin-top: 8px; }

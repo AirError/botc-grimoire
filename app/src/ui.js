@@ -875,16 +875,28 @@ const alignTeam = (t, al) => !al || !t ? t : al === 'good' && (t === 'minion' ||
 const stepIcon = (st, cls) => { const tr = st.trav && E.P(S, st.pid); if (st.trav && !tr) return art('traveller', cls);
   return st.pid ? ico(st.fakeCannibal ? 'cannibal' : tr ? tr.role : st.id, stepAlign(st), cls) : st.fabled ? ico(st.id, 'good', cls) : art(st.id, cls); };
 // тестовая игра (кнопка «Тест»; заметка пользователя 2026-11-03): перейти к роли — шаг этой ночи (шаги до него пропускаются) или её шаг
-// в следующую ночь (день — без казни). Подпись шага — как в «Дальше этой ночью»; имя игрока — только если не совпадает с ролью
+// в следующую ночь (день — без казни). Подпись шага — как в «Дальше этой ночью»; имя игрока — только если не совпадает с ролью.
+// «Завершить тест» — вернуть игру, какой она была до «Теста», с её историей отмен (заметка пользователя 2026-11-03)
 const stepLabel = s => `${s.meet ? 'Злые знакомятся' : s.trav ? 'Странник узнаёт сторону' : s.fakeCannibal ? 'Каннибал — отравлен' : E.rname(s.id)}${s.pid && E.nm(S, s.pid) !== E.rname(s.id) ? ' · ' + E.nm(S, s.pid) : ''}`;
 function testJumpHtml() {
-  if (!S.flags.test || S.result) return '';
-  const here = S.phase === 'night' ? S.night.steps.slice(S.night.i + 1).map(s => `<option value="k:${esc(s.key)}">${esc(stepLabel(s))}</option>`).join('') : '';
-  const next = DATA.order.other.filter(id => !DATA.special[id] && S.players.some(p => E.actsAs(p) === id)).map(id => `<option value="n:${id}">${esc(E.rname(id))}</option>`).join('');
-  if (!here && !next) return '';
-  return `<div class="card testjump"><label><span class="lab">Тест: перейти к роли</span><select data-act="testJump" aria-label="Тест: перейти к роли">
-    <option value="">— выберите роль —</option>${here ? `<optgroup label="Эта ночь">${here}</optgroup>` : ''}${next ? `<optgroup label="Ночь ${S.n + 1}${S.phase === 'night' ? ' (остаток ночи и день пропускаются)' : ' (день без казни)'}">${next}</optgroup>` : ''}</select></label></div>`;
+  if (!S.flags.test) return '';
+  const here = !S.result && S.phase === 'night' ? S.night.steps.slice(S.night.i + 1).map(s => `<option value="k:${esc(s.key)}">${esc(stepLabel(s))}</option>`).join('') : '';
+  const next = S.result ? '' : DATA.order.other.filter(id => !DATA.special[id] && S.players.some(p => E.actsAs(p) === id)).map(id => `<option value="n:${id}">${esc(E.rname(id))}</option>`).join('');
+  const sel = here || next ? `<label><span class="lab">Тест: перейти к роли</span><select data-act="testJump" aria-label="Тест: перейти к роли">
+    <option value="">— выберите роль —</option>${here ? `<optgroup label="Эта ночь">${here}</optgroup>` : ''}${next ? `<optgroup label="Ночь ${S.n + 1}${S.phase === 'night' ? ' (остаток ночи и день пропускаются)' : ' (день без казни)'}">${next}</optgroup>` : ''}</select></label>` : '';
+  return `<div class="card testjump">${sel}<button class="btn wide testend" data-act="testEnd">${testPrevHas() ? 'Завершить тест — вернуться к прежней игре' : 'Завершить тест — новая игра с прежними именами'}</button></div>`;
 }
+// игра до «Теста» и её история отмен — в localStorage (переживают перезагрузку); с историей не влезло — без неё; не влезло вовсе —
+// в памяти, до перезагрузки
+const LS_TESTPREV = 'botc-grimoire-testprev';
+let TEST_PREV = null;
+function testPrevSave(s, h) {
+  TEST_PREV = { s, h };
+  for (const v of [{ s, h }, { s, h: [] }]) try { localStorage.setItem(LS_TESTPREV, JSON.stringify(v)); return; } catch (e) { /* не влезло */ }
+}
+function testPrevLoad() { if (TEST_PREV) return TEST_PREV; try { const r = localStorage.getItem(LS_TESTPREV); return r ? JSON.parse(r) : null; } catch (e) { return null; } }
+function testPrevHas() { if (TEST_PREV) return true; try { return localStorage.getItem(LS_TESTPREV) !== null; } catch (e) { return false; } }
+function testPrevDrop() { TEST_PREV = null; try { localStorage.removeItem(LS_TESTPREV); } catch (e) { /* без хранилища */ } }
 function viewNight() {
   const st = E.currentStep(S); if (!st) return '';
   const spec = E.stepSpec(S, st), inp = stepDraft(st, spec);
@@ -2969,7 +2981,7 @@ function viewMenu() {
 function viewOver() {
   const r = S.result;
   return `<div class="phase-wrap">${art(r.winner === 'good' ? 'win_good' : 'win_evil', 'win-art')}</div><div class="banner"><div class="w">${r.winner === 'good' ? 'Победа добра' : 'Победа зла'}</div><div>${esc(r.reason)}</div></div>
-    ${politicianHtml()}${viewTable()}${viewLog()}`;
+    ${testJumpHtml()}${politicianHtml()}${viewTable()}${viewLog()}`;
 }
 // Политик (вики): если больше всех виноват в поражении своей команды — меняет сторону и побеждает (пьяный или отравленный — нет).
 // Игра окончена — до объявления победы окно со статистикой: сколько номинировал сам и за казнь кого голосовал; кнопки «Добрый»
@@ -3485,6 +3497,7 @@ const A = {
   testJump: (a, el) => { const v = el && el.value; if (!v) return; UI.notes = [];
     act(S => { E.testJump(S, v); }, 'тест: к роли ' + E.rname(v.slice(2).split(':')[0]), 'step'); window.scrollTo(0, 0); },
   testGame: () => {
+    if (!S.flags.test) testPrevSave(JSON.stringify(S), HISTORY); // тест из теста — помним игру до первого
     const script = JSON.parse(JSON.stringify(S.script)), fabled = (S.fabled || []).slice(), dir = S.flags.seatDir;
     const prev = S.flags.test ? S.flags.testNames : S.players.filter(p => !E.isTraveller(p)).map(p => p.name);
     HISTORY = []; S = E.newGame(DATA.scripts[script.key] ? script.key : 'ecbe'); S.script = script; S.fabled = fabled; if (dir) S.flags.seatDir = dir;
@@ -3496,7 +3509,17 @@ const A = {
     E.log(S, `Тестовая игра: все роли сценария «${script.name}» (${S.players.length} игроков)`, 'phase');
     E.startGame(S); UI.confirm = null; UI.tab = 'game'; persist(); render(); window.scrollTo(0, 0);
   },
+  // «Завершить тест»: игра до «Теста» — как была, с историей отмен; теста, начатого до v90, прежней игры нет — новая с прежними именами
+  testEnd: () => {
+    const prev = testPrevLoad(); let back = null;
+    try { back = prev && upgrade(JSON.parse(prev.s)); } catch (e) { back = null; }
+    if (!back) return A.newGame();
+    testPrevDrop(); HISTORY = prev.h || []; S = back;
+    UI.confirm = null; UI.ring = null; UI.show = null; UI.open = null; UI.alhAsk = null; UI.notes = []; UI.tab = 'game';
+    persist(); render(); window.scrollTo(0, 0); toast('Тест завершён — прежняя игра на месте');
+  },
   newGame: () => {
+    if (S.flags.test) testPrevDrop(); // из теста — новой игрой: прежняя игра больше не нужна
     gameArchive(S); // прошлая игра — в историю (archive.js); подготовку без ночей не храним
     const key = S.script.key === 'custom' ? 'ecbe' : S.script.key, dir = S.flags.seatDir;
     const names = S.flags.test && S.flags.testNames ? S.flags.testNames : S.players.filter(p => !E.isTraveller(p)).map(p => p.name); // после теста — прежние имена
