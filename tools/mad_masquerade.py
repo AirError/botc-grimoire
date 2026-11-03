@@ -48,6 +48,22 @@ def art(name, **kw):
     return _art[name]
 
 
+def feathered(name, fx=0.16, fy=0.2, **kw):
+    """Картинка с размытыми краями (просьба пользователя: «края не резкие»): к вырезанному фону добавляется плавное
+    затухание к каждому краю — fx/fy доли ширины/высоты; сглаживание smoothstep, без ступеньки."""
+    if name not in _art:
+        ba.ART = ART
+        im = ba.cut(name)
+        W, H = im.size
+        ramp = lambda n, f: np.clip(np.minimum(np.arange(n), np.arange(n)[::-1]) / (f * n), 0, 1)
+        sx, sy = ramp(W, fx), ramp(H, fy)
+        m = np.outer(sy * sy * (3 - 2 * sy), sx * sx * (3 - 2 * sx))
+        a = np.asarray(im.getchannel("A")).astype(float) * m
+        im.putalpha(ba.Image.fromarray(a.round().astype(np.uint8)))
+        _art[name] = ba.uri(im, **kw)
+    return _art[name]
+
+
 def erase_bottom_corners(im, w=175, h=300, inset=6, strip=52, shift=300, thr=26):
     """Стирает нижние угловые фигуры рамки. Всё, что отличается от пергамента, заменяется соседним участком:
     у боковой лозы — тем же столбцом выше (лоза продолжается), дальше — пергаментом сбоку на той же высоте
@@ -92,7 +108,7 @@ body { -webkit-print-color-adjust: exact; print-color-adjust: exact; font-family
 @media screen { .page { margin: 8mm auto; box-shadow: 0 1mm 4mm rgba(0,0,0,.35); } }
 .frame { position: absolute; inset: 0; width: 210mm; height: 297mm; display: block; }
 .art { mix-blend-mode: multiply; }
-:root { --ab: 10pt; --gap: var(--gap0); --gap0: 1.6mm; }
+:root { --ab: 10pt; --gap: var(--gap0); --gap0: 1.8mm; }
 .content { position: absolute; left: 11mm; right: 11mm; top: 7mm; bottom: 11.5mm; display: flex; flex-direction: column; }
 /* шапка между колпаком (слева) и маской (справа) рамки */
 .head { flex: none; display: flex; align-items: center; gap: 1.2mm; padding: 0 15mm 0 22mm; }
@@ -107,6 +123,7 @@ body { -webkit-print-color-adjust: exact; print-color-adjust: exact; font-family
 .sh .medal { flex: none; width: 6.5mm; height: 6.5mm; object-fit: contain; }
 .sh .lbl { font-weight: 800; font-size: 11pt; letter-spacing: .2em; text-transform: uppercase; white-space: nowrap; }
 .sh .rule { flex: 1; height: 0; border-bottom: 0.8pt solid %(gold)s; }
+.sh .note { flex: none; font-size: 9.5pt; font-weight: 700; color: %(ink)s; white-space: nowrap; }
 .cols { display: grid; grid-template-columns: 1fr 1fr; column-gap: 4mm; align-items: start; }
 .col { display: flex; flex-direction: column; gap: var(--gap); }
 .role { display: flex; align-items: flex-start; gap: 2.2mm; }
@@ -143,11 +160,9 @@ JS = """<script>
   let ab = 14;
   for (; ab >= 7.5; ab = Math.round((ab - 0.1) * 10) / 10) { root.setProperty('--ab', ab + 'pt'); balance(); if (!over()) break; }
   const gap0 = parseFloat(getComputedStyle(document.documentElement).getPropertyValue('--gap0'));
-  let gap = gap0;
-  for (; gap <= gap0 + 3; gap = Math.round((gap + 0.1) * 10) / 10) {
-    root.setProperty('--gap', gap + 'mm'); balance();
-    if (over()) { gap = Math.round((gap - 0.1) * 10) / 10; root.setProperty('--gap', gap + 'mm'); balance(); break; }
-  }
+  // промежутки между ролями не растягиваются: остаток высоты уходит пляске внизу (просьба пользователя — крупнее)
+  const gap = gap0;
+  root.setProperty('--gap', gap + 'mm'); balance();
   // пляска — в самый большой просвет под более короткой колонкой секции, уже после подгонки (текст не теснит);
   // для нижней секции просвет считается до низа листа (картинке можно зайти на поле с лозой — пользователь разрешил)
   let room = 0, where = 'нет места';
@@ -157,14 +172,14 @@ JS = """<script>
     let best = null, top = 0, bottom = 0;
     groups.forEach((g, i) => {
       const [a, b] = g.cols, short = end(a) <= end(b) ? a : b;
-      const lim = i === groups.length - 1 ? pg.bottom - 3.5 * mm : Math.max(end(a), end(b)) - gap * mm;
+      const lim = i === groups.length - 1 ? pg.bottom - 1 * mm : Math.max(end(a), end(b)) - gap * mm;  // края размыты — можно до самого низа
       const r = (lim - end(short)) / mm - 1;
       if (r > room) { room = r; best = short; top = end(short) + mm; bottom = lim; where = g.c.dataset.team; }
     });
     if (best && room >= 9) {
       const cr = best.getBoundingClientRect();
       Object.assign(scene.style, { left: (cr.left - pg.left) + 'px', width: cr.width + 'px',
-                                   top: (top - pg.top) + 'px', height: Math.min(bottom - top, 40 * mm) + 'px' });
+                                   top: (top - pg.top) + 'px', height: Math.min(bottom - top, 46 * mm) + 'px' });
       page.appendChild(scene);
     } else where = 'нет места';
   }  document.body.dataset.fit = 'ab=' + ab + 'pt gap=' + gap + 'mm scene=' + room.toFixed(1) + 'mm (' + where + ') overflow=' + over();
@@ -178,18 +193,18 @@ def build_roles():
         roles = [r for r in ids if team[r] == t]
         k = (len(roles) + 1) // 2
         parts = ["".join(role_html(r) for r in part) for part in (roles[:k], roles[k:])]
-        if t == "demon":
-            parts[1] += '<div class="extra">* Кроме первой ночи</div>'
+        # сноска — в строке шапки Демонов справа: освобождает колонку под пляску
+        note = '<span class="note">* Кроме первой ночи</span>' if t == "demon" else ""
         m = art(medal, maxh=300) if medal else None
         secs += (f'<div class="sh" style="color:{COL[t]}">' + (f'<img class="medal art" src="{m}" alt="">' if m else "") +
-                 f'<span class="lbl">{label}</span><i class="rule"></i></div>'
+                 f'<span class="lbl">{label}</span><i class="rule"></i>{note}</div>'
                  f'<div class="cols" data-team="{label}">' + "".join(f'<div class="col">{p}</div>' for p in parts) + "</div>")
     page = (f'<div class="page"><img class="frame" src="{bg()}" alt="">'
             f'<div class="content"><div class="head">'
             f'<img class="title art" src="{art("title", maxw=900)}" alt="Mad Masquerade">'
             f'<div class="side"><img class="by art" src="{art("by", maxw=600)}" alt="by Alex"></div>'
             f'<img class="tower art" src="{art("header", maxw=1100)}" alt=""></div>'
-            f'<div class="flow">{secs}<img class="scene" src="{art("scene", maxw=1100)}" alt=""></div></div></div>')
+            f'<div class="flow">{secs}<img class="scene art" src="{feathered("scene", maxw=1300)}" alt=""></div></div></div>')
     html = (f'<!doctype html><html lang="ru"><head><meta charset="utf-8"><title>Mad Masquerade — роли</title>'
             f'{FONTS}<style>{CSS}</style></head><body>{page}{JS}</body></html>')
     path = OUT / "Mad Masquerade — роли.html"
