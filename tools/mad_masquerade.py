@@ -133,7 +133,8 @@ body { -webkit-print-color-adjust: exact; print-color-adjust: exact; font-family
 .nm { font-weight: 800; font-size: calc(var(--ab) + 0.8pt); line-height: 1; }
 .tx b { font-weight: 800; }
 .extra { padding-left: 11.7mm; font-size: calc(var(--ab) * 0.88); font-weight: 700; }
-/* пляска ставится поверх листа (absolute) от конца короткой колонки до нижнего края, заходя на поле с лозой */
+/* пляска ставится поверх листа (absolute) от конца короткой колонки до нижнего края, заходя на поле с лозой;
+   без multiply — картинка лежит поверх рамки, лоза её не перекрывает (замечание пользователя) */
 .scene { display: block; position: absolute; object-fit: contain; }
 """ % {"ink": INK, "gold": GOLD}
 
@@ -172,17 +173,33 @@ JS = """<script>
     let best = null, top = 0, bottom = 0;
     groups.forEach((g, i) => {
       const [a, b] = g.cols, short = end(a) <= end(b) ? a : b;
-      const lim = i === groups.length - 1 ? pg.bottom - 1 * mm : Math.max(end(a), end(b)) - gap * mm;  // края размыты — можно до самого низа
+      const lim = i === groups.length - 1 ? pg.bottom - 1.5 * mm : Math.max(end(a), end(b)) - gap * mm;  // края размыты — можно до самого низа
       const r = (lim - end(short)) / mm - 1;
-      if (r > room) { room = r; best = short; top = end(short) + mm; bottom = lim; where = g.c.dataset.team; }
+      if (r > room) { room = r; best = short; top = end(short) + 0.5 * mm; bottom = lim; where = g.c.dataset.team; }
     });
     if (best && room >= 9) {
-      const cr = best.getBoundingClientRect();
-      Object.assign(scene.style, { left: (cr.left - pg.left) + 'px', width: cr.width + 'px',
-                                   top: (top - pg.top) + 'px', height: Math.min(bottom - top, 46 * mm) + 'px' });
+      const cr = best.getBoundingClientRect(), ar = scene.naturalWidth / scene.naturalHeight;
+      // последняя строка текста над картинкой: небо у пляски прозрачное, поэтому картинка поднимается на строку вверх,
+      // если шпиль башни (середина картинки) правее конца этой строки; влево можно зайти на поле с лозой
+      const rg = document.createRange(); rg.selectNodeContents(best.lastElementChild);
+      const rs = [...rg.getClientRects()], last = rs[rs.length - 1];
+      const fit = rise => {
+        let h = Math.min(bottom - top + rise, 50 * mm), w = h * ar;
+        const minL = cr.left - 7 * mm, maxR = cr.right;
+        if (w > maxR - minL) { w = maxR - minL; h = w / ar; }
+        const left = Math.min(Math.max(minL, (rise ? last.right + 5 * mm : (minL + maxR) / 2) - w / 2), maxR - w);
+        return { h, w, left, ok: !rise || left + w / 2 >= last.right + 4 * mm };
+      };
+      let rise = last ? last.height : 0, f = fit(rise);
+      if (!f.ok) { rise = 0; f = fit(0); }
+      room = f.h / mm;
+      Object.assign(scene.style, { left: (f.left - pg.left) + 'px', width: f.w + 'px',
+                                   top: (bottom - f.h - pg.top) + 'px', height: f.h + 'px' });
       page.appendChild(scene);
+      where += rise ? ', поднята на строку' : '';
     } else where = 'нет места';
-  }  document.body.dataset.fit = 'ab=' + ab + 'pt gap=' + gap + 'mm scene=' + room.toFixed(1) + 'mm (' + where + ') overflow=' + over();
+  }
+  document.body.dataset.fit = 'ab=' + ab + 'pt gap=' + gap + 'mm scene=' + room.toFixed(1) + 'mm (' + where + ') overflow=' + over();
 })();
 </script>"""
 
@@ -204,7 +221,7 @@ def build_roles():
             f'<img class="title art" src="{art("title", maxw=900)}" alt="Mad Masquerade">'
             f'<div class="side"><img class="by art" src="{art("by", maxw=600)}" alt="by Alex"></div>'
             f'<img class="tower art" src="{art("header", maxw=1100)}" alt=""></div>'
-            f'<div class="flow">{secs}<img class="scene art" src="{feathered("scene", maxw=1300)}" alt=""></div></div></div>')
+            f'<div class="flow">{secs}<img class="scene" src="{feathered("scene", maxw=1300)}" alt=""></div></div></div>')
     html = (f'<!doctype html><html lang="ru"><head><meta charset="utf-8"><title>Mad Masquerade — роли</title>'
             f'{FONTS}<style>{CSS}</style></head><body>{page}{JS}</body></html>')
     path = OUT / "Mad Masquerade — роли.html"
