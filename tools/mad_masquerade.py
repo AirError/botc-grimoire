@@ -114,8 +114,8 @@ body { -webkit-print-color-adjust: exact; print-color-adjust: exact; font-family
 @media screen { .page { margin: 8mm auto; box-shadow: 0 1mm 4mm rgba(0,0,0,.35); } }
 .frame { position: absolute; inset: 0; width: 210mm; height: 297mm; display: block; }
 .art { mix-blend-mode: multiply; }
-:root { --ab: 10pt; --gap: var(--gap0); --gap0: 1.8mm; --title: 52mm; --hpad-l: %(hl)s; --hpad-r: %(hr)s; }
-.content { position: absolute; left: 11mm; right: 11mm; top: 7mm; bottom: 11.5mm; display: flex; flex-direction: column; }
+:root { --ab: 10pt; --gap: var(--gap0); --gap0: 1.8mm; --title: 52mm; --hpad-l: %(hl)s; --hpad-r: %(hr)s; --side: %(side)s; --bottom: %(bottom)s; }
+.content { position: absolute; left: var(--side); right: var(--side); top: 7mm; bottom: var(--bottom); display: flex; flex-direction: column; }
 /* шапка между угловыми фигурками рамки */
 .head { flex: none; display: flex; align-items: center; gap: 1.2mm; padding: 0 var(--hpad-r) 0 var(--hpad-l); }
 /* название крупнее (замечание пользователя «название мелкое»), башня — под его высоту */
@@ -145,7 +145,8 @@ body { -webkit-print-color-adjust: exact; print-color-adjust: exact; font-family
 .scene { display: block; position: absolute; object-fit: contain; }
 /* миниатюра в золотой рамке (scene_mini.png) — прямоугольник: ни на текст, ни на рамку листа не заходит */
 .scene.mini { filter: drop-shadow(0 0.4mm 0.6mm rgba(60,40,20,.35)); }
-""" % {"ink": INK, "gold": GOLD, "hl": "9mm" if NEW_FRAME else "22mm", "hr": "8mm" if NEW_FRAME else "15mm"}
+""" % {"ink": INK, "gold": GOLD, "hl": "9mm" if NEW_FRAME else "22mm", "hr": "8mm" if NEW_FRAME else "15mm",
+         "side": "9.5mm" if NEW_FRAME else "11mm", "bottom": "8.5mm" if NEW_FRAME else "11.5mm"}  # тонкая новая рамка — поля уже
 
 JS = """<script>
 (async function () {
@@ -229,7 +230,8 @@ JS = """<script>
 def scene_html():
     """Пляска: миниатюра в золотой рамке (scene_mini.png, правка по промпту 2026-11-03), иначе — старая с размытыми краями."""
     if (ART / "scene_mini.png").exists():
-        return f'<img class="scene mini" src="{art("scene_mini", maxw=1500)}" alt="">'
+        ba.ART = ART  # фон вокруг миниатюры — только от края кадра: светлые кости скелетов внутри не трогаем
+        return f'<img class="scene mini" src="{ba.uri(ba.cut("scene_mini", inner_thr=256), maxw=1500)}" alt="">'
     return f'<img class="scene" src="{feathered("scene", maxw=1300)}" alt="">'
 
 
