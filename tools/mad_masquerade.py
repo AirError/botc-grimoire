@@ -29,7 +29,7 @@ GOOD, EVIL, GOLD, INK = "#23457C", "#8E1B1E", "#A27F35", "#2A1E16"
 COL = {"townsfolk": GOOD, "outsider": GOOD, "minion": EVIL, "demon": EVIL}
 # значков секций нет: свеча и череп пользователя — иконки для приложения, на листе их не использовать
 TEAMS = [("townsfolk", "Горожане", None), ("outsider", "Изгои", None), ("minion", "Приспешники", None), ("demon", "Демоны", None)]
-TAGLINE = "Под каждой маской кто-то есть.<br>Не под каждой — человек."
+# девиз «Под каждой маской…» на листе не нужен (пользователь)
 
 FONTS = ('<link rel="preconnect" href="https://fonts.googleapis.com">'
          '<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>'
@@ -97,9 +97,9 @@ body { -webkit-print-color-adjust: exact; print-color-adjust: exact; font-family
 /* шапка между колпаком (слева) и маской (справа) рамки */
 .head { flex: none; display: flex; align-items: center; gap: 3mm; padding: 0 17mm 0 22mm; }
 .title { flex: none; display: block; width: 36mm; height: auto; }  /* меньше — ниже шапка: +0.3 pt тексту */
-.side { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 1mm; }
-.by { display: block; height: 8mm; width: auto; }
-.tag { font-style: italic; font-weight: 600; font-size: 8.8pt; line-height: 1.25; color: #5A3E2B; white-space: nowrap; }
+/* align-items: flex-start — иначе колонка растягивает подпись по ширине (было «очень растянуто») */
+.side { flex: 1; min-width: 0; display: flex; flex-direction: column; align-items: flex-start; justify-content: flex-end; align-self: stretch; padding-bottom: 2mm; }
+.by { display: block; height: 6.5mm; width: auto; flex: none; }
 .tower { flex: none; display: block; width: 48mm; height: auto; }
 .flow { flex: 1 1 auto; min-height: 0; overflow: hidden; display: flex; flex-direction: column; }
 .sh { flex: none; display: flex; align-items: center; gap: 2mm; margin: 1mm 0 0.4mm; }
@@ -178,7 +178,7 @@ def build_roles():
     page = (f'<div class="page"><img class="frame" src="{bg()}" alt="">'
             f'<div class="content"><div class="head">'
             f'<img class="title art" src="{art("title", maxw=900)}" alt="Mad Masquerade">'
-            f'<div class="side"><img class="by art" src="{art("by", maxw=600)}" alt="by Alex"><div class="tag">{TAGLINE}</div></div>'
+            f'<div class="side"><img class="by art" src="{art("by", maxw=600)}" alt="by Alex"></div>'
             f'<img class="tower art" src="{art("header", maxw=1100)}" alt=""></div>'
             f'<div class="flow">{secs}<img class="scene" src="{art("scene", maxw=1100)}" alt=""></div></div></div>')
     html = (f'<!doctype html><html lang="ru"><head><meta charset="utf-8"><title>Mad Masquerade — роли</title>'
