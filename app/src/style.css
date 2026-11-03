@@ -1705,3 +1705,8 @@ html .wallov.crypt .wrfor { font-family: var(--f-wet, 'Rubik Wet Paint', 'Kurale
 .alhgo { margin: 4px 0 10px; }
 .alhmus { margin: 6px 0 10px; }
 .alhvol { gap: 6px; flex-wrap: wrap; }
+
+/* тестовая игра: перейти к роли (заметка пользователя 2026-11-03) */
+.card.testjump { padding: 8px 12px; border-style: dashed; }
+.testjump label { display: flex; flex-direction: column; gap: 4px; }
+.testjump select { width: 100%; }

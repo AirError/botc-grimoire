@@ -3188,6 +3188,28 @@ function skipStep(S, how) {
   S.night.i += 1; if (S.night.i >= S.night.steps.length) endNight(S);
 }
 
+// тестовая игра (кнопка «Тест»; заметка пользователя 2026-11-03: «в режиме тест — перейти к конкретной роли выпадающим списком»):
+// to — 'k:<ключ шага>' (шаг этой ночи: шаги до него пропускаются) или 'n:<роль>' (её шаг в следующую ночь: остаток ночи пропускается,
+// день — без казни и без проверок конца дня: Вортокс, Мэр)
+function testJump(S, to) {
+  if (!S.flags.test || !to || S.result) return false;
+  const kind = to.slice(0, 2), v = to.slice(2);
+  if (kind === 'k:') {
+    const k = S.phase === 'night' ? S.night.steps.findIndex((s, i) => i > S.night.i && s.key === v) : -1;
+    if (k < 0) return false;
+    while (S.phase === 'night' && S.night.i < k) skipStep(S, 'auto');
+    return true;
+  }
+  if (kind !== 'n:') return false;
+  while (S.phase === 'night' && !S.result) skipStep(S, 'auto');
+  if (S.result || S.phase !== 'day') return false;
+  log(S, 'Тест: день пропущен', 'day');
+  startNight(S);
+  const k = S.night.steps.findIndex(s => s.id === v);
+  while (k > 0 && S.phase === 'night' && S.night.i < k) skipStep(S, 'auto');
+  return true;
+}
+
 /* ------------------------------------------------------------ правка ночного выбора задним числом (журнал) */
 // Заметка пользователя 2026-10-12: игрок не понял, что делать, рассказчик пропустил шаг или ошибся — выбор меняют через журнал,
 // и приложение сразу показывает, что это за собой тянет. Как устроено: на закате (startNight) — снимок состояния (rp.base), дальше
@@ -3405,7 +3427,7 @@ const ENGINE = { canBluff, setPrepFlag, ensureHerring, PREP_FLAGS, poolMarExtra,
   judgeRuling, gunslingerShot, gnomeAmigo, setGnomeAmigo, gnomeKill, travReveal, travDone, gangsterKill, cacklejackPick, tinkerDies, doomsayerKill, fiddlerEnd, swapSeats, goonWarn, damselGuess, changeRole, madnessExecute, harpyKill,
   finishRoles, autoSetup, setupProblems, drawStart, drawOpen, drawClose, drawCancel, drawShown, drawLocked, drawProblem, poolProblem, scriptShort, scriptOverMax, distortion,
   randomPool, dealPool, validPool, scriptOutsiders, CARD, jinxesInPlay, startGame, startNight, currentStep, stepSpec, applyStep, skipStep,
-  stepInputs, missingInputs, endNight, rpStrip, recPatch, replayNight, editNight, editTarget, acceptEdit,
+  stepInputs, missingInputs, endNight, testJump, rpStrip, recPatch, replayNight, editNight, editTarget, acceptEdit,
   nominate, nominationPreview, recordVote, block, execute, endDay, slayerShot, voteThreshold, situation, moonchildChoose, klutzChoose,
   abilityOff, attemptKill, die, addTok, rmTok, hasTok, TOK_RU, TEAM_RU, log, checkWin, endGame, aliveNeighbours,
   townsfolkNeighbours, teaLadyProtects, phaseTag, isGoodTeam, shuffle, uid };

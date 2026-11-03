@@ -874,6 +874,17 @@ const alignTeam = (t, al) => !al || !t ? t : al === 'good' && (t === 'minion' ||
 // шаг «Странник узнаёт сторону» (travinfo) — значок роли Странника
 const stepIcon = (st, cls) => { const tr = st.trav && E.P(S, st.pid); if (st.trav && !tr) return art('traveller', cls);
   return st.pid ? ico(st.fakeCannibal ? 'cannibal' : tr ? tr.role : st.id, stepAlign(st), cls) : st.fabled ? ico(st.id, 'good', cls) : art(st.id, cls); };
+// тестовая игра (кнопка «Тест»; заметка пользователя 2026-11-03): перейти к роли — шаг этой ночи (шаги до него пропускаются) или её шаг
+// в следующую ночь (день — без казни). Подпись шага — как в «Дальше этой ночью»; имя игрока — только если не совпадает с ролью
+const stepLabel = s => `${s.meet ? 'Злые знакомятся' : s.trav ? 'Странник узнаёт сторону' : s.fakeCannibal ? 'Каннибал — отравлен' : E.rname(s.id)}${s.pid && E.nm(S, s.pid) !== E.rname(s.id) ? ' · ' + E.nm(S, s.pid) : ''}`;
+function testJumpHtml() {
+  if (!S.flags.test || S.result) return '';
+  const here = S.phase === 'night' ? S.night.steps.slice(S.night.i + 1).map(s => `<option value="k:${esc(s.key)}">${esc(stepLabel(s))}</option>`).join('') : '';
+  const next = DATA.order.other.filter(id => !DATA.special[id] && S.players.some(p => E.actsAs(p) === id)).map(id => `<option value="n:${id}">${esc(E.rname(id))}</option>`).join('');
+  if (!here && !next) return '';
+  return `<div class="card testjump"><label><span class="lab">Тест: перейти к роли</span><select data-act="testJump" aria-label="Тест: перейти к роли">
+    <option value="">— выберите роль —</option>${here ? `<optgroup label="Эта ночь">${here}</optgroup>` : ''}${next ? `<optgroup label="Ночь ${S.n + 1}${S.phase === 'night' ? ' (остаток ночи и день пропускаются)' : ' (день без казни)'}">${next}</optgroup>` : ''}</select></label></div>`;
+}
 function viewNight() {
   const st = E.currentStep(S); if (!st) return '';
   const spec = E.stepSpec(S, st), inp = stepDraft(st, spec);
@@ -888,7 +899,7 @@ function viewNight() {
     + (back.length ? `<div class="small"><b>Снова жив:</b> ${back.map(id => esc(E.nm(S, id))).join(', ')}</div>` : '');
   const icon = stepIcon(st, 'si');
   return `${phaseArt('night')}<div class="progress"><i style="width:${Math.round(100 * i / total)}%"></i></div>
-    ${situationHtml()}${deaths}
+    ${testJumpHtml()}${situationHtml()}${deaths}
     <div class="card ${spec.active ? '' : 'inactive'}">
       <div class="steprole">${icon}<span class="rn t-${alignTeam(spec.team, stepAlign(st)) || ''}">${esc(spec.title)}</span>${spec.who ? `<span class="who">${esc(spec.who)}</span>` : ''}${spec.active && spec.dist ? `<span class="ppill k-${spec.dist.kind || 'poison'}">${distIcon(spec.dist.kind)}${esc(spec.dist.label)}</span>` : ''}</div>
       ${spec.text ? `<div class="instr">${fmtInstr(spec.text)}</div>` : ''}
@@ -1041,6 +1052,7 @@ function viewDay() {
   const parts = [];
   parts.push(phaseArt('day'));
   parts.push(timerBarHtml());
+  parts.push(testJumpHtml());
   parts.push(`<div class="card"><div class="row"><h2>День ${S.n}</h2><span class="muted">живых ${E.aliveAll(S)} · для казни нужно ${th}</span></div>
     ${S.night && E.nightDeaths(S).length ? `<div class="small">Ночью умерли: ${E.nightDeaths(S).map(x => esc(E.nm(S, x.pid))).join(', ')}</div>` : '<div class="small muted">Ночью никто не умер</div>'}
     ${S.night && (S.night.revived || []).some(id => E.P(S, id) && E.P(S, id).alive) ? `<div class="small">Снова жив: ${S.night.revived.filter(id => E.P(S, id) && E.P(S, id).alive).map(id => esc(E.nm(S, id))).join(', ')}</div>` : ''}
@@ -3470,6 +3482,8 @@ const A = {
   // по игроку на каждую роль (имя — название роли), Пьянице и Марионетке — Горожанин сценария (свободных ролей нет), сразу ночь.
   // В историю прошлых игр не попадает (flags.test), «Новая игра» вернёт прежние имена (flags.testNames)
   testAsk: () => { UI.confirm = 'test'; render(); },
+  testJump: (a, el) => { const v = el && el.value; if (!v) return; UI.notes = [];
+    act(S => { E.testJump(S, v); }, 'тест: к роли ' + E.rname(v.slice(2).split(':')[0]), 'step'); window.scrollTo(0, 0); },
   testGame: () => {
     const script = JSON.parse(JSON.stringify(S.script)), fabled = (S.fabled || []).slice(), dir = S.flags.seatDir;
     const prev = S.flags.test ? S.flags.testNames : S.players.filter(p => !E.isTraveller(p)).map(p => p.name);

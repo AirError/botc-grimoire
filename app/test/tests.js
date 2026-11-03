@@ -1772,6 +1772,19 @@ try {
     ok('Растяпа выбрал лапку — добрые проигрывают', K.phase === 'over' && K.result.winner === 'evil', JSON.stringify(K.result));
   }
 
+  { // тестовая игра: перейти к роли (заметка пользователя 2026-11-03)
+    const T = game(['washerwoman', 'empath', 'monk', 'ravenkeeper', 'undertaker', 'butler', 'poisoner', 'spy', 'imp'], 'tb');
+    E.autoSetup(T, true); E.startGame(T);
+    ok('Не тестовая игра — переход не работает', !E.testJump(T, 'n:imp') && T.n === 1 && T.night.i === 0);
+    T.flags.test = true;
+    const emp = T.night.steps.find(s => s.id === 'empath');
+    ok('Тест: переход к шагу этой ночи', E.testJump(T, 'k:' + emp.key) && E.currentStep(T).key === emp.key && T.n === 1);
+    ok('Тест: переход к роли следующей ночи — ночь 2, шаг Чёрта, никто не умер', E.testJump(T, 'n:imp') && T.phase === 'night' && T.n === 2
+      && E.currentStep(T).id === 'imp' && T.players.every(p => p.alive) && !T.result, JSON.stringify([T.phase, T.n, (E.currentStep(T) || {}).id]));
+    E.skipStep(T, 'auto'); while (T.phase === 'night') E.skipStep(T, 'auto');
+    ok('Тест: из дня — к роли следующей ночи (день без казни)', E.testJump(T, 'n:undertaker') && T.n === 3 && E.currentStep(T).id === 'undertaker' && !T.result);
+  }
+
   for (const k of Object.keys(DATA.scripts)) ok('сценарий ' + k + ' — все роли в данных', DATA.scripts[k].roles.every(r => DATA.roles[r]));
 } catch (e) { results.push('ERROR ' + e.message + '\n' + e.stack); }
 
