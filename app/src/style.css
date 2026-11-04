@@ -1704,7 +1704,9 @@ html .wallov.crypt .wrfor { font-family: var(--f-wet, 'Rubik Wet Paint', 'Kurale
 .alhx { position: fixed; top: calc(10px + env(safe-area-inset-top, 0px)); right: 10px; z-index: 2; }
 .alhgo { margin: 4px 0 10px; }
 .alhmus { margin: 6px 0 10px; }
-.alhvol { gap: 6px; flex-wrap: wrap; }
+.alhvol { display: flex; align-items: center; gap: 8px; margin-top: 4px; }
+.alhvol input[type=range] { flex: 1; min-width: 0; height: 32px; accent-color: var(--gold, #C9A44C); }
+.alhvol > span { font-size: 18px; }
 .alhmus .btn.alhdark { border-color: #C0392B; color: #E8675A; }
 
 /* тестовая игра: перейти к роли (заметка пользователя 2026-11-03) */

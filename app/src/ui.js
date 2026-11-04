@@ -1020,8 +1020,9 @@ function alhAskHtml() {
 const ALH_TRACKS = typeof ALHAD_MUSIC === 'undefined' ? [] : ALHAD_MUSIC;
 const ALH = { a: null, id: null, g: null, ac: null };
 // громкость = уровень трека (r.g — app_build выравнивает все треки к одному тихому фону, под который можно говорить; просьба пользователя
-// 2026-11-04) × «Тише/Громче» этого устройства (по умолчанию ×1)
+// 2026-11-04) × ползунок громкости этого устройства (по умолчанию ×1, посередине; шкала — от ×0,25 до ×4 равными шагами в децибелах)
 const alhMul = () => { try { const v = parseFloat(localStorage.getItem('botc-grimoire-alhvol2')); return v >= .25 && v <= 4 ? v : 1; } catch (e) { return 1; } };
+const alhPos = () => Math.round(100 * Math.log(alhMul() / .25) / Math.log(16)), alhPosMul = v => .25 * Math.pow(16, v / 100);
 const alhVol = r => Math.min(1, (r && r.g || .2) * alhMul());
 function alhSetVol(v) { if (ALH.g) ALH.g.gain.value = v; else if (ALH.a) ALH.a.volume = v; }
 function alhPlay(id) {
@@ -1052,7 +1053,8 @@ function alhMusicHtml() {
   return `<div class="tale alhmus"><div class="lab">Музыка на ход Аль-Адихии — тихо, по кругу</div>
     <div class="reclist">${ALH_TRACKS.map(r => { const dark = /dark/i.test(r.n); // DARK — жёстче по звучанию: красная рамка (просьба пользователя: пометить, без подписи)
       return `<button class="btn ${ALH.id === r.id ? 'on' : ''} ${dark ? 'alhdark' : ''}" data-act="alhPlay" data-arg="${r.id}" aria-pressed="${ALH.id === r.id}">${ALH.id === r.id ? '▶ ' : ''}${esc(r.n)}</button>`; }).join('')}</div>
-    ${ALH.id ? `<div class="row alhvol"><button class="btn" data-act="alhVol" data-arg="-1">Тише</button><button class="btn" data-act="alhVol" data-arg="1">Громче</button><button class="btn" data-act="alhStop">■ Стоп</button></div>` : ''}</div>`;
+    <div class="alhvol"><span aria-hidden="true">🔈</span><input type="range" min="0" max="100" step="1" value="${alhPos()}" data-act="alhVol" data-live="1" aria-label="Громкость музыки"><span aria-hidden="true">🔊</span>
+      ${ALH.id ? '<button class="btn" data-act="alhStop">■ Стоп</button>' : ''}</div></div>`;
 }
 // на шаге: музыка вверху, после выбора троих — «Спросить игроков»
 function alhStepHtml(inp, where) {
@@ -3330,7 +3332,8 @@ const A = {
   alhClose: () => { UI.alhAsk = null; render(); },
   alhPlay: id => { if (ALH.id === id) alhStop(true); else alhPlay(id); render(); },
   alhStop: () => { alhStop(true); render(); },
-  alhVol: d => { const m = Math.min(4, Math.max(.25, alhMul() * (+d > 0 ? 1.4 : 1 / 1.4)));
+  // ползунок громкости музыки (просьба пользователя 2026-11-04): двигают — громкость меняется сразу, без перерисовки
+  alhVol: (a, el) => { const v = +(el && el.value); if (!(v >= 0 && v <= 100)) return; const m = alhPosMul(v);
     try { localStorage.setItem('botc-grimoire-alhvol2', String(m)); } catch (e) { /* без хранилища — до перезагрузки */ }
     alhSetVol(alhVol(ALH_TRACKS.find(x => x.id === ALH.id))); },
   timerEndClose: () => { UI.timerEnd = false; sndStop('bell'); render(); },
