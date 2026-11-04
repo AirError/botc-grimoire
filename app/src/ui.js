@@ -348,7 +348,7 @@ function artVars() {
     // «Скрипторий»: пергамент, орнаменты, рамки; «Печати» — стол, свитки, печати, кадры (фоном: в разметке их не повторяем)
     .concat(['s_paper', 's_orn_long', 's_orn_short', 's_orn_corner', 's_orn_flower', 's_orn_rhomb', 's_init1', 's_wreath', 's_ring', 's_ring_night', 's_frame', 's_frame_wide',
       's_desk_top', 's_desk_mid', 's_desk_bot', 's_desk_wide', 's_rays', 's_sweep', 's_seal_glow', 's_sheet', 's_roller_top', 's_roller_bot',
-      's_flame_strip', 's_crack_strip', 's_puff_strip', 's_ribbon_strip', 's_ink_strip', 's_inkr_strip', 's_drip_strip', 's_quill_strip',
+      's_flame_strip', 's_crack_strip', 's_puff_strip', 's_ribbon_strip', 's_inkg_strip', 's_inkr_strip', 's_drip_strip', 's_quill_strip',
       's_m_angel_strip', 's_m_fool_strip', 's_m_monk_strip', 's_m_demon_strip', 's_m_snail_strip', 's_m_rabbit_strip', 's_m_cat_strip'],
       [1, 2, 3].map(i => 's_scroll' + i), [1, 2, 3].map(i => 's_scroll_used' + i), [...Array(24).keys()].map(i => 's_seal' + i),
       [1, 2, 3, 4, 5, 6, 7, 8].flatMap(i => ['s_shard' + i, 's_crumb' + i, 's_dust' + i, 's_spark' + i]),
@@ -2781,7 +2781,8 @@ function scRollGeo(L) {
   SW = Math.floor(Math.min(SW, L.W - 14 - (el + er) * rh)); rh = Math.round(hClamp(SW * .11, 28, 56));
   const [bw, bh] = scSz('s_border_town'), B = (m.border || {}).town || { in: [.122, .126, .879, .913], c: [.499, .069, .08] };
   const bi = Math.round(SW * .03), kb = (SW - 2 * bi) / bw, cz = Math.round(hClamp(L.H * .11, 64, 130));
-  const hmax = Math.round(L.H - L.st - L.sb - cz - rh - 60), cy = bi + B.c[1] * bh * kb, cr = B.c[2] * bw * kb, md = Math.round(Math.min(SW * .4, hmax * .3));
+  // медальон крупнее (значок роли целиком в его проёме — заметка пользователя 2026-11-04: «значки перекрываются рамкой»)
+  const hmax = Math.round(L.H - L.st - L.sb - cz - rh - 60), cy = bi + B.c[1] * bh * kb, cr = B.c[2] * bw * kb, md = Math.round(Math.min(SW * .48, hmax * .34));
   return { SW, rh, el: Math.round(el * rh), er: Math.round(er * rh), bi, kb, B, bw, bh, cz, hmax, md, pt: Math.round(Math.max(bi + 2, cy - cr * 1.15)),
     bt: Math.round(B.in[1] * bh * kb), bl: Math.round(B.in[0] * bw * kb), br: Math.round((1 - B.in[2]) * bw * kb), bb: Math.round((1 - B.in[3]) * bh * kb), bcy: Math.round(cy - bi) };
 }
@@ -2799,8 +2800,9 @@ function scScene(L) {
   const rw = L.wide ? L.W * .3 : L.W * .62, rh = L.wide ? L.H * .62 : L.H * .5, ro = .85;
   const rays = HAS_ART('s_rays') ? L.win.map(([x, y], q) => `<i class="sc-rays" style="${scBox(x - ro * rw, y, rw, rh)};animation-delay:${-q * 2.7}s"></i>`
     + `<i class="sc-rays flip" style="${scBox(x - (1 - ro) * rw, y, rw, rh)};animation-delay:${-q * 2.7 - 4.5}s"></i>`).join('') : '';
-  const dust = HAS_ART('s_dust1') ? L.win.map(([x, y], q) => [...Array(L.wide ? 6 : 8)].map((_, j) => { const s = Math.round(10 + R() * 10);
-    return `<i class="sc-dust" style="${scBox(x + (R() - .5) * rw * .6, y + R() * rh * .75, s, s)};--m:var(--a-s-dust${1 + (j * 3 + q) % 8});--dx:${Math.round((R() - .5) * 60)}px;--dy:${Math.round(-20 - R() * 50)}px;--du:${(7 + R() * 6).toFixed(1)}s;--dl:-${(R() * 12).toFixed(1)}s"></i>`; }).join('')).join('') : '';
+  // пылинки — в луче (крупнее и ярче: в картинке пылинка мелкая посреди своей клетки)
+  const dust = HAS_ART('s_dust1') ? L.win.map(([x, y], q) => [...Array(L.wide ? 9 : 12)].map((_, j) => { const s = Math.round((L.wide ? 26 : 22) + R() * 18), v = R();
+    return `<i class="sc-dust" style="${scBox(x + (R() - .5) * rw * .9 * (.3 + v), y + 20 + v * rh * .7, s, s)};--m:var(--a-s-dust${1 + (j * 3 + q) % 8});--dx:${Math.round((R() - .5) * 70)}px;--dy:${Math.round(-20 - R() * 60)}px;--du:${(6 + R() * 6).toFixed(1)}s;--dl:-${(R() * 12).toFixed(1)}s"></i>`; }).join('')).join('') : '';
   const cat = HAS_ART('s_m_cat_strip') && L.books ? (() => { const a = (m.s_m_cat_strip || {}).a || [.45, 1];
     return `<i class="sc-cat" style="${scBox(L.books[0] - a[0] * L.catW, L.books[1] - L.catH + 3, L.catW, L.catH)}">${scSpr('s_m_cat_strip', 4)}</i>`; })() : '';
   const rf = m.s_m_rabbit_strip || { w: 179, h: 200, a: [.39, 1] }, rbh = (L.wide ? 120 : 150) * L.k, rbw = rbh * rf.w / rf.h;
@@ -2827,7 +2829,9 @@ function scReveal(open, L, anim) {
   const sl = `${(B.in[1] * 100).toFixed(2)}% ${((1 - B.in[2]) * 100).toFixed(2)}% ${((1 - B.in[3]) * 100).toFixed(2)}% ${(B.in[0] * 100).toFixed(2)}%`;
   const bord = `<i class="sc-bord" style="inset:${G.bi}px;border-width:${G.bt}px ${G.br}px ${G.bb}px ${G.bl}px;border-image-source:var(--a-s-border-${tk});border-image-slice:${sl};--bcy:${G.bcy}px"></i>`;
   const mc = G.pt + G.md / 2; // середина медальона от верха листа
-  const ink = HAS_ART('s_ink_strip') ? `<i class="sc-ink" style="${scBox(G.SW / 2 - G.md * .95, mc - G.md * .95, G.md * 1.9, G.md * 1.9)}">${scSpr(al === 'evil' ? 's_inkr_strip' : 's_ink_strip', 8)}</i>` : '';
+  // клякса: у добрых — золотая, у злых — киноварная (вопрос пользователя 2026-11-04: «почему горожане через чёрную кляксу, а не золотую?»)
+  const inkK = al === 'evil' ? 's_inkr_strip' : 's_inkg_strip';
+  const ink = HAS_ART(inkK) ? `<i class="sc-ink" style="${scBox(G.SW / 2 - G.md * .95, mc - G.md * .95, G.md * 1.9, G.md * 1.9)}">${scSpr(inkK, 8)}</i>` : '';
   const df = m.s_drip_strip || { w: 255, h: 260 }, dw = G.SW * .16;
   const drips = al === 'evil' && HAS_ART('s_drip_strip') ? [.17, .83].map((x, q) => `<i class="sc-drip" style="${scBox(G.SW * x - dw / 2, G.bi + G.bt * .55, dw, dw * df.h / df.w)};--qd:${q * 160}ms">${scSpr('s_drip_strip', 6)}</i>`).join('') : '';
   const sparks = HAS_ART('s_spark1') ? [...Array(10).keys()].map(k => { const a = k / 10 * Math.PI * 2 + Rn() * .5, d = G.md * (.55 + Rn() * .5), s = Math.round(G.md * (.12 + Rn() * .1));

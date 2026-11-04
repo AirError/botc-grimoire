@@ -1178,6 +1178,15 @@ def scriptorium():
     # --- чернила и золото ---
     for src, name in (("s_ink", "s_ink_strip"), ("s_ink_red", "s_inkr_strip")):
         if have(src): strip_save(name, [alpha_pad(f) for f in grid_frames(unmul_white(SRC / f"{src}.png"), 4, 2, pad=4)], 240)
+    if have("s_ink"):  # у добрых — золотая клякса (вопрос пользователя 2026-11-04: «почему горожане через чёрную кляксу, а не золотую?»):
+        # те же кадры, цвет — сусальное золото: где чернила гуще — темнее золото, по краям — светлее
+        def gold(f):  # отлив сусального золота — светлая полоса наискосок и светлые края
+            A = np.asarray(f).astype(float); h, w = A.shape[:2]; L = A[..., :3].mean(axis=2); yy, xx = np.mgrid[0:h, 0:w]
+            sheen = np.exp(-(((xx + yy) / (w + h) - .42) ** 2) / .012)
+            t = np.clip(np.clip((L - 15) / 110, 0, 1) * .6 + sheen * .75, 0, 1)[..., None]
+            A[..., :3] = np.array([178, 122, 24]) * (1 - t) + np.array([255, 236, 160]) * t
+            return Image.fromarray(A.round().clip(0, 255).astype(np.uint8), "RGBA")
+        strip_save("s_inkg_strip", [gold(alpha_pad(f)) for f in grid_frames(unmul_white(SRC / "s_ink.png"), 4, 2, pad=4)], 240)
     if have("s_drip"):  # верхний край — на одной линии: общая рамка
         strip_save("s_drip_strip", [defringe(f) for f in grid_frames(white_alpha(SRC / "s_drip.png"), 3, 2, pad=2)], 260)
     if have("s_sparks"):

@@ -1808,12 +1808,14 @@ html:root.oled[data-skin="script"] {
   var(--a-s-desk-mid) center var(--th, 0px) / 100% auto repeat-y, #5B2614; }
 .sc-desk.wide { background: var(--a-s-desk-wide) center / cover no-repeat, #5B2614; }
 /* свет из окна дышит, в нём плывут пылинки; свечи горят */
-.sc-rays { background: var(--a-s-rays) center top / 100% 100% no-repeat; mix-blend-mode: screen; opacity: .35; transform-origin: 50% 0; animation: scRays 9s ease-in-out infinite alternate; }
-@keyframes scRays { from { opacity: .2; transform: skewX(-2deg); } to { opacity: .44; transform: skewX(2deg); } }
+/* свет и пыль заметно (заметка пользователя 2026-11-04: «где свет из окон, пыль?» — были слишком бледные) */
+.sc-rays { background: var(--a-s-rays) center top / 100% 100% no-repeat; mix-blend-mode: screen; opacity: .7; transform-origin: 50% 0; animation: scRays 9s ease-in-out infinite alternate; }
+@keyframes scRays { from { opacity: .55; transform: skewX(-2deg); } to { opacity: .9; transform: skewX(2deg); } }
 .sc-rays.flip { transform: scaleX(-1); animation-name: scRaysF; }
-@keyframes scRaysF { from { opacity: .2; transform: scaleX(-1) skewX(-2deg); } to { opacity: .44; transform: scaleX(-1) skewX(2deg); } }
-.sc-dust { background: #FFF1CF; -webkit-mask: var(--m) center / contain no-repeat; mask: var(--m) center / contain no-repeat; opacity: 0; animation: scDust var(--du) var(--dl) ease-in-out infinite; }
-@keyframes scDust { 0% { opacity: 0; transform: none; } 25% { opacity: .85; } 75% { opacity: .55; } 100% { opacity: 0; transform: translate(var(--dx), var(--dy)); } }
+@keyframes scRaysF { from { opacity: .55; transform: scaleX(-1) skewX(-2deg); } to { opacity: .9; transform: scaleX(-1) skewX(2deg); } }
+.sc-dust { background: #FFF6E0; -webkit-mask: var(--m) center / contain no-repeat; mask: var(--m) center / contain no-repeat; opacity: 0; mix-blend-mode: screen;
+  animation: scDust var(--du) var(--dl) ease-in-out infinite; }
+@keyframes scDust { 0% { opacity: 0; transform: none; } 20% { opacity: 1; } 75% { opacity: .85; } 100% { opacity: 0; transform: translate(var(--dx), var(--dy)); } }
 .sc-fl .sc-spr { animation: scLoop .8s steps(8) infinite; animation-delay: var(--q, 0s); }
 .sc-flg { border-radius: 50%; background: radial-gradient(closest-side, rgba(255, 196, 100, .5), rgba(255, 140, 40, .16) 55%, transparent); animation: kGlow 1.8s ease-in-out infinite alternate; }
 /* обитатели полей: кот спит на книгах (иногда открывает глаз, зевает), заяц-рыцарь выглядывает снизу, улитка ползёт.
@@ -1908,7 +1910,8 @@ html .wallov.seals .wcell.sc-cell.opened { animation: scShake .14s ease-in-out 2
 .sc-med { position: relative; flex: none; width: var(--md); height: var(--md); animation: scMed .55s var(--t-medal) cubic-bezier(.3, 1.4, .5, 1) both; }
 @keyframes scMed { from { opacity: 0; transform: scale(.55); } }
 .sc-medr { inset: 0; z-index: 1; background: center / contain no-repeat; filter: drop-shadow(0 3px 4px rgba(60, 30, 10, .4)); }
-.sc-ric { position: absolute; z-index: 0; left: 13%; top: 13%; width: 74%; height: 74%; object-fit: contain; animation: scIco .7s calc(var(--t-medal) + 120ms) ease-out both; }
+/* значок роли — целиком в проёме медальона (проём — 62% ширины, meta.script.medal): рамка его не перекрывает */
+.sc-ric { position: absolute; z-index: 0; left: 20%; top: 20%; width: 60%; height: 60%; object-fit: contain; animation: scIco .7s calc(var(--t-medal) + 120ms) ease-out both; }
 @keyframes scIco { from { opacity: 0; filter: blur(5px); transform: scale(.82); } }
 .sc-for { font: 700 13px/1.2 'Bona Nova', Georgia, serif; letter-spacing: .12em; text-transform: uppercase; color: #6B5E50; animation: scIn .4s var(--t-rolled) both; }
 .sc-rev.side-good { --sc-side: #2B4C8C; } .sc-rev.side-evil { --sc-side: #A3231B; }

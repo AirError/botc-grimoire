@@ -116,7 +116,7 @@ _S = {"s_header_day.jpg": 800, "s_header_night.jpg": 800, "s_splash.jpg": 720, "
       "s_seal_glow.png": 200, "s_wreath.png": 160, "s_ring.png": 640, "s_ring_night.png": 640, "s_frame.png": 560, "s_frame_wide.png": 760,
       "s_desk_top.jpg": 760, "s_desk_mid.jpg": 760, "s_desk_bot.jpg": 760, "s_desk_wide.jpg": 1400, "s_rays.png": 420, "s_sweep.png": 700,
       "s_flame_strip.png": 8 * 64, "s_crack_strip.png": 6 * 120, "s_puff_strip.png": 6 * 150, "s_ribbon_strip.png": 6 * 220,
-      "s_sheet.png": 700, "s_roller_top.png": 900, "s_roller_bot.png": 900, "s_ink_strip.png": 8 * 260, "s_inkr_strip.png": 8 * 260,
+      "s_sheet.png": 700, "s_roller_top.png": 900, "s_roller_bot.png": 900, "s_inkg_strip.png": 8 * 260, "s_inkr_strip.png": 8 * 260,
       "s_drip_strip.png": 6 * 150, "s_quill_strip.png": 6 * 130, "s_m_snail_strip.png": 6 * 140, "s_m_rabbit_strip.png": 6 * 170, "s_m_cat_strip.png": 4 * 210}
 _S.update({f"s_tab_{k}.png": 96 for k in ("day", "night", "setup", "table", "log", "roles", "menu")})
 _S.update({f"s_g_{k}.png": 128 for k in ("dusk", "dawn", "minioninfo", "demoninfo", "nominate", "vote", "execute", "dead")})
