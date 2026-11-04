@@ -1019,12 +1019,15 @@ function alhAskHtml() {
 // потом затихает сама. Громкость: <audio>.volume, а на iPhone (там она не меняется) — через Web Audio
 const ALH_TRACKS = typeof ALHAD_MUSIC === 'undefined' ? [] : ALHAD_MUSIC;
 const ALH = { a: null, id: null, g: null, ac: null };
-const alhVol = () => { try { const v = parseFloat(localStorage.getItem('botc-grimoire-alhvol')); return v > 0 && v <= 1 ? v : .2; } catch (e) { return .2; } };
+// громкость = уровень трека (r.g — app_build выравнивает все треки к одному тихому фону, под который можно говорить; просьба пользователя
+// 2026-11-04) × «Тише/Громче» этого устройства (по умолчанию ×1)
+const alhMul = () => { try { const v = parseFloat(localStorage.getItem('botc-grimoire-alhvol2')); return v >= .25 && v <= 4 ? v : 1; } catch (e) { return 1; } };
+const alhVol = r => Math.min(1, (r && r.g || .2) * alhMul());
 function alhSetVol(v) { if (ALH.g) ALH.g.gain.value = v; else if (ALH.a) ALH.a.volume = v; }
 function alhPlay(id) {
   const r = ALH_TRACKS.find(x => x.id === id); if (!r) return;
   alhStop();
-  const b = REC_BLOB[r.id], a = new Audio(typeof b === 'string' ? b : r.src), v = alhVol();
+  const b = REC_BLOB[r.id], a = new Audio(typeof b === 'string' ? b : r.src), v = alhVol(r);
   a.loop = true; a.volume = v; ALH.a = a; ALH.id = id;
   if (Math.abs(a.volume - v) > .01 && location.protocol !== 'file:') try {
     const AC = window.AudioContext || window.webkitAudioContext, ac = ALH.ac || (ALH.ac = new AC());
@@ -1047,7 +1050,8 @@ function alhMusicHtml() {
   if (!ALH_TRACKS.length) return '';
   recPrefetch(ALH_TRACKS);
   return `<div class="tale alhmus"><div class="lab">Музыка на ход Аль-Адихии — тихо, по кругу</div>
-    <div class="reclist">${ALH_TRACKS.map(r => `<button class="btn ${ALH.id === r.id ? 'on' : ''}" data-act="alhPlay" data-arg="${r.id}" aria-pressed="${ALH.id === r.id}">${ALH.id === r.id ? '▶ ' : ''}${esc(r.n)}</button>`).join('')}</div>
+    <div class="reclist">${ALH_TRACKS.map(r => { const dark = /dark/i.test(r.n); // DARK — жёстче по звучанию: красная рамка (просьба пользователя: пометить, без подписи)
+      return `<button class="btn ${ALH.id === r.id ? 'on' : ''} ${dark ? 'alhdark' : ''}" data-act="alhPlay" data-arg="${r.id}" aria-pressed="${ALH.id === r.id}">${ALH.id === r.id ? '▶ ' : ''}${esc(r.n)}</button>`; }).join('')}</div>
     ${ALH.id ? `<div class="row alhvol"><button class="btn" data-act="alhVol" data-arg="-1">Тише</button><button class="btn" data-act="alhVol" data-arg="1">Громче</button><button class="btn" data-act="alhStop">■ Стоп</button></div>` : ''}</div>`;
 }
 // на шаге: музыка вверху, после выбора троих — «Спросить игроков»
@@ -3326,8 +3330,9 @@ const A = {
   alhClose: () => { UI.alhAsk = null; render(); },
   alhPlay: id => { if (ALH.id === id) alhStop(true); else alhPlay(id); render(); },
   alhStop: () => { alhStop(true); render(); },
-  alhVol: d => { const v = Math.min(1, Math.max(.04, alhVol() * (+d > 0 ? 1.5 : 1 / 1.5)));
-    try { localStorage.setItem('botc-grimoire-alhvol', String(v)); } catch (e) { /* без хранилища — до перезагрузки */ } alhSetVol(v); },
+  alhVol: d => { const m = Math.min(4, Math.max(.25, alhMul() * (+d > 0 ? 1.4 : 1 / 1.4)));
+    try { localStorage.setItem('botc-grimoire-alhvol2', String(m)); } catch (e) { /* без хранилища — до перезагрузки */ }
+    alhSetVol(alhVol(ALH_TRACKS.find(x => x.id === ALH.id))); },
   timerEndClose: () => { UI.timerEnd = false; sndStop('bell'); render(); },
   swapSeat: id => { if (!UI.swapA || UI.swapA === id) { UI.swapA = UI.swapA === id ? null : id; return render(); }
     const a = UI.swapA; UI.swapA = null;

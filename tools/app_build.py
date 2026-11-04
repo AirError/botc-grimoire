@@ -160,7 +160,11 @@ for folder in sorted(REC_SRC.iterdir()) if REC_SRC.is_dir() else []:
         rec.append({"id": rid, "c": cat, "n": name, "src": f"rec/{out}"})
 art_js += "const MORNING_REC = " + json.dumps(rec, ensure_ascii=False) + ";\n"
 # музыка на шаг Аль-Адихии (заметка пользователя 2026-11-03: «приглушённо играет восточная музыка»): audio/alhadikhia/* — так же
-# файлами рядом (rec/), не в странице; название — имя файла без номера в начале
+# файлами рядом (rec/), не в странице; название — имя файла без номера в начале. Громкость по умолчанию — фон, под который можно
+# говорить (просьба пользователя): каждый трек выравнивается к одному уровню MUSIC_DB по замеру из levels.json (g — множитель громкости)
+MUSIC_DB = -30
+_lv = ROOT / "audio" / "alhadikhia" / "levels.json"
+levels = json.loads(_lv.read_text(encoding="utf-8")) if _lv.exists() else {}
 music = []
 for f in sorted((ROOT / "audio" / "alhadikhia").iterdir()) if (ROOT / "audio" / "alhadikhia").is_dir() else []:
     if f.suffix.lower() not in AUDIO:
@@ -169,7 +173,8 @@ for f in sorted((ROOT / "audio" / "alhadikhia").iterdir()) if (ROOT / "audio" / 
     out = f"{mid}-{hashlib.sha1(f.read_bytes()).hexdigest()[:8]}{f.suffix.lower()}"
     REC_OUT.mkdir(parents=True, exist_ok=True)
     shutil.copy2(f, REC_OUT / out)
-    music.append({"id": mid, "n": re.sub(r"^\d+[ _.\-]+", "", f.stem).replace("_", " ").strip() or f.stem, "src": f"rec/{out}"})
+    g = round(min(1.0, 10 ** ((MUSIC_DB - levels[f.stem]) / 20)), 3) if isinstance(levels.get(f.stem), (int, float)) else 0.2
+    music.append({"id": mid, "n": re.sub(r"^\d+[ _.\-]+", "", f.stem).replace("_", " ").strip() or f.stem, "src": f"rec/{out}", "g": g})
 art_js += "const ALHAD_MUSIC = " + json.dumps(music, ensure_ascii=False) + ";\n"
 # колокол конца дня (таймер дня; файл пользователя 2026-11-02, audio/bell/*.mp3): встроен в страницу — короткий, нужен и без сети;
 # нет файла — приложение синтезирует удар само
