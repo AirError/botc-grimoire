@@ -1992,6 +1992,19 @@ function endOrphanEffects(S) {
   const held = new Set(S.players.flatMap(q => [q.role, q.gained]).filter(Boolean));
   for (const q of S.players) q.tokens = q.tokens.filter(t => permTok(t) || !(ENDS_WITH_ROLE.includes(t.k) && t.src && R(t.src) && !held.has(t.src)));
   vigorEnd(S);
+  grandchildClean(S);
+}
+// Внук Бабушки — у каждого, кто действует как Бабушка, свой: у роли Бабушки (и Пьяницы, считающего себя ею) — S.flags.grandchild
+// и жетон без by; получившие способность (Философ, Каннибал, Ученик) — S.flags.gcOf[id] и жетон с by (Философ выбрал живую Бабушку —
+// её внука не затирает). Две настоящие Бабушки сразу (Хохотун) — делят один флаг (не разбираем)
+const grandchildOf = (S, g) => g.gained === 'grandmother' ? (S.flags.gcOf || {})[g.id] || null : S.flags.grandchild;
+// жетоны «Внук» тех, кто больше не действует как Бабушка, — убрать
+function grandchildClean(S) {
+  const gained = new Set(S.players.filter(q => q.gained === 'grandmother').map(q => q.id));
+  const own = S.players.some(q => q.role === 'grandmother' || (fakeGood(q) && q.believes === 'grandmother'));
+  for (const q of S.players) q.tokens = q.tokens.filter(t => !(t.k === 'grandchild' && (t.by ? !gained.has(t.by) : !own)));
+  if (S.flags.gcOf) for (const id of Object.keys(S.flags.gcOf)) if (!gained.has(id)) delete S.flags.gcOf[id];
+  if (!own && S.phase !== 'setup') S.flags.grandchild = null; // на подготовке выбор живёт до startGame
 }
 // Вигормортис (вики): убитые им Приспешники сохраняют способность и травят соседа-Горожанина, «пока Вигормортис жив»; умер или перестал
 // быть Вигормортисом — способность и яд кончаются (заметка пользователя 2026-10-17: после казни Вигормортиса мёртвая Яга ходила).
@@ -2042,7 +2055,7 @@ function revive(S, p, why) {
   // ожил ночью с ролью «только в 1-ю ночь» — просыпается сейчас же (вики, Профессор и Шабалот: «If they wake on the first night
   // only, they wake now to use their ability»); роли «каждую ночь» и так проснутся в свою очередь
   const r = actsAs(p), cur = S.phase === 'night' && S.night && S.night.steps[S.night.i];
-  if (cur && cur.id !== 'dawn' && wakesFirstOnly(r)) { addFresh(S, p.id, r, S.n, true); rebuildRest(S); }
+  if (cur && cur.id !== 'dawn' && wakesFirstOnly(r)) { addFresh(S, p.id, r, S.n); rebuildRest(S); }
   return true;
 }
 function storytellerKill(S, pid, src, reason) {
@@ -2089,8 +2102,8 @@ function afterDeath(S, p, cause, fake, aliveBefore, opts) {
     log(S, `Банши (${p.name}) убита Демоном: все узнают об этом; теперь она номинирует дважды в день и голосует дважды`, 'effect');
   }
   // Бабушка
-  if (cause === 'demon' && S.flags.grandchild === p.id) {
-    for (const g of holders(S, 'grandmother')) if (g.alive && !abilityOff(S, g)) {
+  if (cause === 'demon') {
+    for (const g of S.players.filter(q => q !== p && actsAs(q) === 'grandmother' && grandchildOf(S, q) === p.id)) if (g.alive && !abilityOff(S, g)) {
       log(S, `Внук убит Демоном — Бабушка (${g.name}) должна умереть тоже`, 'death'); attemptKill(S, g, 'ability', 'grandmother'); // защиты действуют (Травница, Моряк…)
     }
   }
@@ -2445,7 +2458,7 @@ function setPrepFlag(S, flag, pid) {
   const f = PREP_FLAGS[flag]; if (!f) return false;
   S.flags[flag] = pid || null;
   if (S.phase === 'setup') return true; // отметки ставит startGame
-  S.players.forEach(q => rmTok(q, f[0], f[1]));
+  S.players.forEach(q => { q.tokens = q.tokens.filter(t => !(t.k === f[0] && t.src === f[1] && !t.by)); }); // с by — внуки Философа/Каннибала
   const q = pid && P(S, pid); if (q) addTok(S, q, f[0], f[1]);
   return true;
 }
@@ -2652,6 +2665,7 @@ function startGame(S) {
   finishRoles(S); S.draw = null;
   S.flags.ever = Object.fromEntries(S.players.filter(p => p.role).map(p => [p.role, true])); // роли, бывшие в игре (джинксы «есть или был»)
   for (const p of S.players) { p.alive = true; p.ghost = true; p.tokens = []; }
+  S.flags.gcOf = {};
   S.flags.demonless = !S.players.some(isDemon);
   // Кукольник (вики): на Демона — метка «Последняя ночь: без атаки», пока он ни разу не отказался от нападения
   if ((S.fabled || []).includes('toymaker')) { S.flags.toyNoAttack = false; const d = S.players.find(isDemon); if (d) addTok(S, d, 'finalnight', 'toymaker'); }
@@ -2736,8 +2750,8 @@ function buildSteps(S) {
     const f = S.flags['cannibal_' + c.id];
     if (!f) continue;
     if (f.evil) insertStep(steps, { key: 'cannibal:' + c.id, id: f.role, pid: c.id, fakeCannibal: true }, order);
-    else if (f.night === S.n && !order.includes(f.role) && DATA.order.first.includes(f.role))
-      insertStep(steps, { key: f.role + ':' + c.id + ':fresh', id: f.role, pid: c.id, fresh: true }, order);
+    else if (f.night === S.n && wakesFirstOnly(f.role))
+      putFresh(steps, { key: f.role + ':' + c.id + ':fresh', id: f.role, pid: c.id, fresh: true }, order);
   }
   // Ученик вошёл в игру позже 1-й ночи: его «первая ночь» — сразу после заката
   if (!first) for (const a of holders(S, 'apprentice')) {
@@ -2747,8 +2761,8 @@ function buildSteps(S) {
   }
   // способность «только в 1-ю ночь», полученная этой ночью (Ученик, Собиратель Костей)
   if (!first) for (const f of S.flags.fresh || []) {
-    if (f.night !== S.n || (order.includes(f.role) && !(f.revived && WAKE_FIRST_ONLY.has(f.role))) || !DATA.order.first.includes(f.role)) continue;
-    insertStep(steps, { key: f.role + ':' + f.pid + ':fresh', id: f.role, pid: f.pid, fresh: true }, order);
+    if (f.night !== S.n || !wakesFirstOnly(f.role)) continue;
+    putFresh(steps, { key: f.role + ':' + f.pid + ':fresh', id: f.role, pid: f.pid, fresh: true }, order);
   }
   // Странник ещё не узнал свою сторону (travShown: false — пишет addTraveller): в 1-ю ночь — после блефов Демону, потом — после заката
   const trs = S.players.filter(p => isTraveller(p) && (S.flags.travShown || {})[p.id] === false);
@@ -2759,12 +2773,16 @@ function buildSteps(S) {
   return steps;
 }
 // просыпается только в 1-ю ночь, хотя есть в порядке остальных ночей (там — напоминание рассказчику без пробуждения):
-// Бабушка (в остальные ночи — «если Демон убил внука, Бабушка умирает»). Только для воскрешения (revived у записи fresh):
-// вики Профессора и Шабалота — «If they wake on the first night only, they wake now»; смену роли (Цирюльник, Яга) не трогаем
+// Бабушка (в остальные ночи — «если Демон убил внука, Бабушка умирает»). Получил её посреди игры — воскрешение (вики, Профессор
+// и Шабалот: «they wake now»), смена роли, Философ (вики: «If this ability is used on the first night only, they use it tonight»),
+// Каннибал — узнаёт внука в ближайшую ночь (решение пользователя 2026-11-04)
 const WAKE_FIRST_ONLY = new Set(['grandmother']);
 const wakesFirstOnly = r => DATA.order.first.includes(r) && (!DATA.order.other.includes(r) || WAKE_FIRST_ONLY.has(r));
-function addFresh(S, pid, role, night, revived) {
-  S.flags.fresh = (S.flags.fresh || []).filter(f => f.night >= S.n && f.pid !== pid).concat(Object.assign({ pid, role, night: night || S.n }, revived ? { revived: true } : {}));
+function addFresh(S, pid, role, night) { S.flags.fresh = (S.flags.fresh || []).filter(f => f.night >= S.n && f.pid !== pid).concat({ pid, role, night: night || S.n }); }
+// шаг «как в 1-ю ночь» встаёт на место обычного шага этого игрока (у Бабушки в остальные ночи он неактивен — двух карточек не нужно)
+function putFresh(steps, st, order) {
+  const k = steps.findIndex(s => s.key === st.id + ':' + st.pid);
+  if (k >= 0) steps[k] = st; else insertStep(steps, st, order);
 }
 // после смены способностей посреди ночи — перестраиваем оставшиеся шаги этой ночи
 function rebuildRest(S) {
@@ -2996,6 +3014,7 @@ function cannibalEats(S, ex) {
     else { c.gained = ex.role; rmTok(c, 'poisoned', 'cannibal'); if (ex.role === 'fortuneteller') ensureHerring(S); }
     log(S, `Обед Каннибала (${c.name}): ${ex.name} — ${evil ? 'злой игрок, Каннибал отравлен, пока не казнят доброго' : `способность «${rname(ex.role)}» теперь у Каннибала`}`, 'effect');
   }
+  grandchildClean(S); // способность Бабушки у Каннибала сменилась — его внук больше не в счёт
 }
 
 // Девица вошла в игру после начала (Яга, Философ, Каннибал…): её обладатель начинал другой ролью
@@ -3827,9 +3846,20 @@ const LOGIC = {
   /* --- Bad Moon Rising */
   grandmother: (S, p, first) => {
     if (!first) return { active: false, reason: 'Срабатывает сама: если Демон убьёт внука, Бабушка умрёт (приложение отметит)' };
-    return { inputs: [PL('t', 1, 'Внук (добрый игрок)', q => q.id !== p.id)], defaults: { t: S.flags.grandchild ? [S.flags.grandchild] : [] },
+    // внук — добрый Горожанин или Изгой (вики). Посреди игры (смена роли, воскрешение, Философ, Каннибал) по умолчанию — прежний внук,
+    // если подходит (живой, не она сама), иначе случайный подходящий
+    const fits = q => q && q.id !== p.id && q.alive && q.align === 'good' && ['townsfolk', 'outsider'].includes(realTeam(q));
+    const own = grandchildOf(S, p) && P(S, grandchildOf(S, p));
+    const def = own && own.id !== p.id && (S.n === 1 || fits(own)) ? own.id : stable(S, 'gc:' + p.id, () => { const c = S.players.filter(fits); return c.length ? pick(c).id : null; });
+    return { inputs: [PL('t', 1, 'Внук (добрый игрок)', q => q.id !== p.id)], defaults: { t: def ? [def] : [] },
       info: inp => { const t = inp.t && P(S, inp.t[0]); return t ? { show: `${t.name} — ${rname(t.role)}`, lines: t.align === 'good' ? [] : ['Внимание: внук должен быть добрым'], tokens: [{ pre: 'Ваш внук', role: t.role, players: [t.id] }] } : null; }, // «Ваш внук» — над иконкой (заметка 2026-10-15)
-      apply: inp => { S.players.forEach(q => rmTok(q, 'grandchild')); S.flags.grandchild = inp.t[0]; addTok(S, P(S, inp.t[0]), 'grandchild', 'grandmother'); log(S, `Бабушка (${p.name}) узнаёт внука: ${nm(S, inp.t[0])} — ${rname(P(S, inp.t[0]).role)}`, 'info'); } };
+      apply: inp => {
+        const t = P(S, inp.t[0]), mine = p.gained === 'grandmother'; // у получивших способность — свой внук и свой жетон (by)
+        S.players.forEach(q => { q.tokens = q.tokens.filter(x => !(x.k === 'grandchild' && (mine ? x.by === p.id : !x.by))); });
+        if (mine) { S.flags.gcOf = Object.assign({}, S.flags.gcOf, { [p.id]: t.id }); addTok(S, t, 'grandchild', 'grandmother', null, { by: p.id }); }
+        else { S.flags.grandchild = t.id; addTok(S, t, 'grandchild', 'grandmother'); }
+        log(S, `${mine ? `${rname(p.role)} со способностью Бабушки` : 'Бабушка'} (${p.name}) узнаёт внука: ${t.name} — ${rname(t.role)}`, 'info');
+      } };
   },
   sailor: (S, p, first, off) => ({
     inputs: [PL('t', 1, 'Моряк выбирает живого игрока', aliveOnly), CHOICE('who', 'Кто пьян до заката', [{ v: 'target', l: 'Выбранный' }, { v: 'self', l: 'Сам Моряк' }])],
@@ -4127,7 +4157,8 @@ const LOGIC = {
   philosopher: (S, p, first, off) => {
     if (once(S, p, 'philosopher')) return { active: false, reason: 'Способность уже использована' };
     return { inputs: [ROLE('r', 'Философ выбирает добрую роль из сценария (можно пропустить)', r => isGoodTeam(R(r).team), { optional: true })],
-      apply: inp => { if (!inp.r) return; markOnce(S, p, 'philosopher'); if (off) { log(S, `Философ (${p.name}) выбирает ${rname(inp.r)} — не работает`, 'action'); return; } p.gained = inp.r; holders(S, inp.r).forEach(q => addTok(S, q, 'drunk', 'philosopher')); log(S, `Философ (${p.name}) получает способность: ${rname(inp.r)}`, 'effect'); if (inp.r === 'fortuneteller') ensureHerring(S); rebuildRest(S); } };
+      apply: inp => { if (!inp.r) return; markOnce(S, p, 'philosopher'); if (off) { log(S, `Философ (${p.name}) выбирает ${rname(inp.r)} — не работает`, 'action'); return; } p.gained = inp.r; holders(S, inp.r).forEach(q => addTok(S, q, 'drunk', 'philosopher')); log(S, `Философ (${p.name}) получает способность: ${rname(inp.r)}`, 'effect'); if (inp.r === 'fortuneteller') ensureHerring(S);
+        addFresh(S, p.id, inp.r); rebuildRest(S); } }; // способность «только в 1-ю ночь» — этой же ночью (вики: «they use it tonight»)
   },
   juggler: (S, p) => {
     if (S.n !== 2) return { active: false, reason: 'Жонглёр узнаёт результат только после 1-го дня' };

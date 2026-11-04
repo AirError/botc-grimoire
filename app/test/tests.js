@@ -1828,10 +1828,54 @@ try {
     E.nominate(G, byRole(G, 'gossip').id, z.id); E.recordVote(G, z.id, G.players.filter(p => p.alive || p.ghost).map(p => p.id)); E.endDay(G);
     ok('BMR Зомбуул: 2-я казнь — умирает по-настоящему, Кукловод даёт доп. день (вики)', !z.alive && !z.secretlyAlive && !G.result && G.phase === 'night' && G.flags.mastermindDay === G.n);
     ok('BMR Зомбуул: голос призрака, потраченный «мёртвым», настоящая смерть не возвращает', z.ghost === false);
-    // Цирюльник поменял Бабушку с другим — новый шаг Бабушки не появляется (исключение — только для воскрешения)
-    G = bmr(['barber', 'exorcist', 'grandmother', 'chambermaid', 'gossip', 'moonchild', 'po']); runNight(G, {});
-    G.flags.fresh = []; E.changeRole(G, byRole(G, 'chambermaid'), 'grandmother'); toNight(G);
-    ok('BMR Бабушка по смене роли — без шага 1-й ночи (как раньше)', !G.night.steps.some(s => s.fresh && s.id === 'grandmother'));
+    // Бабушка посреди игры узнаёт внука (решение пользователя 2026-11-04; вики, Философ: «they use it tonight»)
+    const gmGame = (roles, script, gc) => { const H = game(roles, script); E.autoSetup(H, true); H.flags.grandchild = byRole(H, gc).id; E.startGame(H); runNight(H, {}); return H; };
+    const gmSteps = (H, pid) => H.night.steps.filter(s => s.id === 'grandmother' && s.pid === pid);
+    // ECBE: Цирюльник казнён, ночью Демон меняет Бабушку и Гробовщика — новая Бабушка узнаёт внука этой ночью
+    G = gmGame(['barber', 'grandmother', 'clockmaker', 'monk', 'undertaker', 'artist', 'witch', 'imp'], 'ecbe', 'clockmaker');
+    let X = byRole(G, 'undertaker'), oldGm = byRole(G, 'grandmother');
+    E.execute(G, byRole(G, 'barber').id); toNight(G);
+    runNight(G, { barber: { t: [oldGm.id, X.id] }, imp: { t: ids(G, 'artist') } });
+    ok('Бабушка от Цирюльника: роли поменялись, новая Бабушка узнала внука (прежнего — он подходит)', X.role === 'grandmother'
+       && G.flags.grandchild === byRole(G, 'clockmaker').id && G.log.some(e => e.t.startsWith(`Бабушка (${X.name}) узнаёт внука`)));
+    {
+      const kg = G.rp.recs.findIndex(r => r.t === 'step' && /^grandmother:.*:fresh$/.test(r.key));
+      const T = kg >= 0 && E.editNight(G, kg, { inp: { t: ids(G, 'monk') } }).T;
+      ok('Бабушка от Цирюльника: шаг один, правка ночи меняет внука', kg >= 0 && G.rp.recs.filter(r => r.t === 'step' && r.key.startsWith('grandmother:' + X.id)).length === 1
+         && T.flags.grandchild === byRole(T, 'monk').id && byRole(T, 'monk').tokens.some(t => t.k === 'grandchild'));
+    }
+    toNight(G); runNight(G, { imp: { t: ids(G, 'clockmaker') } });
+    ok('Бабушка от Цирюльника: Демон убил внука — новая Бабушка умерла', !byRole(G, 'clockmaker').alive && !X.alive && oldGm.alive);
+    // Цирюльник поменял Бабушку с её же внуком — внук по умолчанию не она сама
+    G = gmGame(['barber', 'grandmother', 'clockmaker', 'monk', 'undertaker', 'artist', 'witch', 'imp'], 'ecbe', 'clockmaker');
+    X = byRole(G, 'clockmaker'); E.execute(G, byRole(G, 'barber').id); toNight(G);
+    runNight(G, { barber: { t: [byRole(G, 'grandmother').id, X.id] }, imp: { t: ids(G, 'artist') } });
+    ok('Бабушка от Цирюльника (бывший внук): внук — другой добрый игрок', X.role === 'grandmother' && G.flags.grandchild && G.flags.grandchild !== X.id
+       && G.players.find(q => q.id === G.flags.grandchild).align === 'good');
+    // Catfishing: Философ во 2-ю ночь выбирает Бабушку при живой Бабушке — у каждого свой внук
+    G = gmGame(['philosopher', 'grandmother', 'chef', 'empath', 'monk', 'recluse', 'poisoner', 'imp'], 'catfishing', 'chef'); toNight(G);
+    const ph = byRole(G, 'philosopher'), gm0 = byRole(G, 'grandmother');
+    runNight(G, { philosopher: { r: 'grandmother' }, grandmother: { t: ids(G, 'empath') }, imp: { t: ids(G, 'monk') } });
+    ok('Философ-Бабушка: узнал своего внука этой ночью, внук настоящей Бабушки прежний, она пьяна',
+       (G.flags.gcOf || {})[ph.id] === byRole(G, 'empath').id && G.flags.grandchild === byRole(G, 'chef').id && E.hasTok(gm0, 'drunk', 'philosopher')
+       && byRole(G, 'empath').tokens.some(t => t.k === 'grandchild' && t.by === ph.id) && byRole(G, 'chef').tokens.some(t => t.k === 'grandchild' && !t.by));
+    toNight(G); runNight(G, { imp: { t: ids(G, 'empath') } });
+    ok('Философ-Бабушка: Демон убил его внука — умер Философ, настоящая Бабушка жива', !ph.alive && gm0.alive);
+    G = gmGame(['philosopher', 'grandmother', 'chef', 'empath', 'monk', 'recluse', 'poisoner', 'imp'], 'catfishing', 'chef'); toNight(G);
+    runNight(G, { philosopher: { r: 'grandmother' }, grandmother: { t: ids(G, 'empath') }, imp: { t: ids(G, 'monk') } }); toNight(G);
+    runNight(G, { imp: { t: ids(G, 'chef') } });
+    ok('Философ-Бабушка: убит внук пьяной настоящей Бабушки — никто вслед не умер', byRole(G, 'grandmother').alive && byRole(G, 'philosopher').alive);
+    G = gmGame(['philosopher', 'washerwoman', 'chef', 'empath', 'monk', 'recluse', 'poisoner', 'imp'], 'catfishing', 'chef'); toNight(G);
+    runNight(G, { philosopher: { r: 'washerwoman' }, imp: { t: ids(G, 'monk') } });
+    ok('Философ во 2-ю ночь выбрал Прачку — получает информацию этой ночью (вики)', G.rp.recs.some(r => r.key === 'washerwoman:' + byRole(G, 'philosopher').id + ':fresh'));
+    // Catfishing: Каннибал съел казнённую Бабушку — в следующую ночь узнаёт своего внука и умирает вместе с ним
+    G = gmGame(['cannibal', 'grandmother', 'chef', 'empath', 'monk', 'recluse', 'poisoner', 'imp'], 'catfishing', 'chef');
+    const cn = byRole(G, 'cannibal'); E.execute(G, byRole(G, 'grandmother').id); toNight(G);
+    ok('Каннибал-Бабушка: в ночь после казни один шаг Бабушки — как в 1-ю ночь', gmSteps(G, cn.id).length === 1 && gmSteps(G, cn.id)[0].fresh);
+    runNight(G, { grandmother: { t: ids(G, 'empath') }, imp: { t: ids(G, 'monk') } });
+    ok('Каннибал-Бабушка: узнал внука (свой, с by)', (G.flags.gcOf || {})[cn.id] === byRole(G, 'empath').id && byRole(G, 'empath').tokens.some(t => t.k === 'grandchild' && t.by === cn.id));
+    toNight(G); runNight(G, { imp: { t: ids(G, 'empath') } });
+    ok('Каннибал-Бабушка: Демон убил его внука — Каннибал умер', !cn.alive);
     G = bmr(['zombuul', 'exorcist', 'sailor', 'chambermaid', 'gossip', 'minstrel', 'godfather', 'professor']); runNight(G, {});
     E.execute(G, byRole(G, 'zombuul').id); toNight(G); runNight(G, {});
     E.execute(G, byRole(G, 'godfather').id); toNight(G); runNight(G, { zombuul: { t: ids(G, 'gossip') } });
