@@ -134,6 +134,9 @@ const art = (k, cls) => {
   // «Хэллоуин»: глифы — свои медальоны, экраны победы — свои (на светлом экране — умножением, белое уходит)
   if (UI.skin === 'hallow' && ENGR_GLYPHS.includes(k) && ART['h_g_' + k]) k = 'h_g_' + k;
   if (UI.skin === 'hallow' && (k === 'win_good' || k === 'win_evil') && ART['h_' + k]) k = 'h_' + k;
+  // «Скрипторий»: глифы — цветные миниатюры, победа — рассветный праздник / пасть ада (на светлом — умножением)
+  if (UI.skin === 'script' && ENGR_GLYPHS.includes(k) && ART['s_g_' + k]) k = 's_g_' + k;
+  if (UI.skin === 'script' && (k === 'win_good' || k === 'win_evil') && ART['s_' + k]) k = 's_' + k;
   return ART[k] ? `<img class="${cls}" src="${ART[k]}" alt="">` : '';
 };
 const roleLine = p => p.role ? `<span class="cr t-${team(p.role)}">${esc(E.rname(p.role))}${p.believes ? ' → ' + esc(E.rname(p.believes)) : ''}${E.isTraveller(p) ? ' · Странник' : ''}</span>` : '<span class="cr muted">без роли</span>';
@@ -277,20 +280,22 @@ function legendOverlay() {
     </div></div></div>`;
 }
 /* ---------- оформление: Basic (как было), «Лунная гравюра», «Витраж во тьме» — у каждого устройства своё (localStorage) ---------- */
-const SKINS = [['basic', 'Basic'], ['engr', 'Лунная гравюра'], ['glass', 'Витраж во тьме'], ['hallow', 'Хэллоуин']];
+const SKINS = [['basic', 'Basic'], ['engr', 'Лунная гравюра'], ['glass', 'Витраж во тьме'], ['hallow', 'Хэллоуин'], ['script', 'Скрипторий']];
 const SKIN_KEY = 'botc-grimoire-skin';
 function skinLoad() { try { const v = localStorage.getItem(SKIN_KEY); return SKINS.some(s => s[0] === v) ? v : 'basic'; } catch (e) { return 'basic'; } }
 // вид выдачи ролей (просьба пользователя 2026-10-24): каменная стена, склеп или витраж — в любом оформлении, у каждого устройства свой.
 // Не выбран (или сменили оформление) — как в оформлении: «Хэллоуин» — склеп, «Витраж во тьме» — витраж, остальные — стена
 // «Ведьмин котёл» (идея пользователя 2026-11-01) — только с картинками (prompts_cauldron.md)
-const DRAW_KINDS = [['wall', 'Каменная стена'], ['crypt', 'Склеп'], ['vitr', 'Витраж'], ['cauldron', 'Котёл']], DRAW_KEY = 'botc-grimoire-drawkind';
+// «Печати» («Скрипторий», 2026-11-04; prompts_scriptorium.md) — свитки на столе переписчика, только с картинками
+const DRAW_KINDS = [['wall', 'Каменная стена'], ['crypt', 'Склеп'], ['vitr', 'Витраж'], ['cauldron', 'Котёл'], ['seals', 'Печати']], DRAW_KEY = 'botc-grimoire-drawkind';
 function drawKindLoad() { try { const v = localStorage.getItem(DRAW_KEY); return DRAW_KINDS.some(s => s[0] === v) ? v : null; } catch (e) { return null; } }
 const kettleArt = () => ['k_hut', 'k_cauldron', 'k_cauldron_front', 'k_jar', 'k_hand1', 'k_hand2', 'k_hand3', 'k_shelf1', 'k_ing19'].every(HAS_ART);
-const drawKindOk = k => k === 'crypt' ? HAS_ART('h_chest_box') && HAS_ART('h_crypt') : k === 'cauldron' ? kettleArt() : true;
+const scArt = () => ['s_desk_top', 's_desk_mid', 's_desk_bot', 's_desk_wide', 's_scroll1', 's_scroll_used1', 's_seal23', 's_sheet', 's_roller_top', 's_roller_bot', 's_border_town'].every(HAS_ART);
+const drawKindOk = k => k === 'crypt' ? HAS_ART('h_chest_box') && HAS_ART('h_crypt') : k === 'cauldron' ? kettleArt() : k === 'seals' ? scArt() : true;
 function drawKind() {
   const crypt = HAS_ART('h_chest_box') && HAS_ART('h_crypt'), k = UI.drawKind;
-  if (k === 'wall' || k === 'vitr' || (k === 'crypt' && crypt) || (k === 'cauldron' && kettleArt())) return k;
-  return UI.skin === 'hallow' && crypt ? 'crypt' : UI.skin === 'glass' ? 'vitr' : 'wall';
+  if (k === 'wall' || k === 'vitr' || (k === 'crypt' && crypt) || (k === 'cauldron' && kettleArt()) || (k === 'seals' && scArt())) return k;
+  return UI.skin === 'hallow' && crypt ? 'crypt' : UI.skin === 'glass' ? 'vitr' : UI.skin === 'script' && scArt() ? 'seals' : 'wall';
 }
 // значки вкладок (в Basic скрыты): контур, у .f — заливка выбранной вкладки в «Витраже», .k — детали поверх заливки
 const TAB_ICO = {
@@ -304,12 +309,15 @@ const TAB_ICO = {
 };
 const tabIco = k => UI.skin === 'engr' && HAS_ART('c_tab_' + k) ? `<span class="ti tim" aria-hidden="true" style="--m:var(--a-c-tab-${k})"></span>`
   : UI.skin === 'glass' && HAS_ART('d_tab_' + k) ? `<img class="ti tig" src="${ART['d_tab_' + k]}" alt="" aria-hidden="true">`
-  : UI.skin === 'hallow' && HAS_ART('h_tab_' + k) ? `<img class="ti tig" src="${ART['h_tab_' + k]}" alt="" aria-hidden="true">` : `<svg class="ti" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${TAB_ICO[k]}</svg>`;
+  : UI.skin === 'hallow' && HAS_ART('h_tab_' + k) ? `<img class="ti tig" src="${ART['h_tab_' + k]}" alt="" aria-hidden="true">`
+  : UI.skin === 'script' && HAS_ART('s_tab_' + k) ? `<img class="ti tig" src="${ART['s_tab_' + k]}" alt="" aria-hidden="true">` : `<svg class="ti" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${TAB_ICO[k]}</svg>`;
 // картинка фазы над экраном ночи и дня: в гравюре — гравюра тушью (днём чернила, ночью серебро), в витраже ночью — ничего
 function phaseArt(k) {
   if (UI.skin === 'engr' && HAS_ART('c_engr')) return `<div class="phase-wrap"><div class="skengr ${k === 'night' && HAS_ART('c_night') ? 'night' : ''}" role="img" aria-label="Городок под луной"></div></div>`;
   if (UI.skin === 'glass' && k === 'night') return '';
   if (UI.skin === 'hallow' && HAS_ART('h_header_' + k)) return `<div class="phase-wrap"><img class="phase-art hhead" src="${ART['h_header_' + k]}" alt=""></div>`;
+  // «Скрипторий»: миниатюра — монастырь и часовая башня над деревней (днём — умножением на пергамент, ночью — на чёрном)
+  if (UI.skin === 'script' && HAS_ART('s_header_' + k)) return `<div class="phase-wrap"><img class="phase-art schead" src="${ART['s_header_' + k]}" alt=""></div>`;
   return `<div class="phase-wrap">${art(k, 'phase-art')}</div>`;
 }
 // заставка при запуске (кроме Basic): исчезает сама через 2 секунды или по нажатию
@@ -317,7 +325,8 @@ function splashHtml() {
   if (!UI.splash || UI.skin === 'basic') return '';
   // «Хэллоуин»: склеп под луной на весь экран, из-за него вылетают летучие мыши
   const bats = HAS_ART('h_bat_strip') ? [1, 2, 3, 4].map(() => `<i class="hsbat" aria-hidden="true">${hSprite('bat', 'hs-bat').html}</i>`).join('') : '';
-  const pic = UI.skin === 'engr' ? art('c_frontis', 'spart') : UI.skin === 'hallow' ? art('h_splash', 'spart cover') + bats : art('d_rose', 'spart');
+  // «Скрипторий»: титульный лист рукописи — название в пустом поле посередине
+  const pic = UI.skin === 'engr' ? art('c_frontis', 'spart') : UI.skin === 'hallow' ? art('h_splash', 'spart cover') + bats : UI.skin === 'script' ? art('s_splash', 'spart scsp') : art('d_rose', 'spart');
   const ph = S.phase === 'setup' ? 'подготовка' : S.phase === 'night' ? `ночь ${S.n}` : S.phase === 'day' ? `день ${S.n}` : 'игра окончена';
   return `<div class="splash" data-act="splashOff" role="dialog" aria-label="Гримуар рассказчика">${pic}
     <div class="spt"><div class="sptitle">Гримуар<br>рассказчика</div><div class="spsub">${esc(S.script.name)} · ${ph}</div><div class="sphint">Нажмите, чтобы продолжить</div></div></div>`;
@@ -335,7 +344,15 @@ function artVars() {
     // «Витраж во тьме»: выдача ролей витражом (prompts_vitrage.md)
     .concat(['d_nave', 'd_reveal', 'd_arch', 'd_arch_broken', 'd_reveal_dark', 'd_reveal_glow', 'd_beams', 'd_impact', 'd_crack1', 'd_crack2'], [...Array(20).keys()].map(i => 'd_pane' + i))
     // «Ведьмин котёл»: хижина, полки, пар; огонь и брызги — маски (цвет задаёт CSS)
-    .concat(['k_hut', 'k_steam', 'k_shelf1', 'k_shelf2', 'k_shelf3'], [1, 2, 3, 4].map(i => 'k_flame' + i), [1, 2, 3, 4, 5, 6].map(i => 'k_splash' + i));
+    .concat(['k_hut', 'k_steam', 'k_shelf1', 'k_shelf2', 'k_shelf3'], [1, 2, 3, 4].map(i => 'k_flame' + i), [1, 2, 3, 4, 5, 6].map(i => 'k_splash' + i))
+    // «Скрипторий»: пергамент, орнаменты, рамки; «Печати» — стол, свитки, печати, кадры (фоном: в разметке их не повторяем)
+    .concat(['s_paper', 's_orn_long', 's_orn_short', 's_orn_corner', 's_orn_flower', 's_orn_rhomb', 's_init1', 's_wreath', 's_ring', 's_ring_night', 's_frame', 's_frame_wide',
+      's_desk_top', 's_desk_mid', 's_desk_bot', 's_desk_wide', 's_rays', 's_sweep', 's_seal_glow', 's_sheet', 's_roller_top', 's_roller_bot',
+      's_flame_strip', 's_crack_strip', 's_puff_strip', 's_ribbon_strip', 's_ink_strip', 's_inkr_strip', 's_drip_strip', 's_quill_strip',
+      's_m_angel_strip', 's_m_fool_strip', 's_m_monk_strip', 's_m_demon_strip', 's_m_snail_strip', 's_m_rabbit_strip', 's_m_cat_strip'],
+      [1, 2, 3].map(i => 's_scroll' + i), [1, 2, 3].map(i => 's_scroll_used' + i), [...Array(24).keys()].map(i => 's_seal' + i),
+      [1, 2, 3, 4, 5, 6, 7, 8].flatMap(i => ['s_shard' + i, 's_crumb' + i, 's_dust' + i, 's_spark' + i]),
+      ['town', 'out', 'minion', 'demon'].flatMap(k => ['s_border_' + k, 's_medal_' + k]));
   const el = document.createElement('style'); el.id = 'artvars';
   el.textContent = `:root{${keys.filter(HAS_ART).map(k => `--a-${k.replace(/_/g, '-')}:url("${ART[k]}");`).join('')}--frame-slice:${(typeof ART_META !== 'undefined' && ART_META.frame_slice) || 0};--drunk-slice:${(typeof ART_META !== 'undefined' && ART_META.drunk_slice) || 0};}`;
   document.head.appendChild(el);
@@ -417,6 +434,13 @@ function cardHtml(text, thumb) {
     return `<div class="shframe hframe ${side ? 'side-' + side : ''}" role="img" aria-label="${esc(text)}">${HAS_ART(em) ? `<img class="shem" src="${ART[em]}" alt="">` : ''}
       <span class="shft sz-${n <= 3 ? 'xl' : n <= 12 ? 'l' : n <= 34 ? 'm' : 's'}" style="--lw:${lw}">${esc(text)}</span></div>`;
   }
+  // «Скрипторий»: эмблема в медальоне и надпись Bona Nova; тонкая рамка рукописи — по краю всего экрана показа (style.css)
+  if (UI.skin === 'script' && HAS_ART('s_em_youare')) {
+    const n = String(text).length, side = thumb ? (thumb === 'down' ? 'evil' : thumb === 'side' ? 'none' : 'good') : '';
+    const k0 = key ? key.replace('card_', '') : 'mad', em = 's_em_' + (k0 === 'yourrole' ? 'youare' : k0), lw = Math.max(3, ...String(text).split(/\s+/).map(w => w.length));
+    return `<div class="shframe scframe ${side ? 'side-' + side : ''}" role="img" aria-label="${esc(text)}">${HAS_ART(em) ? `<img class="shem" src="${ART[em]}" alt="">` : ''}
+      <span class="shft sz-${n <= 3 ? 'xl' : n <= 12 ? 'l' : n <= 34 ? 'm' : 's'}" style="--lw:${lw}">${esc(text)}</span></div>`;
+  }
   // «Лунная гравюра»: серебряная рамка с гравированными уголками, гравированная эмблема карточки и крупная надпись
   if (UI.skin === 'engr' && HAS_ART('c_cor_tl')) {
     const n = String(text).length, side = thumb ? (thumb === 'down' ? 'evil' : thumb === 'side' ? 'none' : 'good') : '';
@@ -438,7 +462,8 @@ function showButtons(tokens) {
 }
 // число — рисованными золотыми цифрами (если они есть в сборке), остальное — шрифтом
 // цифры оформления: витражные у «Витража во тьме», пламя тёмной магии у «Хэллоуина» (если нарисованы), иначе — золотые
-const digPrefix = () => UI.skin === 'glass' && HAS_ART('d_digit0') ? 'd_digit' : UI.skin === 'hallow' && HAS_ART('h_digit0') ? 'h_digit' : 'digit';
+const digPrefix = () => UI.skin === 'glass' && HAS_ART('d_digit0') ? 'd_digit' : UI.skin === 'hallow' && HAS_ART('h_digit0') ? 'h_digit'
+  : UI.skin === 'script' && HAS_ART('s_digit0') ? 's_digit' : 'digit';
 const numText = s => {
   s = String(s);
   if (/^\d{1,3}$/.test(s) && HAS_ART(digPrefix() + '0')) { const pf = digPrefix(); return `<div class="shdig" role="img" aria-label="${s}">${[...s].map(c => `<img src="${ART[pf + c]}" alt="">`).join('')}</div>`; }
@@ -693,7 +718,7 @@ function dealButtons() {
   if (d && d.finished) return '<div class="note-ok">Роли выданы жребием (стена). Заново не раздаются; роль можно сменить только на роль сценария, которой нет в игре.</div>';
   if (d) return '<div class="small muted">Идёт жребий (карточка «Выдача ролей» выше): роли закреплены за игроками — случайная раздача недоступна.</div>';
   const prob = E.drawProblem(S), badPool = S.pool && S.pool.length && !E.validPool(S);
-  return `<div class="row"><button class="btn" data-act="deal" ${E.poolProblem(S) || E.scriptShort(S) || badPool ? 'disabled' : ''}>${E.validPool(S) ? 'Раздать выбранные роли случайно' : 'Раздать роли случайно'}</button><button class="btn" data-act="drawStart" ${prob ? 'disabled' : ''}>Жребий: ${cryptOn() ? 'склеп' : vitrOn() ? 'витраж' : kettleOn() ? 'котёл' : 'каменная стена'}</button></div>
+  return `<div class="row"><button class="btn" data-act="deal" ${E.poolProblem(S) || E.scriptShort(S) || badPool ? 'disabled' : ''}>${E.validPool(S) ? 'Раздать выбранные роли случайно' : 'Раздать роли случайно'}</button><button class="btn" data-act="drawStart" ${prob ? 'disabled' : ''}>Жребий: ${cryptOn() ? 'склеп' : vitrOn() ? 'витраж' : kettleOn() ? 'котёл' : scOn() ? 'печати' : 'каменная стена'}</button></div>
     ${prob && S.pool && S.pool.length ? `<div class="small muted">${esc(prob)}</div>` : ''}`;
 }
 // подсказки (ideas.js): нажатие подставляет текст в поле
@@ -739,7 +764,7 @@ function viewSetup() {
       <details><summary class="small">Загрузить свой сценарий (JSON из конструктора)</summary>
       <div class="field" style="margin-top:8px"><textarea id="customJson" data-act="customText" placeholder='[{"id":"_meta","name":"Мой сценарий"},"washerwoman","imp"]'>${esc(UI.customText)}</textarea>
       <button class="btn" data-act="customLoad">Загрузить</button></div></details></div>
-    <div class="card"><div class="row ghead"><h3>Игроки по кругу (${dirName()})</h3>${S.players.length > 1 ? '<button class="btn ringbtn" data-act="ringSeat">◯ Кругом</button>' : ''}</div>${players || '<div class="muted small">Добавьте игроков в порядке, в котором они сидят.</div>'}
+    <div class="card"><div class="row ghead"><h3>Игроки по кругу<span class="h3dir">(${dirName()})</span></h3>${S.players.length > 1 ? '<button class="btn ringbtn" data-act="ringSeat">◯ Кругом</button>' : ''}</div>${players || '<div class="muted small">Добавьте игроков в порядке, в котором они сидят.</div>'}
       <div class="row" style="flex-wrap:nowrap"><input type="text" id="newName" placeholder="Имя игрока" aria-label="Имя нового игрока"><button class="btn" data-act="addP">Добавить</button></div>
       <details><summary class="small">Вставить список имён</summary><div class="field" style="margin-top:8px"><textarea id="bulkNames" placeholder="Аня, Борис, Вика…"></textarea><button class="btn" data-act="bulk">Заменить список</button></div></details>
       ${travellerForm()}
@@ -1802,12 +1827,14 @@ function drawCard() {
   const waiting = d && !d.finished ? core.filter(p => !p.role) : [], hid = rolesHidden();
   // роли открыты — можно снова закрыть «шторкой» (например, перед тем как снова выкатить стену)
   const hideBtn = d && !hid ? '<button class="btn" data-act="rolesHide">Скрыть роли</button>' : '';
-  const cr = cryptOn(), vt = !cr && vitrOn(), kt = kettleOn(); // вместо стены — склеп с сундуками, витраж или котёл (по оформлению или по выбору)
+  const cr = cryptOn(), vt = !cr && vitrOn(), kt = kettleOn(), sc = scOn(); // вместо стены — склеп с сундуками, витраж, котёл или свитки с печатями
   // вид выдачи — до конца жребия можно сменить (заметка пользователя 2026-10-24)
   const kinds = d && d.finished ? '' : `<div class="flabel"><span>Вид</span></div><div class="seg">${DRAW_KINDS.filter(([k]) => drawKindOk(k))
     .map(([k, t]) => `<button class="${drawKind() === k ? 'on' : ''}" aria-pressed="${drawKind() === k}" data-act="drawKind" data-arg="${k}">${t}</button>`).join('')}</div>`;
-  return `<div class="card drawcard"><h3>Выдача ролей · ${cr ? 'склеп' : vt ? 'витраж' : kt ? 'ведьмин котёл' : 'каменная стена'}</h3>${kinds}
-    <div class="small muted">${kt
+  return `<div class="card drawcard"><h3>Выдача ролей · ${cr ? 'склеп' : vt ? 'витраж' : kt ? 'ведьмин котёл' : sc ? 'печати' : 'каменная стена'}</h3>${kinds}
+    <div class="small muted">${sc
+      ? `Игроки по кругу ломают сургучные печати на свитках — как тянут жетон из мешочка: роли разложены по свиткам в случайном порядке, и какую печать игрок сломает, ту роль и получит. Где какая роль, не видит никто, и вы тоже. ${src} Пока игрок не сломал печать, в его карточке можно назначить роль или тип роли — назначенное выпадет ему из любого свитка. Пьяница увидит роль, которой себя считает. Свернуть стол со свитками — невидимой кнопкой в <b>левом нижнем углу</b> экрана; после него роли на экране закрыты, пока вы не нажмёте «Показать роли».`
+      : kt
       ? `Игроки по кругу варят зелье: каждый выбирает на полках три ингредиента и бросает их в котёл — как тянет жетон из мешочка. Роли разложены в случайном порядке, и от того, какие ингредиенты выбраны, зависит, какая роль выйдет из котла. Где какая роль, не видит никто, и вы тоже. ${src} Пока игрок не сварил зелье, в его карточке можно назначить роль или тип роли — назначенное выйдет при любых ингредиентах. Пьяница увидит роль, которой себя считает. Свернуть котёл — невидимой кнопкой в <b>левом нижнем углу</b> экрана; после него роли на экране закрыты, пока вы не нажмёте «Показать роли».`
       : vt
       ?`Игроки по кругу разбивают светящиеся окна витража — как тянут жетон из мешочка: роли разложены по окнам в случайном порядке, и какое окно игрок разобьёт, ту роль и получит. Где какая роль, не видит никто, и вы тоже. ${src} Пока игрок не разбил окно, в его карточке можно назначить роль или тип роли — назначенное выпадет ему из любого окна. Пьяница увидит роль, которой себя считает. Свернуть витраж — невидимой кнопкой в <b>левом нижнем углу</b> экрана; после него роли на экране закрыты, пока вы не нажмёте «Показать роли».`
@@ -1816,11 +1843,11 @@ function drawCard() {
       : `Игроки по кругу открывают светящиеся ячейки — как тянут жетон из мешочка: роли разложены по ячейкам в случайном порядке, и какую ячейку игрок выберет, ту роль и получит. Где какая роль, не видит никто, и вы тоже. ${src} Пока игрок не открыл ячейку, в его карточке можно назначить роль или тип роли — назначенное выпадет ему из любой ячейки. Пьяница увидит роль, которой себя считает. Свернуть стену — невидимой кнопкой в <b>левом нижнем углу</b> экрана; после неё роли на экране закрыты, пока вы не нажмёте «Показать роли».`}</div>
     ${!ok ? '<div class="warn">Нужно от 5 до 15 игроков (без Странников).</div>'
       : d && d.finished ? `<div class="note-ok">Роли выданы жребием. Заново их не раздать; роль можно сменить только на роль сценария, которой нет в игре.</div>${hideBtn}`
-      : d ? `<div class="note-ok">Жребий идёт: осталось ${cr ? 'сундуков' : vt ? 'окон' : kt ? 'зелий' : 'ячеек'} — ${left}. Очередь: ${esc(E.nm(S, d.turn))}</div>
+      : d ? `<div class="note-ok">Жребий идёт: осталось ${cr ? 'сундуков' : vt ? 'окон' : kt ? 'зелий' : sc ? 'свитков' : 'ячеек'} — ${left}. Очередь: ${esc(E.nm(S, d.turn))}</div>
         ${waiting.length ? `<div class="flabel"><span>Ещё не открыли — нажмите, чтобы назначить роль или тип</span></div><div class="seg">${waiting.map(p => `<button data-act="openP" data-arg="${p.id}">${esc(p.name)}${!hid && (S.assign || {})[p.id] ? ' → ' + esc(assignLabel(S.assign[p.id])) : ''}</button>`).join('')}</div>` : ''}
         <div class="row"><button class="btn primary" data-act="wallShow">Продолжить жребий</button><button class="btn danger" data-act="drawCancel">Отменить жребий</button>${hideBtn}</div>`
       : prob ? `<div class="warn">${esc(prob)}</div>`
-      : `${overMaxHtml()}<button class="btn primary wide" data-act="drawStart">${cr ? 'Открыть склеп' : vt ? 'Зажечь витраж' : kt ? 'Разжечь котёл' : 'Выкатить стену'}</button>`}</div>`;
+      : `${overMaxHtml()}<button class="btn primary wide" data-act="drawStart">${cr ? 'Открыть склеп' : vt ? 'Зажечь витраж' : kt ? 'Разжечь котёл' : sc ? 'Разложить свитки' : 'Выкатить стену'}</button>`}</div>`;
 }
 // Teensyville на 7+ игроков: ролей может и хватить, но сценарий задуман для 5–6 (заметка пользователя 2026-10-28)
 const overMaxHtml = () => { const t = !E.scriptShort(S) && E.scriptOverMax(S); return t ? `<div class="warn">${esc(t)}. Ролей хватает, но сценарий задуман для маленькой игры.</div>` : ''; };
@@ -2700,9 +2727,175 @@ function kettleAfter() {
 // бирки котла меряются шрифтом Kurale: догрузился шрифт — перемерить и перерисовать
 if (document.fonts && document.fonts.addEventListener) document.fonts.addEventListener('loadingdone', () => {
   if (!kTagCache.size) return; kTagCache.clear(); if (UI.wall && S && S.draw && kettleOn()) render(); });
+/* ---------- «Печати» («Скрипторий»; prompts_scriptorium.md, картинки пользователя 2026-11-04) ----------
+   Стол переписчика, на нём свитки — по одному на игрока; на ленте каждого сургучная печать со своим знаком (как руны стены). Игрок
+   ломает печать: трещины, осколки и крошки сургуча, дымок, лента соскальзывает; свиток (два валика) поднимается к зрителю и
+   разворачивается, по листу растекается рамка цвета типа роли, в кляксе (у злых — красной) проступает знак роли в медальоне, перо
+   выписывает название, над свитком выглядывает существо с полей по типу ПОКАЗАННОЙ роли (Пьяница — как Горожанин, Безумец — как Демон).
+   Свиток = ячейка жребия (роли разложены по ячейкам в начале жребия, как в склепе). Время — одно на всё (SCT): CSS-анимации с этими
+   задержками, полёт свитка и осколков — кодом; перерисовка продолжает с того же места (scAfter) */
+const SCT = { crack: 80, burst: 560, rib: 640, lift: 700, unroll: 1100, border: 1250, ink: 1500, rolled: 1650, medal: 1800, drip: 2000, sweep: 2050,
+  card: 2100, write: 2150, written: 2700, peek: 2850 };
+const SC_TEAM = { townsfolk: 'town', outsider: 'out', minion: 'minion', demon: 'demon' };
+const SC_MM = { townsfolk: 'angel', outsider: 'fool', minion: 'monk', demon: 'demon' }; // ангел с трубой, шут, монах в капюшоне, бесёнок
+const scOn = () => drawKind() === 'seals';
+const SCM = () => (typeof ART_META !== 'undefined' && ART_META.script) || {};
+const SC_SZ = { s_desk_top: [1024, 470], s_desk_mid: [1024, 354], s_desk_bot: [1024, 399], s_desk_wide: [1536, 1024], s_scroll1: [680, 320], s_sheet: [977, 1462],
+  s_roller_top: [1179, 371], s_border_town: [989, 1470], s_medal_town: [548, 559], s_rays: [950, 1371] };
+const scSz = k => (SCM().sz || {})[k] || SC_SZ[k] || [1, 1]; // [w, h] картинки
+const scBox = (x, y, w, h) => `left:${Math.round(x)}px;top:${Math.round(y)}px;width:${Math.round(w)}px;height:${Math.round(h)}px`;
+/* Раскладка. Телефон и iPad вертикально — вертикальный стол тремя частями (верх со свечами и окном во всю ширину, середина повторяется,
+   низ с книгами и чернильницей): целиком на узком экране он срезал бы свечи. Альбомом — горизонтальный стол «cover». Свитки — в
+   свободной середине столешницы, столбцов — сколько даёт самые крупные свитки (последний ряд — по центру); k — масштаб стола */
+function scLayout(n) {
+  const W = window.innerWidth || 375, H = window.innerHeight || 700, [st, sb] = kSafe(), m = SCM(), wide = W > H, L = { W, H, st, sb, wide };
+  if (!wide) {
+    const k = W / 1024, [tw, th] = scSz('s_desk_top'), [bw, bh] = scSz('s_desk_bot'), tH = W * th / tw, bH = W * bh / bw, d = m.desk || {};
+    const catW = 250 * k, catH = catW / 1.235, books = d.books ? [d.books[0] * W, H - bH + d.books[1] * bH] : null;
+    Object.assign(L, { k, tH, wicks: (d.wick || []).map(([x, y]) => [x * W, y * tH]), win: d.win ? [[d.win[0] * W, d.win[1] * tH]] : [], books, catW, catH,
+      rabbit: [W * .6, H], ax: [18, W - 18], ay: [Math.max(st + 100, tH * .8), Math.min(H - bH * .8, books ? books[1] - catH - 2 : H) - 6] });
+  } else {
+    const [dw, dh] = scSz('s_desk_wide'), k = Math.max(W / dw, H / dh), ox = (W - dw * k) / 2, oy = (H - dh * k) / 2, d = m.desk_wide || {};
+    const P = ([x, y]) => [ox + x * dw * k, oy + y * dh * k], catW = 200 * k;
+    Object.assign(L, { k, wicks: (d.wick || []).map(P), win: (d.win || []).map(P), books: d.books ? P(d.books) : null, catW, catH: catW / 1.235,
+      rabbit: [ox + .62 * dw * k, Math.min(H, oy + .985 * dh * k)], ax: [Math.max(16, ox + .15 * dw * k), Math.min(W - 16, ox + .86 * dw * k)],
+      ay: [Math.max(st + 100, oy + .3 * dh * k), Math.min(H - sb - 16, oy + .88 * dh * k)] });
+  }
+  const [sw, sh] = scSz('s_scroll1'), a = sh / sw, AW = L.ax[1] - L.ax[0], AH = L.ay[1] - L.ay[0], gx = 10, gy = 16;
+  let best = null;
+  for (let c = 1; c <= Math.min(Math.max(n, 1), 8); c++) {
+    const rows = Math.ceil(n / c), w = Math.min((AW - gx * (c - 1)) / c, (AH - gy * (rows - 1)) / rows / a, 300);
+    if (!best || w > best.w + .5) best = { c, rows, w };
+  }
+  const w = Math.floor(best.w), h = Math.round(w * a), gw = best.c * w + (best.c - 1) * gx, gh = best.rows * h + (best.rows - 1) * gy;
+  const x0 = L.ax[0] + (AW - gw) / 2, y0 = L.ay[0] + (AH - gh) / 2;
+  L.cw = w; L.ch = h;
+  L.pos = [...Array(n).keys()].map(i => { const r = Math.floor(i / best.c), inRow = Math.min(best.c, n - r * best.c);
+    return { x: Math.round(x0 + (best.c - inRow) * (w + gx) / 2 + (i % best.c) * (w + gx)), y: Math.round(y0 + r * (h + gy)) }; });
+  return L;
+}
+// развёрнутый свиток: ширина листа, валики (концы не тянутся — border-image), рамка (её толщина — по масштабу kb), медальон, место над свитком
+function scRollGeo(L) {
+  const m = SCM(), [rw, rh0] = scSz('s_roller_top'), roll = m.roll || [.2036, .7846], el = roll[0] * rw / rh0, er = (1 - roll[1]) * rw / rh0;
+  let SW = Math.min(L.W * .92, 560), rh = hClamp(SW * .11, 28, 56);
+  SW = Math.floor(Math.min(SW, L.W - 14 - (el + er) * rh)); rh = Math.round(hClamp(SW * .11, 28, 56));
+  const [bw, bh] = scSz('s_border_town'), B = (m.border || {}).town || { in: [.122, .126, .879, .913], c: [.499, .069, .08] };
+  const bi = Math.round(SW * .03), kb = (SW - 2 * bi) / bw, cz = Math.round(hClamp(L.H * .11, 64, 130));
+  const hmax = Math.round(L.H - L.st - L.sb - cz - rh - 60), cy = bi + B.c[1] * bh * kb, cr = B.c[2] * bw * kb, md = Math.round(Math.min(SW * .4, hmax * .3));
+  return { SW, rh, el: Math.round(el * rh), er: Math.round(er * rh), bi, kb, B, bw, bh, cz, hmax, md, pt: Math.round(Math.max(bi + 2, cy - cr * 1.15)),
+    bt: Math.round(B.in[1] * bh * kb), bl: Math.round(B.in[0] * bw * kb), br: Math.round((1 - B.in[2]) * bw * kb), bb: Math.round((1 - B.in[3]) * bh * kb), bcy: Math.round(cy - bi) };
+}
+// кадры: полоса из n кадров во всю высоту, сдвигается целыми кадрами (CSS)
+const scSpr = (key, n) => `<i class="sc-spr" style="--n:${n};background-image:var(--a-${key.replace(/_/g, '-')})"></i>`;
+// стол: фон, лучи из окна с пылинками, пламя свечей, кот на книгах, заяц-рыцарь и улитка на полях
+function scScene(L) {
+  const m = SCM(), R = hRand(0x5c7), fl = m.s_flame_strip || { w: 103, h: 160 };
+  const fh = (L.wide ? 64 : 70) * L.k, fw = fh * fl.w / fl.h;
+  // пламя: свечение вокруг — отдельно (полоса кадров обрезана рамкой пламени)
+  const flames = HAS_ART('s_flame_strip') ? L.wicks.map(([x, y], q) => `<i class="sc-flg" style="${scBox(x - fh * 1.3, y - fh * 1.6, fh * 2.6, fh * 2.6)};animation-delay:${-q * .9}s"></i>`
+    + `<i class="sc-fl" style="${scBox(x - fw / 2, y + fh * .1 - fh, fw, fh)};--q:${-q * .37}s">${scSpr('s_flame_strip', 8)}</i>`).join('') : '';
+  // свет из окна (заметка пользователя 2026-11-04: «свет должен исходить ровно из окон»): на картинке лучи идут из правого верхнего угла
+  // (доля ro) наискосок вниз — этот угол ставится на подоконник; вторая копия зеркальная — веер в обе стороны, как лучи на столе
+  const rw = L.wide ? L.W * .3 : L.W * .62, rh = L.wide ? L.H * .62 : L.H * .5, ro = .85;
+  const rays = HAS_ART('s_rays') ? L.win.map(([x, y], q) => `<i class="sc-rays" style="${scBox(x - ro * rw, y, rw, rh)};animation-delay:${-q * 2.7}s"></i>`
+    + `<i class="sc-rays flip" style="${scBox(x - (1 - ro) * rw, y, rw, rh)};animation-delay:${-q * 2.7 - 4.5}s"></i>`).join('') : '';
+  const dust = HAS_ART('s_dust1') ? L.win.map(([x, y], q) => [...Array(L.wide ? 6 : 8)].map((_, j) => { const s = Math.round(10 + R() * 10);
+    return `<i class="sc-dust" style="${scBox(x + (R() - .5) * rw * .6, y + R() * rh * .75, s, s)};--m:var(--a-s-dust${1 + (j * 3 + q) % 8});--dx:${Math.round((R() - .5) * 60)}px;--dy:${Math.round(-20 - R() * 50)}px;--du:${(7 + R() * 6).toFixed(1)}s;--dl:-${(R() * 12).toFixed(1)}s"></i>`; }).join('')).join('') : '';
+  const cat = HAS_ART('s_m_cat_strip') && L.books ? (() => { const a = (m.s_m_cat_strip || {}).a || [.45, 1];
+    return `<i class="sc-cat" style="${scBox(L.books[0] - a[0] * L.catW, L.books[1] - L.catH + 3, L.catW, L.catH)}">${scSpr('s_m_cat_strip', 4)}</i>`; })() : '';
+  const rf = m.s_m_rabbit_strip || { w: 179, h: 200, a: [.39, 1] }, rbh = (L.wide ? 120 : 150) * L.k, rbw = rbh * rf.w / rf.h;
+  const rabbit = HAS_ART('s_m_rabbit_strip') ? `<i class="sc-rabbit" style="${scBox(L.rabbit[0] - rf.a[0] * rbw, L.rabbit[1] - rbh + 2, rbw, rbh)}">${scSpr('s_m_rabbit_strip', 6)}</i>` : '';
+  const sf = m.s_m_snail_strip || { w: 294, h: 120 }, snh = (L.wide ? 60 : 80) * L.k, snw = snh * sf.w / sf.h;
+  const snail = HAS_ART('s_m_snail_strip') ? `<i class="sc-snail" style="${scBox(0, L.H - L.sb * .4 - snh, snw, snh)};--sw:${Math.round(L.W + snw * 2)}px">${scSpr('s_m_snail_strip', 6)}</i>` : '';
+  return `<i class="sc-desk ${L.wide ? 'wide' : ''}" style="${L.wide ? '' : `--th:${(L.tH - .5).toFixed(1)}px`}"></i>${rays}${dust}${flames}${cat}${rabbit}${snail}`;
+}
+// ломается печать: трещины поверх печати, дымок, осколки и крошки (летят кодом), лента соскальзывает и падает
+function scFx(open, i) {
+  const s = UI.scSeal, c = UI.openRect; if (!s || !c) return '';
+  const D = s.w, cx = s.x + s.w / 2, cy = s.y + s.h / 2, rb = SCM().s_ribbon_strip || { w: 267, h: 200 }, rw = c.w * .46, rhh = rw * rb.h / rb.w;
+  // лента нарисована киноварной — у свитков с синей и золотой лентой перекрашивается (rk2, rk3)
+  return `<div class="sc-fxl c-${open.color}" aria-hidden="true">
+    ${HAS_ART('s_ribbon_strip') ? `<i class="sc-rib rk${1 + i % 3}" style="${scBox(cx - rw / 2, cy - rhh * .25, rw, rhh)}">${scSpr('s_ribbon_strip', 6)}</i>` : ''}
+    ${HAS_ART('s_crack_strip') ? `<i class="sc-crk" style="${scBox(cx - D * .6, cy - D * .6, D * 1.2, D * 1.2)}">${scSpr('s_crack_strip', 6)}</i>` : ''}
+    ${HAS_ART('s_puff_strip') ? `<i class="sc-puff" style="${scBox(cx - D * 1.4, cy - D * 1.7, D * 2.8, D * 2.8)}">${scSpr('s_puff_strip', 6)}</i>` : ''}
+    ${HAS_ART('s_shard1') ? [1, 2, 3, 4, 5, 6, 7, 8].map(k => `<i class="sc-sh" style="${scBox(cx - D * .3, cy - D * .3, D * .6, D * .6)};background-image:var(--a-s-shard${k})"></i>`).join('') : ''}
+    ${HAS_ART('s_crumb1') ? [...Array(12).keys()].map(k => `<i class="sc-cr" style="${scBox(cx - D * .1, cy - D * .1, D * .2, D * .2)};background-image:var(--a-s-crumb${1 + k % 8})"></i>`).join('') : ''}</div>`;
+}
+function scReveal(open, L, anim) {
+  const op = E.P(S, open.pid), r = (op && seenRole(op)) || E.drawShown(open), al = isGoodRole(r) ? 'good' : 'evil', t = team(r), tk = SC_TEAM[t] || 'town';
+  const G = scRollGeo(L), m = SCM(), B = G.B, Rn = hRand((UI.openAt || 9) + 41);
+  const sl = `${(B.in[1] * 100).toFixed(2)}% ${((1 - B.in[2]) * 100).toFixed(2)}% ${((1 - B.in[3]) * 100).toFixed(2)}% ${(B.in[0] * 100).toFixed(2)}%`;
+  const bord = `<i class="sc-bord" style="inset:${G.bi}px;border-width:${G.bt}px ${G.br}px ${G.bb}px ${G.bl}px;border-image-source:var(--a-s-border-${tk});border-image-slice:${sl};--bcy:${G.bcy}px"></i>`;
+  const mc = G.pt + G.md / 2; // середина медальона от верха листа
+  const ink = HAS_ART('s_ink_strip') ? `<i class="sc-ink" style="${scBox(G.SW / 2 - G.md * .95, mc - G.md * .95, G.md * 1.9, G.md * 1.9)}">${scSpr(al === 'evil' ? 's_inkr_strip' : 's_ink_strip', 8)}</i>` : '';
+  const df = m.s_drip_strip || { w: 255, h: 260 }, dw = G.SW * .16;
+  const drips = al === 'evil' && HAS_ART('s_drip_strip') ? [.17, .83].map((x, q) => `<i class="sc-drip" style="${scBox(G.SW * x - dw / 2, G.bi + G.bt * .55, dw, dw * df.h / df.w)};--qd:${q * 160}ms">${scSpr('s_drip_strip', 6)}</i>`).join('') : '';
+  const sparks = HAS_ART('s_spark1') ? [...Array(10).keys()].map(k => { const a = k / 10 * Math.PI * 2 + Rn() * .5, d = G.md * (.55 + Rn() * .5), s = Math.round(G.md * (.12 + Rn() * .1));
+    return `<i class="sc-spk" style="${scBox(G.SW / 2 - s / 2, mc - s / 2, s, s)};background-image:var(--a-s-spark${1 + k % 8});--dx:${Math.round(Math.cos(a) * d)}px;--dy:${Math.round(Math.sin(a) * d)}px;--sd:${k * 35}ms"></i>`; }).join('') : '';
+  const qf = m.s_quill_strip || { w: 189, h: 220, a: [.17, .98] };
+  const quill = anim && HAS_ART('s_quill_strip') ? `<i class="sc-q" style="--qa:${qf.a[0]};--qb:${qf.a[1]};--qr:${(qf.h / qf.w).toFixed(3)}">${scSpr('s_quill_strip', 6)}</i>` : '';
+  const mm = SC_MM[t] || 'angel', mf = m['s_m_' + mm + '_strip'] || { w: 210, h: 240, a: [.43, 1] }, mh = Math.round(Math.min(G.cz + G.rh * .4, G.SW * .36)), mw = Math.round(mh * mf.w / mf.h);
+  const crit = HAS_ART('s_m_' + mm + '_strip') ? `<i class="sc-mm" style="width:${mw}px;height:${mh}px;right:${Math.round(G.SW * .07)}px;bottom:calc(100% - ${Math.round(G.rh * .12)}px)">${scSpr('s_m_' + mm + '_strip', 8)}</i>` : '';
+  const fs = hClamp(G.SW * .056, 15, 20); // способность; название — вдвое крупнее
+  return `<div class="wreveal sc-rev side-${al} ${anim ? '' : 'know'}" data-act="drawClose" role="dialog" aria-label="Ваша роль" style="padding-top:${L.st + G.cz}px;padding-bottom:${L.sb + 8}px">
+    <i class="sc-dim"></i>${anim ? scFx(open, S.draw.open) : ''}
+    <div class="sc-roll" style="width:${G.SW}px;--rh:${G.rh}px;--el:${G.el}px;--er:${G.er}px">
+      <div class="sc-paper" style="max-height:${G.hmax}px;min-height:${Math.round(Math.min(G.SW * 1.12, G.hmax))}px;padding:${G.pt}px ${G.bi + G.br + 6}px ${G.bi + G.bb + 4}px ${G.bi + G.bl + 6}px">
+        ${bord}${ink}${drips}
+        <div class="sc-body" style="--fs:${fs.toFixed(1)}px;--md:${G.md}px">
+          <div class="sc-med"><i class="sc-medr" style="background-image:var(--a-s-medal-${tk})"></i>${ico(r, al, 'sc-ric')}</div>
+          <div class="sc-for">Ваша роль</div>
+          <div class="sc-nw"><span class="sc-name">${esc(E.rname(r))}</span>${quill}</div>
+          <div class="sc-team">${esc(E.TEAM_RU[t] || '')} · ${al === 'good' ? 'добро' : 'зло'}</div>
+          <div class="sc-ab">${esc(DATA.roles[r].ability)}</div></div>
+        ${sparks}<i class="sc-sweep"></i></div>
+      ${crit}<i class="sc-rt"></i><i class="sc-track"><i class="sc-rb"></i></i></div>
+    <div class="shhint wrlater sc-later">Запомните роль и нажмите — свиток свернётся</div></div>`;
+}
+function scOverlay(d) {
+  const L = scLayout(d.cells.length), turn = d.turn && E.P(S, d.turn), open = d.open !== null ? d.cells[d.open] : null, anim = !!open && !!UI.openAt && !kReduced();
+  const others = d.order.filter(id => (id === d.turn || !d.cells.some(c => c.pid === id)) && E.P(S, id));
+  const seal = SCM().seal || [], gr = SCM().glow_r || .2887;
+  const cells = d.cells.map((c, i) => {
+    const p = L.pos[i], used = !!c.pid, k = 1 + i % 3, sp = seal[k - 1] || [.511, .4375, .104], sd = Math.round(sp[2] * 2 * 1.45 * L.cw), gd = Math.round(sd * .56 / gr);
+    return `<button class="wcell sc-cell c-${c.color} ${used ? 'done' : ''} ${d.open === i ? 'opened' : ''} ${UI.scBack && UI.scBack.i === i ? 'back' : ''}" data-act="drawOpen" data-arg="${i}" ${used || !turn ? 'disabled' : ''}
+      aria-label="${used ? 'Вскрытый свиток' : 'Свиток ' + (i + 1)}" style="${scBox(p.x, p.y, L.cw, L.ch)};--r:${(((i * 37) % 9) - 4) * .8}deg;--d:${((i * .37) % 2.4).toFixed(2)}s">
+      <i class="sc-scr" style="background-image:var(--a-s-scroll${used ? '-used' : ''}${k})"></i>
+      ${used ? '' : `<i class="sc-glow" style="${scBox(sp[0] * L.cw - gd / 2, sp[1] * L.ch - gd / 2, gd, gd)}"></i><i class="sc-seal" style="${scBox(sp[0] * L.cw - sd / 2, sp[1] * L.ch - sd / 2, sd, sd)};background-image:var(--a-s-seal${c.glyph % 24})"></i>`}</button>`;
+  }).join('');
+  const head = `<div class="wtop sc-top" style="top:${L.st + 8}px"><span aria-hidden="true"></span>
+    <div class="wturn">${!turn ? '<b>Все роли выданы</b>' : others.length > 1
+      ? `<label for="wsel">Печать ломает</label><span class="wsel"><select id="wsel" data-act="drawTurn" aria-label="Кто ломает печать" ${open ? 'disabled' : ''}>${others.map(id => `<option value="${id}" ${id === d.turn ? 'selected' : ''}>${esc(E.nm(S, id))}</option>`).join('')}</select><span aria-hidden="true">▾</span></span>`
+      : `<span>Печать ломает</span><b>${esc(turn.name)}</b>`}
+      <span class="sc-hint">${turn ? 'Сломайте печать на любом свитке' : 'Все роли выданы. Верните телефон рассказчику'}</span></div>
+    <button class="wbtn" data-act="undo" ${HISTORY.length ? '' : 'disabled'} aria-label="Отменить последнее">↶</button></div>`;
+  const times = Object.entries(SCT).map(([k, v]) => `--t-${k}:${v}ms`).join(';');
+  return `<div class="ov wallov seals ${open ? 'busy' : ''} ${open && !anim ? 'scknow' : ''}" role="dialog" aria-label="Печати: выдача ролей" style="${times}">
+    <div class="wall ${UI.wallAnim ? 'roll' : ''}"><div class="sc-room">${scScene(L)}${cells}${head}</div></div>
+    <button class="grimx" data-act="wallHide" aria-label="Свернуть стол со свитками"></button>${open ? scReveal(open, L, anim) : ''}</div>`;
+}
+// после перерисовки посреди раскрытия: CSS-анимации — с того же места; свиток летит из ячейки к зрителю, осколки и крошки разлетаются
+function scAfter() {
+  if (!UI.wall || !S || !S.draw || S.draw.open === null || !UI.openAt || !scOn()) return;
+  const rev = document.querySelector('.sc-rev'); if (!rev || rev.classList.contains('know')) return;
+  const el = Date.now() - UI.openAt, set = a => { if (a) { try { a.currentTime = el; } catch (e) { /* без времени */ } } };
+  const roll = rev.querySelector('.sc-roll'), c = UI.openRect, ov = document.querySelector('.wallov');
+  if (roll && c && ov) { // меряем до анимаций: свиток ещё на своём месте
+    const rr = roll.getBoundingClientRect(), ob = ov.getBoundingClientRect(), wide = rr.width + (parseFloat(roll.style.getPropertyValue('--el')) || 0) * 2;
+    const fx = c.x + c.w / 2 - (rr.left - ob.left + rr.width / 2), fy = c.y + c.h * .45 - (rr.top - ob.top), s0 = hClamp(c.w / wide, .08, 1), T = SCT.unroll + 60;
+    set(hAnim(roll, u => { const t = u * T, v = hSmooth(hRamp(t, SCT.lift, SCT.unroll)); return { x: fx * (1 - v), y: fy * (1 - v) - Math.sin(Math.PI * v) * 40, s: s0 + (1 - s0) * v, o: hRamp(t, SCT.lift, SCT.lift + 140) }; }, T));
+  }
+  const R = hRand((UI.openAt || 3) + 17), T2 = SCT.burst + 1000;
+  rev.querySelectorAll('.sc-sh').forEach((n, k) => { const a = k / 8 * Math.PI * 2 + R() * .6, sp = 110 + R() * 150, vx = Math.cos(a) * sp, vy = Math.sin(a) * sp - 140, rot = (R() - .5) * 760;
+    set(hAnim(n, u => { const t = u * T2, v = hClamp((t - SCT.burst) / 900, 0, 1); return { x: vx * v, y: vy * v + 520 * v * v, r: rot * v, s: 1 - .35 * v, o: t < SCT.burst ? 0 : 1 - hRamp(v, .55, 1) }; }, T2)); });
+  rev.querySelectorAll('.sc-cr').forEach((n, k) => { const a = R() * Math.PI * 2, sp = 70 + R() * 170, vx = Math.cos(a) * sp, vy = Math.sin(a) * sp - 90, rot = (R() - .5) * 900;
+    set(hAnim(n, u => { const t = u * T2, v = hClamp((t - SCT.burst - k * 8) / 700, 0, 1); return { x: vx * v, y: vy * v + 420 * v * v, r: rot * v, o: t < SCT.burst ? 0 : 1 - hRamp(v, .5, 1) }; }, T2)); });
+  document.querySelectorAll('.sc-rev, .sc-cell.opened').forEach(n => n.getAnimations && n.getAnimations({ subtree: true }).forEach(set));
+}
 function wallOverlay() {
   const d = S.draw; if (!UI.wall || !d) return '';
   if (kettleOn()) return kettleOverlay(d);
+  if (scOn()) return scOverlay(d);
   const turn = d.turn && E.P(S, d.turn), open = d.open !== null ? d.cells[d.open] : null, crypt = cryptOn(), vt = !crypt && vitrOn();
   const cells = d.cells.map((c, i) => {
     if (vt) return vitrCell(d, c, i, turn); // «Витраж во тьме»: окна витража вместо табличек
@@ -3069,7 +3262,7 @@ function render() {
   if (UI.tab === 'roles') filterRefs();
   paintSave();
   window.scrollTo(0, scrollY);
-  hallowAfter(); vitrAfter(); kettleAfter(); fitTokNames(); tabsPin();
+  hallowAfter(); vitrAfter(); kettleAfter(); scAfter(); fitTokNames(); tabsPin();
 }
 
 /* ------------------------------------------------------------ обработчики */
@@ -3460,14 +3653,18 @@ const A = {
         rim: Math.round(bx.top - b.top), cw: Math.round(bx.width) };
       // витраж: где на экране окно (слой разбития лежит поверх всего слоя стены) и куда в стекле пришёлся удар — туда, где нажали
       const ov = document.querySelector('.wallov').getBoundingClientRect(); UI.openRect = { x: a.left - ov.left, y: a.top - ov.top, w: a.width, h: a.height };
+      // «Печати»: где печать — там трещины, осколки и дымок
+      const sl = cell.querySelector('.sc-seal'), q = sl && sl.getBoundingClientRect(); UI.scSeal = q ? { x: q.left - ov.left, y: q.top - ov.top, w: q.width, h: q.height } : null;
       const tp = UI.tap && Date.now() - UI.tap.t < 1500 ? UI.tap : null;
       UI.openHit = tp ? [tp.x - a.left - a.width * VG.l / 100, tp.y - a.top - a.height * VG.t / 100] : null; }
     // кто вылетит — случайно, но не тот же, что у прошлого сундука
     const fxs = HFX.filter(k => hfxOk(k) && k !== UI.openFx); UI.openFx = fxs[Math.floor(Math.random() * fxs.length)] || 'ghost';
     act(S => E.drawOpen(S, +i), 'жребий: ячейка открыта'); },
   // закрыть роль можно не раньше чем через 2 секунды — чтобы игрок успел прочитать и не закрыл случайно (было 3 с; просьба пользователя 2026-10-18)
-  drawClose: () => { if (UI.openAt && Date.now() - UI.openAt < 2000 + (kettleOn() ? KT.card : 0)) return; UI.openAt = null;
+  drawClose: () => { if (UI.openAt && Date.now() - UI.openAt < 2000 + (kettleOn() ? KT.card : scOn() ? SCT.card : 0)) return; UI.openAt = null;
     if (kettleOn()) { UI.kbrew = null; UI.kpick = []; UI.kback = Date.now(); } // котёл: камера возвращается к полкам
+    // «Печати»: вскрытый свиток ложится на место (анимация ячейки — один раз, потом класс не нужен)
+    if (scOn()) { const i = S.draw.open; UI.scBack = { i }; setTimeout(() => { if (UI.scBack && UI.scBack.i === i) UI.scBack = null; }, 900); }
     UI.cracking = S.draw.open; act(S => E.drawClose(S), 'жребий: ячейка закрыта'); setTimeout(() => { UI.cracking = null; }, 1600); },
   drawCancel: () => { UI.wall = false; UI.kpick = []; act(S => E.drawCancel(S), 'жребий отменён'); },
   edRole: (id, el) => act(S => E.storytellerRole(S, E.P(S, id), el.value || null), 'роль ' + E.nm(S, id)),
@@ -3669,7 +3866,7 @@ document.addEventListener('pointerdown', e => { UI.tap = { x: e.clientX, y: e.cl
 // перестроить при повороте экрана: Гримуар кругом; витраж и склеп — столбцы под новый экран (не посреди раскрытия)
 window.addEventListener('resize', () => {
   // котёл: сцена считается в пикселях — перестроить (и посреди варки: анимации продолжатся с того же места)
-  if (UI.wall && S.draw && kettleOn()) { clearTimeout(resizeTimer); resizeTimer = setTimeout(render, 150); return; }
+  if (UI.wall && S.draw && (kettleOn() || scOn())) { clearTimeout(resizeTimer); resizeTimer = setTimeout(render, 150); return; } // «Печати» — тоже в пикселях
   // роль открыта на витраже — только заново поставить медальон под знак роли
   if (UI.wall && S.draw && S.draw.open !== null && vitrOn()) { clearTimeout(resizeTimer); resizeTimer = setTimeout(vitrAlign, 150); return; }
   if (!UI.grimShow && !(UI.wall && S.draw && S.draw.open === null && (vitrOn() || cryptOn()))) return;

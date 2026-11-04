@@ -19,6 +19,7 @@ FILES = [
     (ROOT / "prompts_halloween.md", "Промпты — Хэллоуин.md"),
     (ROOT / "prompts_vitrage.md", "Промпты — Витраж (выдача ролей).md"),
     (ROOT / "prompts_cauldron.md", "Промпты — Ведьмин котёл (выдача ролей).md"),
+    (ROOT / "prompts_scriptorium.md", "Промпты — Скрипторий.md"),
     (ROOT / "prompts_sheets.md", "Промпты — листы сценария.md"),
     (ROOT / "prompts_badges.md", "Промпты — бейджи.md"),
     (OUT / "badges.pdf", "Бейджи — Горгульи (A4).pdf"),

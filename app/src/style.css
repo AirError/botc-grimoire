@@ -1015,8 +1015,8 @@ img.shroud { object-fit: contain; }
 /* ================= Оформление (html[data-skin]): basic — как было; engr — «Лунная гравюра»; glass — «Витраж во тьме» =================
    Правила стилей — в конце файла и через :where(), чтобы не перебивать частные случаи (.card.curtain и т. п.). */
 .tabs .ti, .gbg { display: none; }
-:is([data-skin="engr"], [data-skin="glass"], [data-skin="hallow"]) .tabs button { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 2px; font-size: 11px; padding-top: 4px; }
-:is([data-skin="engr"], [data-skin="glass"], [data-skin="hallow"]) .tabs .ti { display: block; width: 23px; height: 23px; flex: none; }
+:is([data-skin="engr"], [data-skin="glass"], [data-skin="hallow"], [data-skin="script"]) .tabs button { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 2px; font-size: 11px; padding-top: 4px; }
+:is([data-skin="engr"], [data-skin="glass"], [data-skin="hallow"], [data-skin="script"]) .tabs .ti { display: block; width: 23px; height: 23px; flex: none; }
 .tabs .ti .f { fill: none; }
 /* заставка при запуске */
 .splash { position: fixed; inset: 0; z-index: 40; display: flex; flex-direction: column; align-items: center; justify-content: flex-end; background: #000000; color: #EDE6D6; cursor: pointer;
@@ -1714,3 +1714,224 @@ html .wallov.crypt .wrfor { font-family: var(--f-wet, 'Rubik Wet Paint', 'Kurale
 .testjump label { display: flex; flex-direction: column; gap: 4px; }
 .testjump select { width: 100%; }
 .testjump label + .testend { margin-top: 8px; }
+/* «Игроки по кругу» — направление номеров отдельной строкой ровно под заголовком, а не переносом (заметка пользователя 2026-11-04) */
+.h3dir { display: block; }
+
+/* ---------- «Скрипторий»: средневековая рукопись — пергамент, чернила, киноварь, лазурит, золото (prompts_scriptorium.md; картинки
+   пользователя 2026-11-04). Днём — пергамент, ночью — чёрный. Шрифты: Bona Nova (заголовки, подписи, надписи показа) и PT Serif (текст):
+   у обоих настоящий жирный и кириллица. --gold — текстом (темнее золота линий: #8A6A2E на пергаменте — 4,3 : 1), --sgold — линии ---------- */
+html:root[data-skin="script"] {
+  --paper: #F4ECDD; --card: #FAF5EA; --ink: #1F1A17; --muted: #6B5E50; --line: #DCCBAC;
+  --good: #2B4C8C; --goodbg: #E5EAF3; --evil: #A3231B; --evilbg: #F6E3DD; --gold: #6E521B; --goldbg: #F1E5C8; --sgold: #8A6A2E; --cin: #A3231B;
+  --f-ui: 'PT Serif', Georgia, serif; --f-sc: 'Bona Nova', Georgia, serif; --f-show: 'Bona Nova', Georgia, serif; --f-tale: 'PT Serif', Georgia, serif; --r: 6px; }
+html:root.oled[data-skin="script"] {
+  --paper: #000000; --card: #000000; --ink: #EFE4CF; --muted: #A89A86; --line: #2E271E;
+  --good: #6F92E0; --goodbg: #000000; --evil: #E0503F; --evilbg: #000000; --gold: #C9A35A; --goldbg: #000000; --sgold: #C9A35A; --cin: #E0503F; }
+/* пергамент днём — бумага с волокнами (плитка) */
+:root:where([data-skin="script"]:not(.oled)), :where([data-skin="script"]:not(.oled)) body, :where([data-skin="script"]:not(.oled)) .top { background: var(--paper) var(--a-s-paper) 0 0 / 384px repeat; }
+:where([data-skin="script"]:not(.oled)) .tabs { background: var(--card) var(--a-s-paper) 0 0 / 384px repeat; }
+/* карточки: тонкая золотая двойная линия; у заголовка — лазуритовый ромб; между карточками — золотой разделитель с лилией */
+:where([data-skin="script"]) .card { border: 1px solid #D3BE95; box-shadow: inset 0 0 0 3px var(--card), inset 0 0 0 4px rgba(138, 106, 46, .3); }
+:where([data-skin="script"].oled) .card { border-color: #3A3123; box-shadow: inset 0 0 0 3px #000000, inset 0 0 0 4px rgba(201, 163, 90, .2); }
+:where([data-skin="script"]) .card > h3:not(.hi)::before, :where([data-skin="script"]) .card > .row > h2::before { content: ''; display: inline-block; width: 11px; height: 11px;
+  margin: 0 8px 0 1px; vertical-align: -1px; background: var(--a-s-orn-rhomb) center / contain no-repeat; }
+:where([data-skin="script"]) main > .card + .card { position: relative; margin-top: 12px; }
+:where([data-skin="script"]) main > .card + .card::before { content: ''; position: absolute; left: 50%; top: -21px; width: 156px; height: 16px; transform: translateX(-50%);
+  pointer-events: none; background: var(--a-s-orn-long) center / contain no-repeat; opacity: .85; }
+:where([data-skin="script"].oled) main > .card + .card::before { opacity: .55; }
+/* кнопки: главная — лазурит с золотой каймой; ночью — чёрная с золотом */
+:where([data-skin="script"]) :is(.btn, .hundo) { border-color: #CDB88E; }
+/* PT Serif шире Alegreya Sans: кнопки на кегль меньше, шапка Гримуара переносится (иначе «Значки» уходили за край) */
+:where([data-skin="script"]) .btn { font-size: 15px; }
+:where([data-skin="script"]) .row.ghead { flex-wrap: wrap; }
+:where([data-skin="script"]) .btn.primary { background: linear-gradient(#34589C, #22407A); color: #FBF3E0; border: 1px solid #1B3263; box-shadow: inset 0 0 0 2px #2B4C8C, inset 0 0 0 3px rgba(233, 205, 140, .7); }
+:where([data-skin="script"].oled) .btn { border-color: #3A3123; }
+:where([data-skin="script"].oled) .btn.primary { background: #000000; color: var(--gold); border: 2px solid var(--gold); box-shadow: none; }
+/* вкладки: цветные значки (невыбранные приглушены), у выбранной — киноварная черта */
+:where([data-skin="script"]) .tabs { border-top: 3px double var(--sgold); }
+:where([data-skin="script"]) .tabs button.on { color: var(--cin); box-shadow: none; }
+:where([data-skin="script"]) .tabs button.on .tig { filter: drop-shadow(0 1px 2px rgba(120, 80, 30, .35)); }
+:where([data-skin="script"]) .tabs button.on::after { content: ''; display: block; order: 1; width: 22px; height: 2.5px; margin: -1px auto 1px; border-radius: 2px; background: var(--cin); }
+:where([data-skin="script"]) .tabs .tl { order: 2; }
+:where([data-skin="script"].oled) .tabs .tig { filter: grayscale(.45) brightness(.72) opacity(.85); }
+:where([data-skin="script"].oled) .tabs button.on .tig { filter: drop-shadow(0 0 5px rgba(201, 163, 90, .55)); }
+/* шапка ночи и дня — миниатюра монастыря; под ней разделитель */
+.phase-art.schead { border-radius: 6px; max-height: 120px; object-fit: cover; }
+:where([data-skin="script"]:not(.oled)) .phase-art.schead { mix-blend-mode: multiply; }
+:where([data-skin="script"]) .phase-wrap::after { content: ''; display: block; width: 64%; height: 16px; margin: 6px auto 0; background: var(--a-s-orn-long) center / contain no-repeat; }
+/* значок ночного шага — в виноградном венке */
+:where([data-skin="script"]) .steprole .si { padding: 15px; width: 80px; height: 80px; background: var(--a-s-wreath) center / 100% 100% no-repeat; }
+/* Гримуар кругом — круговая диаграмма рукописи (rota): лазуритовое кольцо со звёздами; ночью — тёмное */
+:where([data-skin="script"]) .gbg { display: block; position: absolute; border-radius: 50%; pointer-events: none; background: var(--a-s-ring) center / 100% 100% no-repeat; }
+:where([data-skin="script"].oled) .gbg, :where([data-skin="script"]) .grimov .gbg { background-image: var(--a-s-ring-night); }
+/* конец игры: миниатюры на белом — умножением на пергамент */
+:where([data-skin="script"]) .win-art { mix-blend-mode: multiply; }
+:where([data-skin="script"]) .banner { border: 1px solid var(--sgold); box-shadow: inset 0 0 0 3px var(--goldbg), inset 0 0 0 4px rgba(138, 106, 46, .4); }
+:where([data-skin="script"]) .banner .w { color: var(--cin); }
+/* заставка — титульный лист рукописи, название — в пустом поле посередине */
+[data-skin="script"] .splash { background: #F4ECDD; color: #1F1A17; }
+.splash .spart.scsp { top: 0; bottom: 0; margin: auto 0; width: min(96vw, calc(96vh * .667), 600px); max-height: 96vh; }
+[data-skin="script"] .spt { position: absolute; left: 0; right: 0; top: 0; bottom: 0; margin: auto; height: max-content; width: min(58vw, calc(58vh * .667), 340px);
+  align-items: center; text-align: center; }
+[data-skin="script"] .sptitle { color: #A3231B; font-size: clamp(30px, 8.5vw, 46px); }
+[data-skin="script"] .spsub { color: #4B4036; }
+[data-skin="script"] .sphint { color: #6B5E50; margin-top: 10px; }
+/* показ игроку: тонкая золотая рамка рукописи по краю экрана (уголки не тянутся — border-image), эмблема в медальоне, надпись Bona Nova */
+[data-skin="script"] .showov::before { content: ''; position: fixed; pointer-events: none; inset: calc(6px + env(safe-area-inset-top, 0px)) 6px calc(6px + env(safe-area-inset-bottom, 0px));
+  border: solid transparent; border-width: clamp(34px, 10vw, 64px); border-image: var(--a-s-frame) 10.7% 16.5% stretch; }
+@media (orientation: landscape) { [data-skin="script"] .showov::before { border-image-source: var(--a-s-frame-wide); border-image-slice: 16.6% 10.7%; } }
+.shframe.scframe { border: 0; outline: 0; aspect-ratio: auto; padding: 0; gap: 3cqw; width: min(80vw, 400px); }
+.scframe .shem { width: 42cqw; height: 42cqw; filter: drop-shadow(0 4px 12px rgba(0, 0, 0, .6)); }
+.scframe .shft { font-family: 'Bona Nova', Georgia, serif; font-weight: 700; color: #EFE4CF; letter-spacing: .04em; line-height: 1.08; padding: 0; max-width: 84cqw;
+  font-size: min(var(--cap), calc(84cqw / (var(--lw) * .74))); }
+.scframe .shft.sz-xl { --cap: 22cqw; } .scframe .shft.sz-l { --cap: 12.5cqw; } .scframe .shft.sz-m { --cap: 9.5cqw; } .scframe .shft.sz-s { --cap: 7.5cqw; }
+.scframe.side-good .shft { color: #8FB0EE; } .scframe.side-evil .shft { color: #F07A6B; }
+.showov.land .shframe.scframe { width: min(calc(var(--long) * .5), calc(var(--short) * .78)); }
+
+/* ---------- «Печати»: выдача ролей на столе переписчика (ui.js scOverlay; раскладка в пикселях — scLayout, время — SCT) ---------- */
+.wallov.seals { background: #2A140B; }
+.wallov.seals .wall { max-width: none; background: #3B1A0E; box-shadow: none; overflow: hidden; }
+.wallov.seals .wall::after { display: none; }
+.wallov.seals .wall.roll { animation: kIn .8s ease-out both; }
+.sc-room { position: absolute; inset: 0; z-index: 0; overflow: hidden; } /* свой слой: шапка с именем — под раскрытой ролью */
+.sc-room i, .sc-rev i { position: absolute; display: block; pointer-events: none; }
+/* полоса кадров во всю высоту рамки, кадр — сдвигом (рамка её обрезает) */
+.sc-spr { left: 0; top: 0; height: 100%; width: calc(var(--n) * 100%); background: 0 0 / 100% 100% no-repeat; will-change: transform; }
+.sc-fl, .sc-cat, .sc-rabbit, .sc-snail, .sc-crk, .sc-puff, .sc-rib, .sc-ink, .sc-drip, .sc-q, .sc-mm { overflow: hidden; }
+@keyframes scLoop { to { transform: translateX(-100%); } }
+@keyframes scF6 { from { transform: none; } to { transform: translateX(-83.333%); } }
+@keyframes scF8 { from { transform: none; } to { transform: translateX(-87.5%); } }
+@keyframes scIn { from { opacity: 0; } }
+@keyframes scShow { from { opacity: 0; } to { opacity: 1; } }
+/* стол: вертикальный — верх, низ и повторяемая середина (--th — высота верха); горизонтальный — целиком */
+.sc-desk { inset: 0; background: var(--a-s-desk-top) center top / 100% auto no-repeat, var(--a-s-desk-bot) center bottom / 100% auto no-repeat,
+  var(--a-s-desk-mid) center var(--th, 0px) / 100% auto repeat-y, #5B2614; }
+.sc-desk.wide { background: var(--a-s-desk-wide) center / cover no-repeat, #5B2614; }
+/* свет из окна дышит, в нём плывут пылинки; свечи горят */
+.sc-rays { background: var(--a-s-rays) center top / 100% 100% no-repeat; mix-blend-mode: screen; opacity: .35; transform-origin: 50% 0; animation: scRays 9s ease-in-out infinite alternate; }
+@keyframes scRays { from { opacity: .2; transform: skewX(-2deg); } to { opacity: .44; transform: skewX(2deg); } }
+.sc-rays.flip { transform: scaleX(-1); animation-name: scRaysF; }
+@keyframes scRaysF { from { opacity: .2; transform: scaleX(-1) skewX(-2deg); } to { opacity: .44; transform: scaleX(-1) skewX(2deg); } }
+.sc-dust { background: #FFF1CF; -webkit-mask: var(--m) center / contain no-repeat; mask: var(--m) center / contain no-repeat; opacity: 0; animation: scDust var(--du) var(--dl) ease-in-out infinite; }
+@keyframes scDust { 0% { opacity: 0; transform: none; } 25% { opacity: .85; } 75% { opacity: .55; } 100% { opacity: 0; transform: translate(var(--dx), var(--dy)); } }
+.sc-fl .sc-spr { animation: scLoop .8s steps(8) infinite; animation-delay: var(--q, 0s); }
+.sc-flg { border-radius: 50%; background: radial-gradient(closest-side, rgba(255, 196, 100, .5), rgba(255, 140, 40, .16) 55%, transparent); animation: kGlow 1.8s ease-in-out infinite alternate; }
+/* обитатели полей: кот спит на книгах (иногда дёргает ухом, открывает глаз, зевает), заяц-рыцарь выглядывает снизу, улитка ползёт */
+.sc-cat .sc-spr { animation: scCat 11s step-end infinite; }
+@keyframes scCat { 0% { transform: none; } 38% { transform: translateX(-25%); } 41% { transform: none; } 66% { transform: translateX(-50%); } 74% { transform: none; }
+  86% { transform: translateX(-75%); } 92% { transform: none; } }
+.sc-rabbit .sc-spr { opacity: 0; animation: scRabbit 17s 4s step-end infinite; }
+@keyframes scRabbit { 0% { opacity: 0; transform: none; } 70% { opacity: 1; transform: none; } 73% { transform: translateX(-16.667%); } 76% { transform: translateX(-33.333%); }
+  81% { transform: translateX(-50%); } 86% { transform: translateX(-66.667%); } 90% { transform: translateX(-83.333%); } 93% { opacity: 0; } }
+.sc-snail { animation: scCrawl 75s linear infinite; }
+@keyframes scCrawl { from { transform: translateX(-100%); } to { transform: translateX(calc(var(--sw) - 100%)); } }
+.sc-snail .sc-spr { animation: scSnail 1.8s steps(4) infinite; }
+@keyframes scSnail { to { transform: translateX(-66.667%); } }
+/* свиток со своей печатью; под печатью — светящееся кольцо цвета ячейки (s_seal_glow — маска); сургуч перекрашен под цвет ячейки */
+html .wallov.seals .wcell.sc-cell { position: absolute; z-index: 1; aspect-ratio: auto; padding: 0; background: none; border: 0; border-radius: 0; box-shadow: none; overflow: visible;
+  animation: none; filter: none; transform: rotate(var(--r)); -webkit-tap-highlight-color: transparent; }
+html .wallov.seals .wcell.sc-cell::before, html .wallov.seals .wcell.sc-cell::after { display: none; }
+html .wallov.seals .wcell.sc-cell:disabled { opacity: 1; cursor: default; }
+.sc-scr { inset: 0; background: center / contain no-repeat; filter: drop-shadow(0 5px 5px rgba(0, 0, 0, .45)); transition: transform .15s; }
+.sc-cell:active:not(:disabled) .sc-scr { transform: translateY(2px) scale(.97); }
+.sc-seal { background: center / contain no-repeat; filter: drop-shadow(0 2px 2px rgba(0, 0, 0, .5)); }
+.sc-glow { background: var(--glow); -webkit-mask: var(--a-s-seal-glow) center / contain no-repeat; mask: var(--a-s-seal-glow) center / contain no-repeat;
+  animation: scPulse 2.6s ease-in-out infinite; animation-delay: calc(var(--d) * -1); }
+@keyframes scPulse { 0%, 100% { opacity: .45; transform: scale(.94); } 50% { opacity: .95; transform: scale(1.04); } }
+.sc-cell.c-green .sc-seal, .sc-fxl.c-green :is(.sc-sh, .sc-cr) { filter: hue-rotate(105deg) saturate(.7) brightness(.8) drop-shadow(0 2px 2px rgba(0, 0, 0, .5)); }
+.sc-cell.c-violet .sc-seal, .sc-fxl.c-violet :is(.sc-sh, .sc-cr) { filter: hue-rotate(-62deg) saturate(.75) brightness(.85) drop-shadow(0 2px 2px rgba(0, 0, 0, .5)); }
+.sc-cell.c-gold .sc-seal, .sc-fxl.c-gold :is(.sc-sh, .sc-cr) { filter: hue-rotate(30deg) saturate(1.15) brightness(1.18) drop-shadow(0 2px 2px rgba(0, 0, 0, .5)); }
+/* шапка «Печать ломает» и подсказка — поверх стены над столом */
+.sc-top { position: absolute; left: 0; right: 0; z-index: 5; padding: 0 12px; }
+.seals .wturn > span:not(.wsel):not(.sc-hint), .seals .wturn label { font-family: 'Bona Nova', Georgia, serif; font-size: 15px; letter-spacing: .1em; text-transform: uppercase; color: #F0D9A0;
+  text-shadow: 0 1px 4px #000, 0 0 10px #000; }
+.seals .wturn b { font-family: 'Bona Nova', Georgia, serif; font-size: 30px; font-weight: 700; color: #FFF3D6; text-shadow: 0 1px 4px #000, 0 0 14px rgba(0, 0, 0, .9); }
+.seals .wsel select { font-family: 'Bona Nova', Georgia, serif; font-weight: 700; background: rgba(20, 10, 4, .55); }
+.seals .wturn .sc-hint { margin-top: 3px; font: italic 400 15px/1.3 'Bona Nova', Georgia, serif; letter-spacing: .02em; text-transform: none; color: #F6EAD0;
+  text-shadow: 0 1px 3px #000, 0 0 10px #000, 0 0 18px rgba(0, 0, 0, .8); }
+/* печать ломается: свиток вздрагивает, кольцо вспыхивает, печать разлетается, свиток уходит к зрителю */
+html .wallov.seals .wcell.sc-cell.opened { animation: scShake .14s ease-in-out 2; }
+@keyframes scShake { 0%, 100% { transform: rotate(var(--r)); } 33% { transform: rotate(var(--r)) translate(-2px, 1px) rotate(-1.4deg); } 66% { transform: rotate(var(--r)) translate(2px, -1px) rotate(1.4deg); } }
+.sc-cell.opened .sc-glow { animation: scFlare .6s ease-out both; }
+@keyframes scFlare { 0% { opacity: .8; transform: none; } 30% { opacity: 1; transform: scale(1.45); } 100% { opacity: 0; transform: scale(1.8); } }
+.sc-cell.opened .sc-seal { animation: scHide .01s var(--t-burst) both; }
+.sc-cell.opened .sc-scr { animation: scGone .35s var(--t-lift) ease-in both; }
+@keyframes scHide { to { opacity: 0; } }
+@keyframes scGone { to { opacity: 0; transform: translateY(-14px) scale(1.12); } }
+.scknow .sc-cell.opened :is(.sc-seal, .sc-scr, .sc-glow) { animation: none; opacity: 0; }
+/* вскрытый свиток ложится на место */
+.sc-cell.back .sc-scr { animation: scBack .6s ease-out both; }
+@keyframes scBack { from { opacity: 0; transform: translateY(-36px) scale(1.3); } }
+/* раскрытие роли */
+.seals .wreveal.sc-rev { background: none; animation: none; justify-content: flex-start; gap: 0; color: #1F1A17; overflow: hidden; padding-left: 0; padding-right: 0; }
+.sc-dim { inset: 0; background: radial-gradient(ellipse 80% 70% at 50% 50%, rgba(22, 13, 7, .84), rgba(8, 5, 3, .95)); animation: scIn .4s var(--t-lift) both; }
+.sc-fxl { position: absolute; inset: 0; z-index: 2; pointer-events: none; }
+.sc-crk { animation: scCrk .56s var(--t-crack) both; }
+@keyframes scCrk { 0%, 88% { opacity: 1; } 100% { opacity: 0; } }
+.sc-crk .sc-spr { animation: scF6 .45s var(--t-crack) steps(5, end) both; }
+.sc-puff { animation: scVis .62s var(--t-burst) both; }
+@keyframes scVis { 0% { opacity: 0; } 1%, 75% { opacity: 1; } 100% { opacity: 0; } }
+.sc-puff .sc-spr { animation: scF6 .6s var(--t-burst) steps(5, end) both; }
+.sc-rib { animation: scRib .85s var(--t-rib) ease-in both; }
+@keyframes scRib { 0% { opacity: 0; transform: none; } 4% { opacity: 1; transform: none; } 55% { opacity: 1; transform: translateY(8px); } 100% { opacity: 0; transform: translateY(52px) rotate(9deg); } }
+.sc-rib .sc-spr { animation: scF6 .5s var(--t-rib) steps(5, end) both; }
+.sc-rib.rk2 { filter: hue-rotate(215deg) saturate(.85) brightness(.75); }
+.sc-rib.rk3 { filter: hue-rotate(38deg) saturate(1.25) brightness(1.35); }
+.sc-sh, .sc-cr { background: center / contain no-repeat; opacity: 0; }
+/* свиток: лист между двумя валиками (концы валиков не тянутся — border-image; доли — meta.script.roll), лист разворачивается сверху вниз */
+/* по высоте — посередине свободного места (над ним — место для существа с полей, padding-top слоя) */
+.sc-roll { position: relative; z-index: 3; flex: none; margin: auto 0; transform-origin: 50% 0; }
+.sc-paper { position: relative; display: flex; flex-direction: column; overflow: hidden; background: var(--a-s-sheet) center / 100% 100% no-repeat;
+  animation: scUnroll .62s var(--t-unroll) cubic-bezier(.45, .05, .3, 1) both; }
+@keyframes scUnroll { from { clip-path: inset(0 0 calc(100% - var(--rh) * .45) 0); } to { clip-path: inset(0 0 0 0); } }
+.sc-rt, .sc-rb { left: calc(var(--el) * -1); right: calc(var(--er) * -1); height: var(--rh); z-index: 3; border-style: solid; border-color: transparent;
+  border-width: 0 var(--er) 0 var(--el); border-image: var(--a-s-roller-top) 0 21.54% 0 20.36% fill stretch; filter: drop-shadow(0 4px 6px rgba(0, 0, 0, .5)); }
+.sc-rt { top: calc(var(--rh) / -2); }
+.sc-rb { bottom: calc(var(--rh) / -2); border-image-source: var(--a-s-roller-bot); }
+.sc-track { inset: 0; z-index: 3; animation: scTrack .62s var(--t-unroll) cubic-bezier(.45, .05, .3, 1) both; }
+@keyframes scTrack { from { transform: translateY(calc(var(--rh) * .9 - 100%)); } }
+/* рамка цвета типа роли растекается кругом от медальона */
+.sc-bord { border-style: solid; border-color: transparent; border-image-repeat: stretch; animation: scBord .8s var(--t-border) ease-out both; }
+@keyframes scBord { from { clip-path: circle(0 at 50% var(--bcy)); } to { clip-path: circle(150% at 50% var(--bcy)); } }
+/* клякса (у злых — киноварь), из неё проступает знак роли в медальоне; искры, золотой блик; у злых — потёки чернил */
+.sc-ink { z-index: 0; opacity: 0; animation: scShow .01s var(--t-ink) both; }
+.sc-ink .sc-spr { animation: scF8 .62s var(--t-ink) steps(7, end) both; }
+.sc-drip { z-index: 2; animation: scShow .01s calc(var(--t-drip) + var(--qd)) both; }
+.sc-drip .sc-spr { transform: translateX(-83.333%); animation: scF6 .9s calc(var(--t-drip) + var(--qd)) steps(5, end) both; }
+.sc-spk { z-index: 2; background: center / contain no-repeat; mix-blend-mode: screen; opacity: 0; animation: scSpk .9s calc(var(--t-medal) + var(--sd)) ease-out both; }
+@keyframes scSpk { 0% { opacity: 0; transform: scale(.3); } 20% { opacity: 1; } 100% { opacity: 0; transform: translate(var(--dx), var(--dy)) scale(1); } }
+.sc-sweep { inset: 0; z-index: 2; background: var(--a-s-sweep) center / 170% auto no-repeat; mix-blend-mode: screen; opacity: 0; animation: scSweep .8s var(--t-sweep) ease-in-out both; }
+@keyframes scSweep { 0% { opacity: 0; transform: translateX(-55%); } 35% { opacity: .9; } 100% { opacity: 0; transform: translateX(55%); } }
+.sc-body { position: relative; z-index: 1; flex: 1 1 auto; min-height: 0; overflow-y: auto; display: flex; flex-direction: column; align-items: center; gap: 6px;
+  text-align: center; font-size: var(--fs); scrollbar-width: none; }
+.sc-body::-webkit-scrollbar { display: none; }
+.sc-med { position: relative; flex: none; width: var(--md); height: var(--md); animation: scMed .55s var(--t-medal) cubic-bezier(.3, 1.4, .5, 1) both; }
+@keyframes scMed { from { opacity: 0; transform: scale(.55); } }
+.sc-medr { inset: 0; z-index: 1; background: center / contain no-repeat; filter: drop-shadow(0 3px 4px rgba(60, 30, 10, .4)); }
+.sc-ric { position: absolute; z-index: 0; left: 13%; top: 13%; width: 74%; height: 74%; object-fit: contain; animation: scIco .7s calc(var(--t-medal) + 120ms) ease-out both; }
+@keyframes scIco { from { opacity: 0; filter: blur(5px); transform: scale(.82); } }
+.sc-for { font: 700 13px/1.2 'Bona Nova', Georgia, serif; letter-spacing: .12em; text-transform: uppercase; color: #6B5E50; animation: scIn .4s var(--t-rolled) both; }
+.sc-rev.side-good { --sc-side: #2B4C8C; } .sc-rev.side-evil { --sc-side: #A3231B; }
+.sc-nw { position: relative; display: inline-block; max-width: 100%; }
+.sc-name { display: block; padding: 0 .08em; font: 700 calc(var(--fs) * 1.95)/1.1 'Bona Nova', Georgia, serif; color: var(--sc-side); animation: scWrite .55s var(--t-write) linear both; }
+@keyframes scWrite { from { clip-path: inset(0 100% 0 0); } to { clip-path: inset(0 0 0 0); } }
+/* перо пишет: кончик (meta: доли кадра --qa, --qb) идёт по строке вслед за проявляющимся названием */
+.sc-q { left: 0; z-index: 2; width: calc(var(--fs) * 2.4); height: calc(var(--fs) * 2.4 * var(--qr)); margin-left: calc(var(--fs) * -2.4 * var(--qa));
+  bottom: calc(var(--fs) * .35 - var(--fs) * 2.4 * var(--qr) * (1 - var(--qb))); opacity: 0; animation: scQuill .7s calc(var(--t-write) - 80ms) linear both; }
+@keyframes scQuill { 0% { opacity: 0; left: 0; } 11% { opacity: 1; left: 0; } 90% { opacity: 1; left: 100%; } 100% { opacity: 0; left: 100%; } }
+.sc-q .sc-spr { animation: scLoop .42s steps(6) infinite; }
+.sc-team { font: 700 12.5px/1.3 'Bona Nova', Georgia, serif; letter-spacing: .1em; text-transform: uppercase; color: #6B5E50; animation: scIn .4s var(--t-written) both; }
+.sc-ab { font: 400 var(--fs)/1.42 'PT Serif', Georgia, serif; color: #1F1A17; max-width: 34ch; animation: scIn .5s calc(var(--t-written) + 100ms) both; }
+/* над свитком выглядывает существо с полей (по типу показанной роли): кадры 1–3 — выглядывает, 4–6 — своё действие по кругу */
+.sc-mm { z-index: 2; animation: scShow .01s var(--t-peek) both; }
+.sc-mm .sc-spr { transform: translateX(-37.5%); animation: scPeek .45s var(--t-peek) step-end both, scAct 1.6s calc(var(--t-peek) + 450ms) step-end infinite; }
+@keyframes scPeek { 0% { transform: none; } 33% { transform: translateX(-12.5%); } 67%, 100% { transform: translateX(-25%); } }
+@keyframes scAct { 0% { transform: translateX(-37.5%); } 30% { transform: translateX(-50%); } 60% { transform: translateX(-62.5%); } 80% { transform: translateX(-50%); } 100% { transform: translateX(-37.5%); } }
+.sc-later { position: absolute; left: 0; right: 0; bottom: calc(12px + env(safe-area-inset-bottom, 0px)); z-index: 4; margin: 0; color: #F3E6C8; text-shadow: 0 1px 3px #000;
+  animation-delay: calc(var(--t-card) + 2s); }
+/* роль открыта до перезагрузки страницы (или без анимаций) — сразу всё на месте */
+.sc-rev.know .sc-dim, .sc-rev.know .sc-roll, .sc-rev.know .sc-roll * { animation: none !important; }
+.sc-rev.know .sc-later { animation-delay: 0s; }
+@media (prefers-reduced-motion: reduce) {
+  .sc-fl .sc-spr, .sc-flg, .sc-rays, .sc-dust, .sc-cat .sc-spr, .sc-rabbit .sc-spr, .sc-snail, .sc-snail .sc-spr, .sc-glow, .wallov.seals .wall.roll { animation: none !important; }
+}

@@ -10,7 +10,9 @@ FONTS = ('<link rel="preconnect" href="https://fonts.googleapis.com">'
          '<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>'
          '<link rel="stylesheet" href="https://fonts.googleapis.com/css2?'
          'family=Alegreya+Sans:ital,wght@0,400;0,500;0,700;0,800;1,400&family=Alegreya:wght@700;800&family=Kurale'
-         '&family=Old+Standard+TT:ital,wght@0,400;0,700;1,400&family=Rubik+Wet+Paint&display=swap">')  # Old Standard TT — «Лунная гравюра», Rubik Wet Paint — «Хэллоуин»
+         '&family=Old+Standard+TT:ital,wght@0,400;0,700;1,400&family=Rubik+Wet+Paint'
+         '&family=Bona+Nova:ital,wght@0,400;0,700;1,400&family=PT+Serif:wght@400;700&display=swap">')
+# Old Standard TT — «Лунная гравюра», Rubik Wet Paint — «Хэллоуин», Bona Nova и PT Serif — «Скрипторий» (у обоих настоящий жирный и кириллица)
 
 import base64
 import io
@@ -106,6 +108,32 @@ ART.update({f"k_cat{i}": (CUT / f"k_cat{i}.png", 300) for i in (1, 2)})
 ART.update({k: (CUT / f"{k}.png", 360) for k in ("al_live", "al_die")})  # Аль-Адихия: жить — свеча, умереть — череп
 ART.update({f"c_em_{k}": (CUT / f"c_em_{k}.png", 220) for k in ("demon", "minions", "notinplay", "youare", "selected", "thisplayer", "yourrole",
                                                                "yes", "no", "good", "evil", "general_good", "general_evil", "general_neither", "moon")})
+# «Скрипторий» (prep_art.scriptorium, prompts_scriptorium.md; картинки пользователя 2026-11-04): оформление и выдача ролей «Печати».
+# Ширина — экран телефона/iPad ×2; у полос кадров — число кадров × ширина кадра. В сборку — только то, что берёт приложение
+# (свеча, предметы стола, буквицы 2–3, лоза-бордюр, ленты для фраз — пока не используются)
+_S = {"s_header_day.jpg": 800, "s_header_night.jpg": 800, "s_splash.jpg": 720, "s_win_good.jpg": 800, "s_win_evil.jpg": 800, "s_paper.jpg": 384,
+      "s_orn_long.png": 360, "s_orn_short.png": 200, "s_orn_corner.png": 120, "s_orn_flower.png": 48, "s_orn_rhomb.png": 40, "s_init1.png": 200,
+      "s_seal_glow.png": 200, "s_wreath.png": 160, "s_ring.png": 640, "s_ring_night.png": 640, "s_frame.png": 560, "s_frame_wide.png": 760,
+      "s_desk_top.jpg": 760, "s_desk_mid.jpg": 760, "s_desk_bot.jpg": 760, "s_desk_wide.jpg": 1400, "s_rays.png": 420, "s_sweep.png": 700,
+      "s_flame_strip.png": 8 * 64, "s_crack_strip.png": 6 * 120, "s_puff_strip.png": 6 * 150, "s_ribbon_strip.png": 6 * 220,
+      "s_sheet.png": 700, "s_roller_top.png": 900, "s_roller_bot.png": 900, "s_ink_strip.png": 8 * 260, "s_inkr_strip.png": 8 * 260,
+      "s_drip_strip.png": 6 * 150, "s_quill_strip.png": 6 * 130, "s_m_snail_strip.png": 6 * 140, "s_m_rabbit_strip.png": 6 * 170, "s_m_cat_strip.png": 4 * 210}
+_S.update({f"s_tab_{k}.png": 96 for k in ("day", "night", "setup", "table", "log", "roles", "menu")})
+_S.update({f"s_g_{k}.png": 128 for k in ("dusk", "dawn", "minioninfo", "demoninfo", "nominate", "vote", "execute", "dead")})
+_S.update({f"s_em_{k}.png": 220 for k in ("demon", "minions", "notinplay", "youare", "selected", "thisplayer", "yes", "no", "good", "evil",
+                                          "general_good", "general_evil", "general_neither", "mad")})
+_S.update({f"s_digit{i}.png": 150 for i in range(10)})
+_S.update({f"s_scroll{i}.png": 320 for i in (1, 2, 3)})
+_S.update({f"s_scroll_used{i}.png": 320 for i in (1, 2, 3)})
+_S.update({f"s_seal{i}.png": 120 for i in range(24)})
+_S.update({f"s_shard{i}.png": 100 for i in range(1, 9)})
+_S.update({f"s_crumb{i}.png": 44 for i in range(1, 9)})
+_S.update({f"s_dust{i}.png": 40 for i in range(1, 9)})
+_S.update({f"s_spark{i}.png": 64 for i in range(1, 9)})
+_S.update({f"s_border_{k}.png": 600 for k in ("town", "out", "minion", "demon")})
+_S.update({f"s_medal_{k}.png": 300 for k in ("town", "out", "minion", "demon")})
+_S.update({f"s_m_{k}_strip.png": 8 * 210 for k in ("angel", "fool", "monk", "demon")})
+ART.update({f.rsplit(".", 1)[0]: (CUT / f, w) for f, w in _S.items()})
 
 
 def webp_uri(path, width, alpha_quality=100, quality=82):
@@ -121,9 +149,11 @@ def webp_uri(path, width, alpha_quality=100, quality=82):
 # маски гравюры (белое + прозрачность): прозрачность можно сжать с потерями — вдвое легче, на глаз не видно
 LOSSY_ALPHA = {"c_engr", "c_frontis", "c_wreath", "c_night", "c_dial", "c_win_good", "c_win_evil"}
 LOSSY_ALPHA |= {"h_flame", "h_burst", "h_fog", "h_batline", "h_skull_fire"}
-lossy = lambda k: k in LOSSY_ALPHA or k.startswith(("c_em_", "h_em_", "h_ghost", "h_smoke", "h_wisp", "h_soul", "h_cflame", "h_web_", "h_clown", "h_girl", "h_hugger", "h_acid", "d_crack", "d_beams", "d_impact", "k_"))
+lossy = lambda k: k in LOSSY_ALPHA or k.startswith(("c_em_", "h_em_", "h_ghost", "h_smoke", "h_wisp", "h_soul", "h_cflame", "h_web_", "h_clown", "h_girl", "h_hugger", "h_acid", "d_crack", "d_beams", "d_impact", "k_", "s_"))
 # пестрая мозаика витража жмётся плохо: окна (20 штук) и приглушённый витраж за ролью — качеством пониже, на глаз не видно
-quality = lambda k: 72 if k.startswith("d_pane") else 65 if k in ("d_reveal", "d_reveal_dark") else 70 if k == "k_hut" else 76 if k.startswith("k_") else 82
+# «Скрипторий»: фон стола и полосы кадров — пониже, мелкие значки и цифры — как обычно
+quality = lambda k: (72 if k.startswith("d_pane") else 65 if k in ("d_reveal", "d_reveal_dark") else 70 if k == "k_hut" else 76 if k.startswith("k_")
+                     else 68 if k.startswith(("s_desk", "s_splash", "s_win", "s_header", "s_paper")) else 74 if k.startswith("s_") and not k.startswith(("s_tab_", "s_digit", "s_g_")) else 82)
 art = {k: webp_uri(p, w, 70 if lossy(k) else 100, quality(k)) for k, (p, w) in ART.items() if p.exists()}
 meta = json.loads((CUT / "meta.json").read_text(encoding="utf-8")) if (CUT / "meta.json").exists() else {}
 art_js = ("const ART = " + json.dumps(art, separators=(",", ":")) + ";\n"
@@ -187,7 +217,7 @@ tick = next(iter(sorted(TICK_DIR.glob("*.mp3"))), None) if TICK_DIR.is_dir() els
 art_js += "const TICK_SRC = " + json.dumps(base64.b64encode(tick.read_bytes()).decode() if tick else "") + ";\n"
 print("колокол:", bell.name if bell else "нет (синтез)", "| тиканье:", tick.name if tick else "нет", "| музыка Аль-Адихии:", len(music))
 print("записей на утро:", len(rec), *[f"{c}: {sum(r['c'] == c for r in rec)}" for c in (0, 1, 2)])
-missing = [k for k, (p, _) in ART.items() if not p.exists() and not k.startswith(("d_pane", "d_nave", "d_reveal", "d_arch", "d_crack", "d_beams", "d_impact", "d_digit", "h_digit", "k_"))]  # витраж и котёл — по желанию
+missing = [k for k, (p, _) in ART.items() if not p.exists() and not k.startswith(("d_pane", "d_nave", "d_reveal", "d_arch", "d_crack", "d_beams", "d_impact", "d_digit", "h_digit", "k_", "s_"))]  # витраж, котёл, «Скрипторий» — по желанию
 if missing:
     print("нет графики:", ", ".join(missing))
 

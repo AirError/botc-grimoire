@@ -208,6 +208,7 @@ def beauty():
     meta["hallow"] = halloween()
     meta["vitr"] = vitrage()
     meta["kettle"] = cauldron()
+    meta["script"] = scriptorium(); meta["s_digits"] = digits("s_digits", "s_digit")  # «Скрипторий» (prompts_scriptorium.md)
     for src, name in (("al_live", "al_live"), ("al_die", "al_die")):  # Аль-Адихия: свеча — жить, череп — умереть (картинки пользователя 2026-11-03)
         if (SRC / f"{src}.png").exists():
             alpha_bbox(defringe(white_alpha(SRC / f"{src}.png", min_area=400)), thr=8).save(OUT / f"{name}.png")
@@ -980,6 +981,222 @@ def marks():
         n += 1
     print("значков:", n, "строк", len(runs))
     return n
+
+
+def unmul_white(src, floor=4):
+    """Чернила и тушь на белом с мягкими краями (клякса, трещины) → RGBA «умножением»: прозрачность — насколько пиксель темнее белого
+    (по самому тёмному каналу), цвет — тот, что даёт этот пиксель поверх белого. На пергаменте выглядит как умножение, но без смешивания
+    в браузере; бледный ореол кляксы остаётся полупрозрачным, а не белым пятном."""
+    a = np.asarray(Image.open(src).convert("RGB")).astype(float)
+    al = np.clip((1 - a.min(axis=2) / 255 - floor / 255) / (1 - floor / 255), 0, 1)
+    rgb = np.clip((a - 255 * (1 - al[..., None])) / np.maximum(al[..., None], 1e-3), 0, 255)
+    rgb[al < .01] = 0
+    return Image.fromarray(np.dstack([rgb, al * 255]).round().astype(np.uint8), "RGBA")
+
+
+def anchor_frames(im, cols, rows, mode="bottom", pad=6, band=.12):
+    """Кадры анимации, выровненные по опорной точке из промпта (GPT ставит фигуры в клетках чуть по-разному):
+    bottom — существа выглядывают из-за нижнего края: линия среза (самая нижняя строка силуэта) и середина нижней полосы тела;
+    tip — перо: кончик (самая нижняя точка). Общий холст — фигура не прыгает между кадрами. → (кадры, опора в долях холста)."""
+    W, H = im.size; A = np.asarray(im); cells = []
+    for r in range(rows):
+        for c in range(cols):
+            x0, y0, x1, y1 = round(c * W / cols), round(r * H / rows), round((c + 1) * W / cols), round((r + 1) * H / rows)
+            cell = A[y0:y1, x0:x1].copy(); a = cell[..., 3] > 24
+            ys, xs = np.nonzero(a)
+            if not len(ys): continue
+            by = ys.max()
+            if mode == "tip": ax = xs[ys >= by - 6].mean()
+            else:
+                strip_ = a[max(0, by - max(4, int((by - ys.min()) * band))):by + 1]; bx = np.nonzero(strip_.any(axis=0))[0]; ax = (bx.min() + bx.max()) / 2
+            cells.append((cell, ax, by, xs.min() - ax, ys.min() - by, xs.max() - ax))
+    l, t, rr = min(c[3] for c in cells) - pad, min(c[4] for c in cells) - pad, max(c[5] for c in cells) + pad
+    w, h = int(np.ceil(rr - l)), int(np.ceil(-t)) + (1 if mode == "bottom" else pad + 1)
+    frames = []
+    for cell, ax, by, *_ in cells:
+        fr = Image.new("RGBA", (w, h), (255, 255, 255, 0)); fr.alpha_composite(Image.fromarray(cell, "RGBA"), (round(-l - ax), round(-t - by))); frames.append(fr)
+    return frames, [round(float(-l / w), 4), round(float(-t / h), 4)]
+
+
+def grid_cells(im, cols, rows):
+    """Лист ровной сеткой, предметы почти касаются соседей (по кускам не разделить): ровно по клеткам."""
+    W, H = im.size
+    return [main_blob(im.crop((round(i % cols * W / cols), round(i // cols * H / rows), round((i % cols + 1) * W / cols), round((i // cols + 1) * H / rows)))) for i in range(cols * rows)]
+
+
+def main_blob(im, dil=2):
+    """Только самый крупный предмет клетки (краешки соседних печатей и медальонов, попавшие в клетку, — прозрачные). Связность — по
+    плотным пикселям (полупрозрачная тень между соседями склеивала их), край предмета — с запасом в несколько пикселей."""
+    A = np.asarray(im).copy(); a = A[..., 3] > 160
+    lab, n = ndimage.label(ndimage.binary_dilation(a, iterations=dil))
+    if n > 1:
+        keep = ndimage.binary_dilation(lab == 1 + int(np.argmax(ndimage.sum(a, lab, range(1, n + 1)))), iterations=4)
+        A[..., 3] = np.where(keep, A[..., 3], 0)
+    return Image.fromarray(A, "RGBA")
+
+
+def seamless_y(im, band):
+    """Полоса для повтора по вертикали: нижние band строк плавно переходят в строки над верхом полосы (она повторяется без шва)."""
+    A = np.asarray(im.convert("RGB")).astype(float); h = A.shape[0] - band
+    out = A[band:].copy(); k = np.linspace(0, 1, band)[:, None, None]
+    out[h - band:] = A[h:] * (1 - k) + A[:band] * k
+    return Image.fromarray(out.round().astype(np.uint8), "RGB")
+
+
+def disc_spot(im):
+    """Пустой круг на ленте свитка (место под печать): кремовое пятно, почти круглое (заливка ~π/4 рамки) → центр и радиус в долях."""
+    A = np.asarray(im).astype(int); op = A[..., 3] > 128; M = A[..., :3].max(axis=2); sat = M - A[..., :3].min(axis=2)
+    lab, n = ndimage.label(op & (M > 200) & (sat < 170)); best = None  # кремовое (золотое кольцо вокруг — насыщеннее)
+    for i, sl in enumerate(ndimage.find_objects(lab), 1):
+        h, w = sl[0].stop - sl[0].start, sl[1].stop - sl[1].start
+        # только посередине — на ленте (круглый торец свитка справа тоже кремовый и почти круглый)
+        if min(h, w) < im.height * .12 or not (.8 < w / h < 1.25) or abs((sl[1].start + sl[1].stop) / 2 / im.width - .5) > .15: continue
+        area = int((lab[sl] == i).sum())
+        if .66 < area / (w * h) < .9 and (best is None or area > best[0]): best = (area, (sl[1].start + sl[1].stop) / 2, (sl[0].start + sl[0].stop) / 2, (w + h) / 4)
+    if not best: return None
+    return [round(best[1] / im.width, 4), round(best[2] / im.height, 4), round(best[3] / im.width, 4)]
+
+
+def holes(im):
+    """Прозрачные области, со всех сторон закрытые рисунком (проём рамки, круг под медальон) — от больших к малым: (x0, y0, x1, y1, площадь)."""
+    t = np.asarray(im)[..., 3] < 128; lab, n = ndimage.label(t)
+    edge = set(lab[0, :]) | set(lab[-1, :]) | set(lab[:, 0]) | set(lab[:, -1])
+    res = [(sl[1].start, sl[0].start, sl[1].stop, sl[0].stop, int((lab[sl] == i).sum())) for i, sl in enumerate(ndimage.find_objects(lab), 1) if i not in edge and sl]
+    return sorted(res, key=lambda b: -b[4])
+
+
+def scriptorium():
+    """«Скрипторий» (prompts_scriptorium.md, картинки пользователя 2026-11-04; файлы s_*) → art/cut, сведения — в meta.script.
+    Оформление: значки вкладок, шапки, заставка, орнаменты, буквицы, венок, глифы, круг Гримуара, цифры, пергамент, рамка и эмблемы
+    показа, победа. Выдача ролей «Печати»: стол (вертикальный — тремя частями: верх со свечами, повторяемая середина, низ с книгами —
+    на узком телефоне целиком он обрезал бы свечи), свитки и печати, трещины, осколки, крошки, дымок, лента, развёрнутый лист, валики,
+    рамки и медальоны по типам, клякса, потёки, искры, блик, перо, существа с полей. Белый фон — прозрачный (рисунки на белом),
+    свет на чёрном — прозрачность по яркости, чернила — «умножением» (unmul_white)."""
+    out = {}
+    def have(n): return (SRC / f"{n}.png").exists()
+    def save(name, im, fmt="png"):
+        if fmt == "jpg": im.convert("RGB").save(OUT / f"{name}.jpg", quality=92)
+        else: im.save(OUT / f"{name}.png")
+        out.setdefault("size", {})[name] = list(im.size)
+    def strip_save(name, frames, h):
+        st = strip(frames, h); save(name, st); out[name] = {"n": len(frames), "w": round(st.width / len(frames)), "h": h}
+    r4 = lambda v: round(float(v), 4)
+    # --- оформление ---
+    if have("s_tabs"):  # 4×2: чернильница, луна, солнце, песочные часы / книга, свиток с пером, маска с колпаком, три ромба
+        for k, im in zip(["ink", "night", "day", "setup", "table", "log", "roles", "menu"], grid_pieces(white_alpha(SRC / "s_tabs.png"), 4, 2)): save("s_tab_" + k, im)
+    for n in ("s_header_day", "s_header_night"):  # шапки: средняя полоса (сцена — посередине, верх и низ пустые)
+        if have(n): im = Image.open(SRC / f"{n}.png"); w, h = im.size; save(n, im.crop((0, round(h * .3), w, round(h * .72))), "jpg")
+    for n in ("s_splash", "s_win_good", "s_win_evil"):
+        if have(n): save(n, Image.open(SRC / f"{n}.png"), "jpg")
+    if have("s_paper"):  # бесшовная бумага — плитка 512
+        save("s_paper", Image.open(SRC / "s_paper.png").convert("RGB").resize((512, 512), Image.LANCZOS), "jpg")
+    if have("s_ornaments"):  # 3×2; вокруг каждого элемента генератор оставил полупрозрачную белёсую плашку — убираем
+        A = np.asarray(Image.open(SRC / "s_ornaments.png").convert("RGBA")).copy(); rgb = A[..., :3].astype(int)
+        pale = (rgb.min(axis=2) > 170) & (rgb.max(axis=2) - rgb.min(axis=2) < 40)
+        A[..., 3] = np.where((A[..., 3] < 235) & pale, 0, A[..., 3]); A[..., 3] = np.where(A[..., 3] < 60, 0, A[..., 3])
+        for k, im in zip(["long", "short", "corner", "vine", "flower", "rhomb"], grid_pieces(Image.fromarray(A, "RGBA"), 3, 2)): save("s_orn_" + k, alpha_bbox(im, thr=20))
+    if have("s_initials"):
+        for i, im in enumerate(grid_pieces(white_alpha(SRC / "s_initials.png"), 3, 1), 1): save(f"s_init{i}", alpha_bbox(im, thr=20))
+    if have("s_wreath"): save("s_wreath", alpha_bbox(white_alpha(SRC / "s_wreath.png"), thr=20))
+    if have("s_glyphs"):  # 4×3
+        keys = ["dusk", "dawn", "candle", "minioninfo", "demoninfo", "scrolls", "dead", "execute", "nominate", "vote", "poison", "shield"]
+        for k, im in zip(keys, grid_pieces(white_alpha(SRC / "s_glyphs.png"), 4, 3)): save("s_g_" + k, im)
+    if have("s_ring"): save("s_ring", alpha_bbox(white_alpha(SRC / "s_ring.png", min_area=10 ** 9), thr=20))  # пергамент в центре остаётся
+    if have("s_ring_night"): save("s_ring_night", alpha_bbox(black_alpha(SRC / "s_ring_night.png", thr=30), thr=20))
+    for n in ("s_frame", "s_frame_wide"):
+        if have(n): save(n, alpha_bbox(white_alpha(SRC / f"{n}.png"), thr=20))
+    if have("s_em_1") and have("s_em_2"):
+        k1 = ["youare", "selected", "thisplayer", "demon", "minions", "notinplay", "yes", "no"]
+        k2 = ["good", "evil", "general_good", "general_evil", "general_neither", "mad"]
+        # медальоны почти касаются друг друга (куски склеиваются) — режем ровно по клеткам
+        for k, im in list(zip(k1, grid_cells(white_alpha(SRC / "s_em_1.png"), 4, 2))) + list(zip(k2, grid_cells(white_alpha(SRC / "s_em_2.png"), 3, 2))):
+            save("s_em_" + k, alpha_bbox(alpha_pad(im, 24), thr=20))
+    # --- выдача ролей «Печати»: стол ---
+    if have("s_desk"):  # вертикальный: верх (стена, окно, свечи), середина (дерево с бордюрами — повторяется), низ (книги, чернильница, арки)
+        d = Image.open(SRC / "s_desk.png").convert("RGB"); w, h = d.size; T, B, M0, M1, bd = round(h * .306), round(h * .74), round(h * .37), round(h * .6), 80
+        save("s_desk_top", d.crop((0, 0, w, T)), "jpg"); save("s_desk_bot", d.crop((0, B, w, h)), "jpg")
+        save("s_desk_mid", seamless_y(d.crop((0, M0 - bd, w, M1)), bd), "jpg")
+        # фитили (замер по картинке пользователя: верх фитиля), кот спит на стопке книг — середина и верх стопки (доли верхней / нижней части)
+        out["desk"] = {"wick": [[r4(146 / w), r4(63 / T)], [r4(877 / w), r4(63 / T)]], "books": [r4(122 / w), r4((1168 - B) / (h - B))], "win": [r4(.5), r4(200 / T)]}
+    if have("s_desk_wide"):
+        d = Image.open(SRC / "s_desk_wide.png").convert("RGB"); w, h = d.size; save("s_desk_wide", d, "jpg")
+        out["desk_wide"] = {"wick": [[r4(88 / w), r4(77 / h)], [r4(1448 / w), r4(77 / h)]], "books": [r4(118 / w), r4(655 / h)], "win": [[r4(452 / w), r4(240 / h)], [r4(1083 / w), r4(240 / h)]]}
+    if have("s_rays"): save("s_rays", alpha_bbox(light_rgba(SRC / "s_rays.png", lift=8), thr=6))
+    if have("s_dust"):
+        for i, im in enumerate(grid_pieces(light_mask(SRC / "s_dust.png", lift=10), 4, 4, thr=12), 1): save(f"s_dust{i}", im)
+    if have("s_flame"):  # 4×2, основание пламени — в одной точке клетки: общая рамка
+        fr = [alpha_pad(f) for f in grid_frames(light_rgba(SRC / "s_flame.png", lift=12), 4, 2, pad=4)]
+        strip_save("s_flame_strip", fr, 160)
+    # --- свитки и печати ---
+    if have("s_scrolls"):
+        sc = [defringe(f) for f in grid_frames(white_alpha(SRC / "s_scrolls.png"), 3, 1, pad=4)]
+        out["seal"] = []
+        for i, im in enumerate(sc, 1): save(f"s_scroll{i}", im); out["seal"].append(disc_spot(im))
+        print("свитки: место печати", out["seal"])
+    if have("s_scroll_used"):
+        for i, im in enumerate(grid_frames(white_alpha(SRC / "s_scroll_used.png"), 3, 1, pad=4), 1): save(f"s_scroll_used{i}", defringe(im))
+    if have("s_seal_glow"):  # светящееся кольцо на чёрном (дорисовано 2026-11-04) → маска, цвет — цвет печати; радиус кольца (доля стороны) — по яркости
+        g = light_mask(SRC / "s_seal_glow.png", lift=8); a = np.asarray(g)[..., 3].astype(float); h, w = a.shape
+        yy, xx = np.mgrid[0:h, 0:w]; rr = np.hypot(xx - w / 2, yy - h / 2).astype(int); prof = np.bincount(rr.ravel(), a.ravel()) / np.maximum(np.bincount(rr.ravel()), 1)
+        out["glow_r"] = r4(int(np.argmax(prof[: w // 2])) / w); save("s_seal_glow", g)
+    if have("s_seals"):  # 6×4, по клетке на знак
+        for i, im in enumerate(grid_cells(white_alpha(SRC / "s_seals.png"), 6, 4)): save(f"s_seal{i}", alpha_bbox(alpha_pad(im, 24), thr=20))
+    if have("s_crack"):  # только трещины, круг печати — в одной точке клетки: общая рамка; светлые сколы на белом уходят
+        strip_save("s_crack_strip", [alpha_pad(f) for f in grid_frames(unmul_white(SRC / "s_crack.png"), 3, 2, pad=4)], 240)
+    if have("s_shards"):
+        for i, im in enumerate(grid_pieces(defringe(white_alpha(SRC / "s_shards.png")), 4, 2), 1): save(f"s_shard{i}", alpha_bbox(im, thr=20))
+    if have("s_crumbs"):
+        for i, im in enumerate(grid_pieces(defringe(white_alpha(SRC / "s_crumbs.png")), 4, 4), 1): save(f"s_crumb{i}", alpha_bbox(im, thr=20))
+    if have("s_puff"):
+        strip_save("s_puff_strip", [alpha_pad(f) for f in grid_frames(light_rgba(SRC / "s_puff.png", lift=10), 3, 2, pad=4)], 200)
+    if have("s_ribbon"):
+        strip_save("s_ribbon_strip", [defringe(f) for f in grid_frames(white_alpha(SRC / "s_ribbon.png"), 3, 2, pad=4)], 200)
+    # --- развёрнутый свиток ---
+    if have("s_scroll_open"): save("s_sheet", alpha_bbox(defringe(white_alpha(SRC / "s_scroll_open.png")), thr=20))
+    if have("s_rollers"):  # два валика в общей рамке; где на валике намотанный пергамент (доли ширины) — лист встаёт по нему
+        top, bot = [defringe(f) for f in grid_frames(white_alpha(SRC / "s_rollers.png"), 1, 2, pad=2)]
+        save("s_roller_top", top); save("s_roller_bot", bot)
+        A = np.asarray(top).astype(int); M = A[..., :3].max(axis=2); sat = M - A[..., :3].min(axis=2)
+        cols_ = np.nonzero(((A[..., 3] > 128) & (M > 190) & (sat < 130)).sum(axis=0) > top.height * .25)[0]
+        out["roll"] = [r4(cols_.min() / top.width), r4((cols_.max() + 1) / top.width)]
+        print("валики: пергамент по ширине", out["roll"])
+    out["border"] = {}
+    for k in ("town", "out", "minion", "demon"):  # центр и круг под медальон — белое внутри рамки становится прозрачным
+        if not have(f"s_border_{k}"): continue
+        b = alpha_bbox(white_alpha(SRC / f"s_border_{k}.png", min_area=4000), thr=20); save(f"s_border_{k}", b)
+        hs = holes(b); W, H = b.size
+        if len(hs) >= 2:
+            x0, y0, x1, y1, _ = hs[0]; cx0, cy0, cx1, cy1, _ = next(h_ for h_ in hs[1:] if .8 < (h_[2] - h_[0]) / max(1, h_[3] - h_[1]) < 1.25)
+            out["border"][k] = {"in": [r4(x0 / W), r4(y0 / H), r4(x1 / W), r4(y1 / H)], "c": [r4((cx0 + cx1) / 2 / W), r4((cy0 + cy1) / 2 / H), r4((cx1 - cx0) / 2 / W)]}
+    print("рамки свитка:", out["border"])
+    if have("s_medals"):
+        out["medal"] = {}
+        for k, im in zip(("town", "out", "minion", "demon"), grid_pieces(white_alpha(SRC / "s_medals.png", min_area=4000), 2, 2)):
+            m = alpha_bbox(im, thr=20); save(f"s_medal_{k}", m); hs = holes(m)
+            if hs: out["medal"][k] = r4((hs[0][2] - hs[0][0]) / 2 / m.width)
+        print("медальоны: внутренний радиус", out["medal"])
+    # --- чернила и золото ---
+    for src, name in (("s_ink", "s_ink_strip"), ("s_ink_red", "s_inkr_strip")):
+        if have(src): strip_save(name, [alpha_pad(f) for f in grid_frames(unmul_white(SRC / f"{src}.png"), 4, 2, pad=4)], 240)
+    if have("s_drip"):  # верхний край — на одной линии: общая рамка
+        strip_save("s_drip_strip", [defringe(f) for f in grid_frames(white_alpha(SRC / "s_drip.png"), 3, 2, pad=2)], 260)
+    if have("s_sparks"):
+        for i, im in enumerate(grid_pieces(light_rgba(SRC / "s_sparks.png", lift=10), 4, 4, thr=12), 1): save(f"s_spark{i}", im)
+    if have("s_gold_sweep"): save("s_sweep", alpha_bbox(light_rgba(SRC / "s_gold_sweep.png", lift=10), thr=6))
+    if have("s_quill"):
+        fr, anc = anchor_frames(defringe(white_alpha(SRC / "s_quill.png")), 3, 2, "tip"); strip_save("s_quill_strip", fr, 220); out["s_quill_strip"]["a"] = anc
+    # --- обитатели полей: выглядывают из-за нижнего края (линия среза — низ кадра) ---
+    for src, cols, rows, h in (("s_m_angel", 4, 2, 240), ("s_m_fool", 4, 2, 240), ("s_m_monk", 4, 2, 240), ("s_m_demon", 4, 2, 240),
+                               ("s_m_snail", 3, 2, 120), ("s_m_rabbit", 3, 2, 200), ("s_m_cat", 2, 2, 200)):
+        if not have(src): continue
+        fr, anc = anchor_frames(defringe(white_alpha(SRC / f"{src}.png", inner_thr=240, min_area=60)), cols, rows)
+        strip_save(src + "_strip", fr, h); out[src + "_strip"]["a"] = anc
+    if have("s_banderole"):
+        for i, im in enumerate(grid_pieces(defringe(white_alpha(SRC / "s_banderole.png")), 3, 1), 1): save(f"s_band{i}", alpha_bbox(im, thr=20))
+    print("Скрипторий:", len(out.get("size", {})), "картинок")
+    # размеры [w, h] того, что приложение раскладывает в пикселях (стол, свиток, лист, валик, рамка, медальон, лучи, рамка показа)
+    out["sz"] = {k: v for k, v in out.pop("size", {}).items() if k.startswith(("s_desk", "s_scroll1", "s_sheet", "s_roller", "s_border_town", "s_medal_town", "s_rays", "s_frame"))}
+    return out
 
 
 CARDS = ["card_demon", "card_minions", "card_notinplay", "card_youare", "card_selected", "card_thisplayer",
