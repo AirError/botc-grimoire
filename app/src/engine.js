@@ -208,7 +208,9 @@ function deathGuard(S, p, cause) {
 // cause: demon | minion | ability | execution | exile | unstoppable
 function attemptKill(S, p, cause, src, opts) {
   opts = opts || {};
-  if (!p || !p.alive) return { died: false, why: 'уже мёртв' };
+  // Зомбуул после первой «смерти» определяется мёртвым, но жив (secretlyAlive): вторая смерть — настоящая
+  // (вики, Кукловод: «executed a second time and dies for real»)
+  if (!p || (!p.alive && !p.secretlyAlive)) return { died: false, why: 'уже мёртв' };
   if (cause === 'demon' && lycBlock(S)) return saved(S, p, 'Оборотень убил этой ночью — Демон не убивает');
   const lg = lleechGuard(S, p); if (lg) return saved(S, p, lg); // и Ассасин не убьёт (вики: «пока хозяин жив, Пиявица не может умереть»)
   if (cause !== 'unstoppable') {
@@ -217,6 +219,10 @@ function attemptKill(S, p, cause, src, opts) {
     if (p.role === 'zombuul' && !S.flags.zombuulFaked && !abilityOff(S, p)) {
       S.flags.zombuulFaked = true; p.alive = false; p.secretlyAlive = true;
       log(S, `${p.name} (Зомбуул) «умирает», но остаётся в игре: определяется мёртвым`, 'death');
+      // смерть объявляют как обычную; днём — отметка «умер сегодня» (вики: «If the Zombuul "dies" by execution… mark the Zombuul
+      // with the DIED TODAY reminder») — этой ночью Зомбуул не просыпается
+      if (S.phase === 'night' && S.night) S.night.deaths.push({ pid: p.id, cause });
+      if (S.phase === 'day' && S.day) S.day.deaths.push(p.id);
       afterDeath(S, p, cause, true);
       return { died: true, fake: true };
     }
@@ -299,17 +305,22 @@ function revive(S, p, why) {
   if (S.phase === 'night' && S.night) S.night.revived = (S.night.revived || []).concat(p.id);
   for (const f of ['klutzPending', 'moonchildPending', 'sweetheartPending']) if (S.flags[f] === p.id) S.flags[f] = null;
   log(S, `${why}: ${p.name} снова жив`, 'revive');
+  // ожил ночью с ролью «только в 1-ю ночь» — просыпается сейчас же (вики, Профессор и Шабалот: «If they wake on the first night
+  // only, they wake now to use their ability»); роли «каждую ночь» и так проснутся в свою очередь
+  const r = actsAs(p), cur = S.phase === 'night' && S.night && S.night.steps[S.night.i];
+  if (cur && cur.id !== 'dawn' && wakesFirstOnly(r)) { addFresh(S, p.id, r, S.n, true); rebuildRest(S); }
   return true;
 }
 function storytellerKill(S, pid, src, reason) {
   const p = P(S, pid);
-  if (p && p.alive) die(S, p, 'storyteller', src || null, { reason: String(reason || '').trim() });
+  if (p && (p.alive || p.secretlyAlive)) die(S, p, 'storyteller', src || null, { reason: String(reason || '').trim() });
 }
 
 function die(S, p, cause, src, opts) {
   opts = opts || {};
-  const aliveBefore = aliveCount(S);
-  p.alive = false; p.secretlyAlive = false; p.ghost = true;
+  const aliveBefore = aliveCount(S), faked = p.secretlyAlive;
+  // Зомбуул после первой «смерти» уже мёртв для всех и мог потратить голос призрака — настоящая смерть его не возвращает
+  p.alive = false; p.secretlyAlive = false; if (!faked) p.ghost = true;
   const how = { exile: 'изгнан', demon: 'убит Демоном', minion: 'убит Приспешником', ability: 'умер от способности',
     execution: 'казнён', unstoppable: 'убит Ассасином', storyteller: 'умирает по решению рассказчика' }[cause] || 'умер';
   p.deathNote = opts.reason || null;
@@ -349,10 +360,11 @@ function afterDeath(S, p, cause, fake, aliveBefore, opts) {
       log(S, `Внук убит Демоном — Бабушка (${g.name}) должна умереть тоже`, 'death'); attemptKill(S, g, 'ability', 'grandmother'); // защиты действуют (Травница, Моряк…)
     }
   }
-  // Менестрель: казнённый Приспешник
+  // Менестрель: казнённый Приспешник — пьяны все, кроме Странников (вики: «all other players except Travellers»), и Зомбуул,
+  // который только определяется мёртвым
   if (cause === 'execution' && team === 'minion') {
     for (const m of S.players.filter(q => actsAs(q) === 'minstrel')) if (m.alive && !abilityOff(S, m)) {
-      for (const q of S.players) if (q !== m && q.alive) addTok(S, q, 'drunk', 'minstrel', ['dusk', S.n + 2]);
+      for (const q of S.players) if (q !== m && !isTraveller(q) && (q.alive || q.secretlyAlive)) addTok(S, q, 'drunk', 'minstrel', ['dusk', S.n + 2]);
       log(S, 'Менестрель: казнён Приспешник — все остальные пьяны до заката завтрашнего дня', 'effect');
     }
   }
@@ -1001,7 +1013,7 @@ function buildSteps(S) {
   }
   // способность «только в 1-ю ночь», полученная этой ночью (Ученик, Собиратель Костей)
   if (!first) for (const f of S.flags.fresh || []) {
-    if (f.night !== S.n || order.includes(f.role) || !DATA.order.first.includes(f.role)) continue;
+    if (f.night !== S.n || (order.includes(f.role) && !(f.revived && WAKE_FIRST_ONLY.has(f.role))) || !DATA.order.first.includes(f.role)) continue;
     insertStep(steps, { key: f.role + ':' + f.pid + ':fresh', id: f.role, pid: f.pid, fresh: true }, order);
   }
   // Странник ещё не узнал свою сторону (travShown: false — пишет addTraveller): в 1-ю ночь — после блефов Демону, потом — после заката
@@ -1012,7 +1024,14 @@ function buildSteps(S) {
   }
   return steps;
 }
-function addFresh(S, pid, role, night) { S.flags.fresh = (S.flags.fresh || []).filter(f => f.night >= S.n && f.pid !== pid).concat({ pid, role, night: night || S.n }); }
+// просыпается только в 1-ю ночь, хотя есть в порядке остальных ночей (там — напоминание рассказчику без пробуждения):
+// Бабушка (в остальные ночи — «если Демон убил внука, Бабушка умирает»). Только для воскрешения (revived у записи fresh):
+// вики Профессора и Шабалота — «If they wake on the first night only, they wake now»; смену роли (Цирюльник, Яга) не трогаем
+const WAKE_FIRST_ONLY = new Set(['grandmother']);
+const wakesFirstOnly = r => DATA.order.first.includes(r) && (!DATA.order.other.includes(r) || WAKE_FIRST_ONLY.has(r));
+function addFresh(S, pid, role, night, revived) {
+  S.flags.fresh = (S.flags.fresh || []).filter(f => f.night >= S.n && f.pid !== pid).concat(Object.assign({ pid, role, night: night || S.n }, revived ? { revived: true } : {}));
+}
 // после смены способностей посреди ночи — перестраиваем оставшиеся шаги этой ночи
 function rebuildRest(S) {
   const ord = DATA.order[S.n === 1 ? 'first' : 'other'], cur = S.night.steps[S.night.i];
@@ -1208,7 +1227,7 @@ function execute(S, pid, opts) {
     log(S, `${p.name} казнён, но не проиграл в «камень-ножницы-бумагу» — не умирает (Психопат)`, 'save'); return res('Психопат: ничья или выигрыш в «камень-ножницы-бумагу»');
   }
   // казнён мёртвый (например, убитый Големом при номинации — голосование по вики продолжается): «уже мёртв», а не «не умирает»
-  if (!p.alive) { S.day.exeResult = { pid, n: S.n, died: false, dead: true, why: 'уже мёртв' }; log(S, `${p.name} уже мёртв — казнь дня состоялась`, 'day'); return; }
+  if (!p.alive && !p.secretlyAlive) { S.day.exeResult = { pid, n: S.n, died: false, dead: true, why: 'уже мёртв' }; log(S, `${p.name} уже мёртв — казнь дня состоялась`, 'day'); return; }
   const r = attemptKill(S, p, 'execution');
   res(r.died ? '' : r.why);
   if (r.died) {

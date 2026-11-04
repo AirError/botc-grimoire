@@ -1785,6 +1785,122 @@ try {
     ok('Тест: из дня — к роли следующей ночи (день без казни)', E.testJump(T, 'n:undertaker') && T.n === 3 && E.currentStep(T).id === 'undertaker' && !T.result);
   }
 
+  // Bad Moon Rising — проверка сценария по вики (2026-11-04). Рядом с проверяемыми не сажаем Травницу (защищает соседей), Моряка
+  // в жертвы не берём (не умирает), Наёмника заменяем Дитя Луны (выбравший Наёмника пьян)
+  {
+    const bmr = roles => { const G = game(roles, 'bmr'); E.autoSetup(G, true); E.startGame(G); return G; };
+    const toNight = G => { E.endDay(G); if (G.phase === 'day') E.endDay(G); }; // умершее днём Дитя Луны держит день один раз
+    const alive = G => G.players.filter(p => p.alive);
+    // Менестрель
+    let G = bmr(['minstrel', 'exorcist', 'sailor', 'chambermaid', 'gossip', 'godfather', 'po']);
+    E.addTraveller(G, 'Tr', 'bureaucrat', 'good', null); runNight(G, {});
+    E.execute(G, byRole(G, 'godfather').id);
+    ok('BMR Менестрель: казнён Приспешник — остальные живые пьяны', alive(G).filter(p => p.role !== 'minstrel' && !E.isTraveller(p)).every(p => E.abilityOff(G, p)));
+    ok('BMR Менестрель: Странник не пьян (вики: «except Travellers»)', !E.hasTok(byRole(G, 'bureaucrat'), 'drunk', 'minstrel'));
+    toNight(G); runNight(G, { po: { t: ids(G, 'gossip') } });
+    ok('BMR Менестрель: пьяный Демон ночью не убил', byRole(G, 'gossip').alive && E.abilityOff(G, byRole(G, 'gossip')));
+    toNight(G);
+    ok('BMR Менестрель: на закате следующего дня трезвеют', alive(G).every(p => !E.hasTok(p, 'drunk', 'minstrel')));
+    // Кукловод
+    G = bmr(['mastermind', 'exorcist', 'sailor', 'chambermaid', 'gossip', 'devilsadvocate', 'po']); runNight(G, {});
+    E.execute(G, byRole(G, 'po').id);
+    ok('BMR Кукловод: Демон казнён — игра продолжается', !G.result && G.flags.mastermindDay === G.n + 1);
+    toNight(G); runNight(G, { devilsadvocate: { t: ids(G, 'devilsadvocate') } });
+    E.execute(G, byRole(G, 'devilsadvocate').id);
+    ok('BMR Кукловод + Адвокат: казнён злой (жив) — победа добра (вики)', G.result && G.result.winner === 'good' && byRole(G, 'devilsadvocate').alive);
+    G = bmr(['mastermind', 'exorcist', 'sailor', 'chambermaid', 'gossip', 'godfather', 'po']); runNight(G, {});
+    E.execute(G, byRole(G, 'po').id); toNight(G); runNight(G, {}); E.execute(G, byRole(G, 'gossip').id);
+    ok('BMR Кукловод: в доп. день казнён добрый — победа зла', G.result && G.result.winner === 'evil');
+    G = bmr(['mastermind', 'exorcist', 'sailor', 'chambermaid', 'gossip', 'godfather', 'po']); runNight(G, {});
+    E.execute(G, byRole(G, 'po').id); toNight(G); runNight(G, {}); E.endDay(G);
+    ok('BMR Кукловод: в доп. день без казни — победа добра', G.result && G.result.winner === 'good');
+    // Зомбуул
+    G = bmr(['zombuul', 'exorcist', 'sailor', 'chambermaid', 'gossip', 'moonchild', 'mastermind', 'professor']); runNight(G, {});
+    const z = byRole(G, 'zombuul');
+    E.nominate(G, byRole(G, 'gossip').id, z.id); E.recordVote(G, z.id, alive(G).map(p => p.id)); toNight(G);
+    ok('BMR Зомбуул: 1-я казнь — определяется мёртвым, но жив; Кукловод не включён', !z.alive && z.secretlyAlive && !G.result && !G.flags.mastermindDay);
+    const zs = G.night.steps.find(s => s.id === 'zombuul');
+    ok('BMR Зомбуул: в ночь после своей казни не просыпается (вики: DIED TODAY)', !E.stepSpec(G, zs).active);
+    runNight(G, {}); toNight(G);
+    ok('BMR Зомбуул: днём никто не умер — просыпается', E.stepSpec(G, G.night.steps.find(s => s.id === 'zombuul')).active);
+    runNight(G, { zombuul: { t: ids(G, 'chambermaid') } });
+    ok('BMR Зомбуул: убивает', !byRole(G, 'chambermaid').alive);
+    E.nominate(G, byRole(G, 'gossip').id, z.id); E.recordVote(G, z.id, G.players.filter(p => p.alive || p.ghost).map(p => p.id)); E.endDay(G);
+    ok('BMR Зомбуул: 2-я казнь — умирает по-настоящему, Кукловод даёт доп. день (вики)', !z.alive && !z.secretlyAlive && !G.result && G.phase === 'night' && G.flags.mastermindDay === G.n);
+    ok('BMR Зомбуул: голос призрака, потраченный «мёртвым», настоящая смерть не возвращает', z.ghost === false);
+    // Цирюльник поменял Бабушку с другим — новый шаг Бабушки не появляется (исключение — только для воскрешения)
+    G = bmr(['barber', 'exorcist', 'grandmother', 'chambermaid', 'gossip', 'moonchild', 'po']); runNight(G, {});
+    G.flags.fresh = []; E.changeRole(G, byRole(G, 'chambermaid'), 'grandmother'); toNight(G);
+    ok('BMR Бабушка по смене роли — без шага 1-й ночи (как раньше)', !G.night.steps.some(s => s.fresh && s.id === 'grandmother'));
+    G = bmr(['zombuul', 'exorcist', 'sailor', 'chambermaid', 'gossip', 'minstrel', 'godfather', 'professor']); runNight(G, {});
+    E.execute(G, byRole(G, 'zombuul').id); toNight(G); runNight(G, {});
+    E.execute(G, byRole(G, 'godfather').id); toNight(G); runNight(G, { zombuul: { t: ids(G, 'gossip') } });
+    ok('BMR Менестрель + Зомбуул: «мёртвый» Зомбуул тоже пьян — не убил', byRole(G, 'gossip').alive);
+    G = bmr(['zombuul', 'exorcist', 'sailor', 'chambermaid', 'gossip', 'moonchild', 'godfather', 'professor']); runNight(G, {}); toNight(G);
+    E.attemptKill(G, byRole(G, 'zombuul'), 'ability', 'gossip'); runNight(G, {});
+    ok('BMR Зомбуул: «смерть» ночью объявляется на рассвете', /zombuul/.test(G.log.filter(e => /^Рассвет/.test(e.t)).pop().t) && !G.result);
+    // Шабалот
+    G = bmr(['shabaloth', 'exorcist', 'grandmother', 'chambermaid', 'gossip', 'moonchild', 'godfather']);
+    G.flags.grandchild = byRole(G, 'moonchild').id; runNight(G, {}); toNight(G);
+    runNight(G, { shabaloth: { t: ids(G, 'grandmother', 'exorcist') } });
+    ok('BMR Шабалот: убивает двоих', !byRole(G, 'grandmother').alive && !byRole(G, 'exorcist').alive);
+    toNight(G); runNight(G, { shabaloth: { t: ids(G, 'gossip', 'chambermaid'), back: ids(G, 'grandmother') } });
+    ok('BMR Шабалот отрыгнул Бабушку — она жива и просыпается этой ночью (вики: «wake now»)', byRole(G, 'grandmother').alive
+       && /Бабушк/.test(G.log.map(e => e.t).join('|').split('Наступила ночь 3')[1] || ''));
+    G = bmr(['shabaloth', 'exorcist', 'grandmother', 'chambermaid', 'gossip', 'moonchild', 'godfather']); runNight(G, {}); toNight(G);
+    runNight(G, { shabaloth: { t: ids(G, 'chambermaid', 'exorcist') } }); toNight(G);
+    const sb = G.night.steps.find(s => s.id === 'shabaloth'); while (E.currentStep(G) !== sb) E.skipStep(G);
+    E.applyStep(G, sb, { t: ids(G, 'gossip', 'godfather'), back: ids(G, 'chambermaid') });
+    const cm = G.night.steps.slice(G.night.i).filter(s => s.id === 'chambermaid');
+    ok('BMR Шабалот отрыгнул Горничную — её шаг этой ночью один и активен', cm.length === 1 && E.stepSpec(G, cm[0]).active);
+    // Профессор
+    G = bmr(['professor', 'innkeeper', 'grandmother', 'chambermaid', 'gossip', 'moonchild', 'po']); runNight(G, {});
+    ['grandmother', 'gossip', 'moonchild'].forEach(r => { byRole(G, r).alive = false; }); toNight(G);
+    runNight(G, { professor: { t: ids(G, 'grandmother') } });
+    ok('BMR Профессор: воскресил Бабушку, она просыпается этой ночью', byRole(G, 'grandmother').alive && G.phase === 'day'
+       && /Бабушк/.test(G.log.map(e => e.t).join('|').split('Наступила ночь 2')[1] || ''));
+    // правка ночи через журнал: Профессор выбрал другого (Изгоя) — Бабушка остаётся мёртвой, её шага больше нет
+    {
+      const kp = G.rp.recs.findIndex(r => r.t === 'step' && r.key.startsWith('professor'));
+      const ed = E.editNight(G, kp, { inp: { t: ids(G, 'moonchild') } }), T = ed.T;
+      ok('BMR Профессор: правка ночи — Бабушка мертва, её шага нет', !byRole(T, 'grandmother').alive && T.phase === 'day'
+         && !/Бабушк/.test(T.log.map(e => e.t).join('|').split('Наступила ночь 2')[1] || ''));
+    }
+    toNight(G);
+    ok('BMR Профессор: способность раз за игру', !E.stepSpec(G, G.night.steps.find(s => s.id === 'professor')).active);
+    G = bmr(['professor', 'innkeeper', 'sailor', 'chambermaid', 'gossip', 'moonchild', 'po']); runNight(G, {});
+    byRole(G, 'moonchild').alive = false; toNight(G); runNight(G, { professor: { t: ids(G, 'moonchild') } });
+    ok('BMR Профессор: Изгой не воскресает', !byRole(G, 'moonchild').alive);
+    // Шут, Пацифист, Механик
+    G = bmr(['fool', 'exorcist', 'sailor', 'chambermaid', 'gossip', 'moonchild', 'po']); runNight(G, {}); toNight(G);
+    runNight(G, { po: { t: ids(G, 'fool') } }); const f1 = byRole(G, 'fool').alive; toNight(G); runNight(G, { po: { t: ids(G, 'fool') } });
+    ok('BMR Шут: первую смерть переживает, вторую — нет', f1 && !byRole(G, 'fool').alive);
+    G = bmr(['fool', 'tealady', 'sailor', 'chambermaid', 'gossip', 'moonchild', 'po']); runNight(G, {}); toNight(G);
+    runNight(G, { po: { t: ids(G, 'fool') } });
+    ok('BMR Шут под Травницей: жив, способность не потрачена (вики)', byRole(G, 'fool').alive && !G.flags['foolUsed_' + byRole(G, 'fool').id]);
+    G = bmr(['pacifist', 'exorcist', 'sailor', 'chambermaid', 'gossip', 'godfather', 'po']); runNight(G, {});
+    E.execute(G, byRole(G, 'gossip').id, { pacifist: true });
+    ok('BMR Пацифист: казнённый добрый жив, казнь дня состоялась', byRole(G, 'gossip').alive && G.day.executed === byRole(G, 'gossip').id);
+    G = bmr(['pacifist', 'exorcist', 'sailor', 'chambermaid', 'gossip', 'godfather', 'po']); runNight(G, {});
+    E.addTok(G, byRole(G, 'pacifist'), 'drunk', 'test'); E.execute(G, byRole(G, 'gossip').id, { pacifist: true });
+    ok('BMR Пацифист пьян — казнённый умирает', !byRole(G, 'gossip').alive);
+    G = bmr(['sailor', 'tealady', 'tinker', 'chambermaid', 'gossip', 'moonchild', 'po']); runNight(G, {});
+    E.tinkerDies(G, byRole(G, 'tinker').id);
+    ok('BMR Механик под Травницей не умирает (вики)', byRole(G, 'tinker').alive);
+    // По, Придворный, Азартный игрок
+    G = bmr(['po', 'exorcist', 'moonchild', 'chambermaid', 'gossip', 'godfather', 'professor', 'courtier', 'lunatic']); runNight(G, {}); toNight(G);
+    runNight(G, { po: { t: [] } }); toNight(G); runNight(G, { po: { t: ids(G, 'chambermaid', 'gossip', 'professor') } });
+    ok('BMR По: после пропуска убивает троих', ['chambermaid', 'gossip', 'professor'].every(r => !byRole(G, r).alive) && !G.flags.poCharged);
+    G = bmr(['courtier', 'innkeeper', 'sailor', 'chambermaid', 'gossip', 'moonchild', 'po']);
+    runNight(G, { courtier: { r: 'po' } }); const po = byRole(G, 'po'), cd = [E.hasTok(po, 'drunk', 'courtier')];
+    toNight(G); cd.push(E.hasTok(po, 'drunk', 'courtier'), !E.stepSpec(G, G.night.steps.find(s => s.id === 'courtier')).active);
+    runNight(G, {}); toNight(G); runNight(G, {}); cd.push(E.hasTok(po, 'drunk', 'courtier')); toNight(G);
+    ok('BMR Придворный: 3 ночи и 3 дня, больше не просыпается', cd.every(Boolean) && !E.hasTok(po, 'drunk', 'courtier'), cd.join());
+    G = bmr(['gambler', 'innkeeper', 'sailor', 'chambermaid', 'gossip', 'moonchild', 'po']); runNight(G, {}); toNight(G);
+    runNight(G, { gambler: { t: ids(G, 'gossip'), r: 'chambermaid' } });
+    ok('BMR Азартный игрок: неверно угадал — умер', !byRole(G, 'gambler').alive);
+  }
+
   for (const k of Object.keys(DATA.scripts)) ok('сценарий ' + k + ' — все роли в данных', DATA.scripts[k].roles.every(r => DATA.roles[r]));
 } catch (e) { results.push('ERROR ' + e.message + '\n' + e.stack); }
 
