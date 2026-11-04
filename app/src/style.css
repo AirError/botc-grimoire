@@ -1816,10 +1816,10 @@ html:root.oled[data-skin="script"] {
 @keyframes scDust { 0% { opacity: 0; transform: none; } 25% { opacity: .85; } 75% { opacity: .55; } 100% { opacity: 0; transform: translate(var(--dx), var(--dy)); } }
 .sc-fl .sc-spr { animation: scLoop .8s steps(8) infinite; animation-delay: var(--q, 0s); }
 .sc-flg { border-radius: 50%; background: radial-gradient(closest-side, rgba(255, 196, 100, .5), rgba(255, 140, 40, .16) 55%, transparent); animation: kGlow 1.8s ease-in-out infinite alternate; }
-/* обитатели полей: кот спит на книгах (иногда дёргает ухом, открывает глаз, зевает), заяц-рыцарь выглядывает снизу, улитка ползёт */
+/* обитатели полей: кот спит на книгах (иногда открывает глаз, зевает), заяц-рыцарь выглядывает снизу, улитка ползёт.
+   2-й кадр кота («дёргает ухом») не показывается: голова там нарисована другой, ухо вдвое больше (заметка пользователя 2026-11-04) */
 .sc-cat .sc-spr { animation: scCat 11s step-end infinite; }
-@keyframes scCat { 0% { transform: none; } 38% { transform: translateX(-25%); } 41% { transform: none; } 66% { transform: translateX(-50%); } 74% { transform: none; }
-  86% { transform: translateX(-75%); } 92% { transform: none; } }
+@keyframes scCat { 0% { transform: none; } 50% { transform: translateX(-50%); } 60% { transform: none; } 86% { transform: translateX(-75%); } 92% { transform: none; } }
 .sc-rabbit .sc-spr { opacity: 0; animation: scRabbit 17s 4s step-end infinite; }
 @keyframes scRabbit { 0% { opacity: 0; transform: none; } 70% { opacity: 1; transform: none; } 73% { transform: translateX(-16.667%); } 76% { transform: translateX(-33.333%); }
   81% { transform: translateX(-50%); } 86% { transform: translateX(-66.667%); } 90% { transform: translateX(-83.333%); } 93% { opacity: 0; } }
