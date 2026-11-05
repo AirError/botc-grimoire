@@ -108,6 +108,15 @@ html.oled .reveal .evname { color: #FF5A5A; }
 .tale p { margin: 0; font-size: 19px; line-height: 1.55; font-style: italic; text-wrap: pretty; }
 .tale p b { font-style: normal; font-weight: 800; }
 .tale .linkish { align-self: flex-start; }
+/* джинксы на огласку после 1-й ночи (jinxHtml): пара ролей, под ней текст — крупно, его читают вслух */
+.jxbox { gap: 8px; }
+.tale.jxbox { margin-top: 6px; }
+.jxi { display: flex; flex-direction: column; gap: 3px; padding-top: 8px; border-top: 1px solid var(--line); }
+.jxp { display: flex; align-items: center; flex-wrap: wrap; gap: 4px 6px; }
+.jxp .ui { width: 26px; height: 26px; object-fit: contain; }
+.jxp .jxplus { color: var(--muted); }
+.jxt { font-size: 18px; line-height: 1.45; text-wrap: pretty; }
+.jxbox .btn { align-self: flex-start; margin-top: 4px; }
 details > .tale { margin-top: 10px; }
 .inactive { border-style: dashed; }
 .bounds { border: 1px dashed var(--gold); border-radius: 9px; padding: 9px 11px; display: flex; flex-direction: column; gap: 4px; font-size: 14.5px; }

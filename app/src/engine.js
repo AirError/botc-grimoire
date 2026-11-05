@@ -919,12 +919,26 @@ function setupProblems(S) {
   return out;
 }
 
+// джинксы СЦЕНАРИЯ (название историческое): обе роли пары — на листе, в игре они или нет
 function jinxesInPlay(S) {
   const ids = S.script.roles, out = [];
   for (const [k, text] of Object.entries(DATA.jinxes)) {
     const [a, b] = k.split('|'); if (ids.includes(a) && ids.includes(b)) out.push({ a, b, text });
   }
   return out;
+}
+// огласить джинксы игрокам после 1-й ночи (заметка пользователя 2026-11-05) — на шаге «Рассвет» 1-й ночи и в 1-й день, пока рассказчик
+// не отметит «Оглашено». Вики (Джинн, How to Run): огласить все джинксы листа, даже если этих ролей нет в игре, — список не выдаёт,
+// кто в игре (вики — в начале игры; после 1-й ночи — просьба пользователя). Нет джинксов — пусто
+function jinxDue(S) {
+  if (S.result || S.n !== 1 || (S.flags || {}).jinxSaid) return [];
+  const st = S.phase === 'night' && currentStep(S);
+  if (S.phase === 'night' ? !(st && st.id === 'dawn') : S.phase !== 'day') return [];
+  return jinxesInPlay(S);
+}
+function jinxSaid(S) {
+  S.flags.jinxSaid = true;
+  log(S, `Джинксы оглашены: ${jinxesInPlay(S).map(j => `${rname(j.a)} и ${rname(j.b)}`).join('; ')}`, 'action');
 }
 
 function startGame(S) {
@@ -3476,7 +3490,7 @@ const ENGINE = { canBluff, setPrepFlag, ensureHerring, PREP_FLAGS, poolMarExtra,
   amnesiacGuess, AMNESIAC_ANSWERS, storytellerKill, voteCount, voteWeight, voudonActive, bishopActive, travellerWorks, executeNow,
   judgeRuling, gunslingerShot, gnomeAmigo, setGnomeAmigo, gnomeKill, travReveal, travDone, gangsterKill, cacklejackPick, tinkerDies, doomsayerKill, fiddlerEnd, swapSeats, goonWarn, damselGuess, changeRole, madnessExecute, harpyKill,
   finishRoles, autoSetup, setupProblems, drawStart, drawOpen, drawClose, drawCancel, drawShown, drawLocked, drawProblem, poolProblem, scriptShort, scriptOverMax, distortion,
-  randomPool, dealPool, validPool, scriptOutsiders, CARD, jinxesInPlay, startGame, startNight, currentStep, stepSpec, applyStep, skipStep,
+  randomPool, dealPool, validPool, scriptOutsiders, CARD, jinxesInPlay, jinxDue, jinxSaid, startGame, startNight, currentStep, stepSpec, applyStep, skipStep,
   stepInputs, missingInputs, endNight, testJump, rpStrip, recPatch, replayNight, editNight, editTarget, acceptEdit,
   nominate, nominationPreview, recordVote, block, execute, endDay, slayerShot, voteThreshold, situation, moonchildChoose, klutzChoose,
   abilityOff, attemptKill, die, addTok, rmTok, hasTok, TOK_RU, TEAM_RU, log, checkWin, endGame, aliveNeighbours,

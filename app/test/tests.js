@@ -1945,6 +1945,39 @@ try {
     ok('BMR Азартный игрок: неверно угадал — умер', !byRole(G, 'gambler').alive);
   }
 
+  // джинксы — огласить после 1-й ночи (заметка пользователя 2026-11-05; вики, Джинн: все джинксы листа, даже если ролей нет в игре)
+  {
+    const toDawn = G => { let g = 0;
+      while (G.phase === 'night' && E.currentStep(G).id !== 'dawn' && g++ < 200) { const st = E.currentStep(G), sp = E.stepSpec(G, st);
+        if (!sp.active) { E.skipStep(G); continue; } if (!E.applyStep(G, st, Object.assign({}, sp.defaults)).ok) E.skipStep(G); } };
+    const start = (roles, sc) => { const G = game(roles, sc); E.autoSetup(G, true); E.startGame(G); return G; };
+    let G = start(['chef', 'investigator', 'librarian', 'monk', 'soldier', 'saint', 'poisoner', 'imp'], 'nachtmahr');
+    const keys = E.jinxesInPlay(G).map(j => j.a + '|' + j.b).sort().join(',');
+    ok('Джинксы: Nachtmahr — оба джинкса листа, хотя Блудницы, Фань Гу и Математика нет в игре', keys === 'mathematician|drunk,scarletwoman|fanggu', keys);
+    ok('Джинксы: в начале 1-й ночи карточки нет', E.jinxDue(G).length === 0);
+    toDawn(G);
+    ok('Джинксы: «Рассвет» 1-й ночи — огласить 2', E.currentStep(G).id === 'dawn' && E.jinxDue(G).length === 2);
+    runNight(G, {});
+    ok('Джинксы: 1-й день, не оглашены — карточка есть', G.phase === 'day' && G.n === 1 && E.jinxDue(G).length === 2);
+    E.jinxSaid(G);
+    ok('Джинксы: «Оглашено» — карточки нет, запись в журнале', E.jinxDue(G).length === 0 && G.flags.jinxSaid
+       && /Джинксы оглашены: .*Блудница и Фань Гу/.test(G.log.map(e => e.t).join('|')));
+    G = start(['chef', 'investigator', 'librarian', 'monk', 'soldier', 'saint', 'poisoner', 'imp'], 'nachtmahr'); toDawn(G); E.jinxSaid(G); runNight(G, {});
+    ok('Джинксы: оглашены на «Рассвете» — в 1-й день карточки нет', G.phase === 'day' && E.jinxDue(G).length === 0);
+    G = start(['chef', 'investigator', 'librarian', 'monk', 'soldier', 'saint', 'poisoner', 'imp'], 'nachtmahr'); runNight(G, {}); E.endDay(G);
+    ok('Джинксы: не оглашены — во 2-ю ночь карточки нет', G.phase === 'night' && G.n === 2 && E.jinxDue(G).length === 0);
+    toDawn(G);
+    ok('Джинксы: и на «Рассвете» 2-й ночи нет', E.currentStep(G).id === 'dawn' && E.jinxDue(G).length === 0);
+    runNight(G, {});
+    ok('Джинксы: и во 2-й день нет', G.phase === 'day' && G.n === 2 && E.jinxDue(G).length === 0);
+    G = start(['oracle', 'undertaker', 'exorcist', 'slayer', 'drunk', 'devilsadvocate', 'lleech'], 'leech'); runNight(G, {});
+    ok('Джинксы: A Leech of Distrust — Пиявица и Истребитель', E.jinxDue(G).map(j => j.a + '|' + j.b).join() === 'lleech|slayer');
+    G = start(['grandmother', 'sailor', 'chambermaid', 'innkeeper', 'gossip', 'goon', 'godfather', 'po'], 'bmr'); toDawn(G);
+    const bmrDawn = E.jinxDue(G).length; runNight(G, {});
+    ok('Джинксы: Bad Moon Rising — джинксов нет, карточки нет', E.jinxesInPlay(G).length === 0 && bmrDawn === 0 && E.jinxDue(G).length === 0);
+    ok('Джинксы: в Catfishing и Everyone Can Be Evil джинксов нет', ['catfishing', 'ecbe'].every(k => E.jinxesInPlay(E.newGame(k)).length === 0));
+  }
+
   for (const k of Object.keys(DATA.scripts)) ok('сценарий ' + k + ' — все роли в данных', DATA.scripts[k].roles.every(r => DATA.roles[r]));
 } catch (e) { results.push('ERROR ' + e.message + '\n' + e.stack); }
 

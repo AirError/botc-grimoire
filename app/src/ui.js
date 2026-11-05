@@ -582,6 +582,18 @@ function morningHtml(withNext) {
   return !rec ? tale : rec.left ? `${rec.html}<details><summary class="small">Обычный текст вместо записи</summary>${tale}</details>` : rec.html + tale;
 }
 
+// джинксы сценария — огласить всем после 1-й ночи (заметка пользователя 2026-11-05; когда — E.jinxDue): на «Рассвете» — блоком под словами
+// для утра, в 1-й день — карточкой вверху. Список — в порядке данных, без пометок «в игре»: экран могут видеть
+function jinxHtml(where) {
+  const list = E.jinxDue(S); if (!list.length) return '';
+  const body = `<div class="small muted">Прочтите всем — все пары ролей с листа сценария, даже если этих ролей нет в игре (вики, Джинн)</div>
+    ${list.map(j => `<div class="jxi"><div class="jxp">${ico(j.a, null, 'ui')}<b>${esc(E.rname(j.a))}</b><span class="jxplus">и</span>${ico(j.b, null, 'ui')}<b>${esc(E.rname(j.b))}</b></div>
+      <div class="jxt">${esc(j.text)}</div></div>`).join('')}
+    <button class="btn ${where === 'dawn' ? '' : 'primary'}" data-act="jinxSaid">Оглашено</button>`;
+  return where === 'dawn' ? `<div class="tale jxbox"><div class="lab">Огласите джинксы</div>${body}</div>`
+    : `<div class="card ask jxbox"><h3>Огласите джинксы</h3>${body}</div>`;
+}
+
 /* ---------- записи на утро (Хэллоуин; просьба пользователя 2026-10-30) ---------- */
 // MORNING_REC (app_build.py: audio/morning/0…, 1…, 2… — ночь без смертей, с одной, с двумя смертями): {id, c, n, src}.
 // Утром — только записи под число смертей этой ночи (три и больше — обычный текст). Прослушанные — на этом устройстве, во всех играх
@@ -947,7 +959,7 @@ function viewNight() {
       ${fields.map(f => fieldHtml(f, inp) + (st.id === 'alhadikhia' && spec.active && f.key === 't' ? alhStepHtml(inp) : '')).join('')}
       ${goon ? `<div class="warn">${esc(goon)}</div>` : ''}
       ${info && (info.show || (info.evil || []).length || (info.ann || []).length || (info.lines || []).filter(Boolean).length) ? revealHtml(info, spec.dist) : ''}
-      ${st.id === 'dawn' ? morningHtml(true) : ''}
+      ${st.id === 'dawn' ? morningHtml(true) + jinxHtml('dawn') : ''}
       ${missing.length ? `<div class="small muted">Осталось выбрать: ${missing.map(esc).join('; ')}</div>` : ''}
       ${spec.active && (st.id === 'demoninfo' || st.id === 'fortuneteller') ? `<button class="btn" data-act="prepOpen">${st.id === 'demoninfo' ? 'Изменить блефы' : 'Изменить ложную цель'}</button>` : ''}
       <div class="actions"><button class="btn primary" data-act="stepDone" ${missing.length ? 'disabled' : ''}>${spec.active ? 'Готово' : 'Дальше'}</button>
@@ -1101,6 +1113,7 @@ function viewDay() {
     ${S.night && (S.night.revived || []).some(id => E.P(S, id) && E.P(S, id).alive) ? `<div class="small">Снова жив: ${S.night.revived.filter(id => E.P(S, id) && E.P(S, id).alive).map(id => esc(E.nm(S, id))).join(', ')}</div>` : ''}
     ${S.night ? `<details><summary class="small">Слова для утра</summary>${morningHtml(false)}</details>` : ''}
     ${d.timer ? '' : '<button class="btn tmrbtn" data-act="timerAsk">⏱ Таймер дня</button>'}${dayStatusBtn()}</div>`);
+  parts.push(jinxHtml('day'));
   // Дитя Луны / Растяпа умерли ночью — выбор вверху экрана дня (утром); умерли днём (казнь) — над кнопкой «Начать ночь» (там же, где
   // рассказчик только что завершал день; заметка пользователя 2026-10-29: карточка была посреди экрана — «ушло в ночь без выбора»)
   if (!d.holdForChoice) parts.push(deathChoiceHtml(picks));
@@ -3394,6 +3407,7 @@ const A = {
   gunShoot: gid => { const t = S.day.picks.gun[0]; act(S => { E.gunslingerShot(S, gid, t); S.day.picks.gun = []; }); },
   gunSkip: () => act(S => { S.day.gunUsed = true; E.log(S, 'Стрелок сегодня не стреляет', 'day'); }),
   travDone: id => act(S => E.travDone(S, id), 'Страннику показана сторона'),
+  jinxSaid: () => act(S => E.jinxSaid(S), 'Джинксы оглашены'),
   gnomeKill: arg => { const [g, by] = arg.split('|'); act(S => E.gnomeKill(S, g, by), 'Гном убивает номинировавшего'); },
   gangKill: arg => { const [g, v] = arg.split('|'); act(S => E.gangsterKill(S, g, v), 'Гангстер'); },
   cacklePick: cid => { const t = S.day.picks.cackle[0]; act(S => { E.cacklejackPick(S, cid, t); S.day.picks.cackle = []; }, 'Хохотун: «НЕ Я»'); },

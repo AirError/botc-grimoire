@@ -111,6 +111,15 @@ html.oled .reveal .evname { color: #FF5A5A; }
 .tale p { margin: 0; font-size: 19px; line-height: 1.55; font-style: italic; text-wrap: pretty; }
 .tale p b { font-style: normal; font-weight: 800; }
 .tale .linkish { align-self: flex-start; }
+/* джинксы на огласку после 1-й ночи (jinxHtml): пара ролей, под ней текст — крупно, его читают вслух */
+.jxbox { gap: 8px; }
+.tale.jxbox { margin-top: 6px; }
+.jxi { display: flex; flex-direction: column; gap: 3px; padding-top: 8px; border-top: 1px solid var(--line); }
+.jxp { display: flex; align-items: center; flex-wrap: wrap; gap: 4px 6px; }
+.jxp .ui { width: 26px; height: 26px; object-fit: contain; }
+.jxp .jxplus { color: var(--muted); }
+.jxt { font-size: 18px; line-height: 1.45; text-wrap: pretty; }
+.jxbox .btn { align-self: flex-start; margin-top: 4px; }
 details > .tale { margin-top: 10px; }
 .inactive { border-style: dashed; }
 .bounds { border: 1px dashed var(--gold); border-radius: 9px; padding: 9px 11px; display: flex; flex-direction: column; gap: 4px; font-size: 14.5px; }
@@ -2877,12 +2886,26 @@ function setupProblems(S) {
   return out;
 }
 
+// джинксы СЦЕНАРИЯ (название историческое): обе роли пары — на листе, в игре они или нет
 function jinxesInPlay(S) {
   const ids = S.script.roles, out = [];
   for (const [k, text] of Object.entries(DATA.jinxes)) {
     const [a, b] = k.split('|'); if (ids.includes(a) && ids.includes(b)) out.push({ a, b, text });
   }
   return out;
+}
+// огласить джинксы игрокам после 1-й ночи (заметка пользователя 2026-11-05) — на шаге «Рассвет» 1-й ночи и в 1-й день, пока рассказчик
+// не отметит «Оглашено». Вики (Джинн, How to Run): огласить все джинксы листа, даже если этих ролей нет в игре, — список не выдаёт,
+// кто в игре (вики — в начале игры; после 1-й ночи — просьба пользователя). Нет джинксов — пусто
+function jinxDue(S) {
+  if (S.result || S.n !== 1 || (S.flags || {}).jinxSaid) return [];
+  const st = S.phase === 'night' && currentStep(S);
+  if (S.phase === 'night' ? !(st && st.id === 'dawn') : S.phase !== 'day') return [];
+  return jinxesInPlay(S);
+}
+function jinxSaid(S) {
+  S.flags.jinxSaid = true;
+  log(S, `Джинксы оглашены: ${jinxesInPlay(S).map(j => `${rname(j.a)} и ${rname(j.b)}`).join('; ')}`, 'action');
 }
 
 function startGame(S) {
@@ -5434,7 +5457,7 @@ const ENGINE = { canBluff, setPrepFlag, ensureHerring, PREP_FLAGS, poolMarExtra,
   amnesiacGuess, AMNESIAC_ANSWERS, storytellerKill, voteCount, voteWeight, voudonActive, bishopActive, travellerWorks, executeNow,
   judgeRuling, gunslingerShot, gnomeAmigo, setGnomeAmigo, gnomeKill, travReveal, travDone, gangsterKill, cacklejackPick, tinkerDies, doomsayerKill, fiddlerEnd, swapSeats, goonWarn, damselGuess, changeRole, madnessExecute, harpyKill,
   finishRoles, autoSetup, setupProblems, drawStart, drawOpen, drawClose, drawCancel, drawShown, drawLocked, drawProblem, poolProblem, scriptShort, scriptOverMax, distortion,
-  randomPool, dealPool, validPool, scriptOutsiders, CARD, jinxesInPlay, startGame, startNight, currentStep, stepSpec, applyStep, skipStep,
+  randomPool, dealPool, validPool, scriptOutsiders, CARD, jinxesInPlay, jinxDue, jinxSaid, startGame, startNight, currentStep, stepSpec, applyStep, skipStep,
   stepInputs, missingInputs, endNight, testJump, rpStrip, recPatch, replayNight, editNight, editTarget, acceptEdit,
   nominate, nominationPreview, recordVote, block, execute, endDay, slayerShot, voteThreshold, situation, moonchildChoose, klutzChoose,
   abilityOff, attemptKill, die, addTok, rmTok, hasTok, TOK_RU, TEAM_RU, log, checkWin, endGame, aliveNeighbours,
@@ -6857,6 +6880,18 @@ function morningHtml(withNext) {
   return !rec ? tale : rec.left ? `${rec.html}<details><summary class="small">Обычный текст вместо записи</summary>${tale}</details>` : rec.html + tale;
 }
 
+// джинксы сценария — огласить всем после 1-й ночи (заметка пользователя 2026-11-05; когда — E.jinxDue): на «Рассвете» — блоком под словами
+// для утра, в 1-й день — карточкой вверху. Список — в порядке данных, без пометок «в игре»: экран могут видеть
+function jinxHtml(where) {
+  const list = E.jinxDue(S); if (!list.length) return '';
+  const body = `<div class="small muted">Прочтите всем — все пары ролей с листа сценария, даже если этих ролей нет в игре (вики, Джинн)</div>
+    ${list.map(j => `<div class="jxi"><div class="jxp">${ico(j.a, null, 'ui')}<b>${esc(E.rname(j.a))}</b><span class="jxplus">и</span>${ico(j.b, null, 'ui')}<b>${esc(E.rname(j.b))}</b></div>
+      <div class="jxt">${esc(j.text)}</div></div>`).join('')}
+    <button class="btn ${where === 'dawn' ? '' : 'primary'}" data-act="jinxSaid">Оглашено</button>`;
+  return where === 'dawn' ? `<div class="tale jxbox"><div class="lab">Огласите джинксы</div>${body}</div>`
+    : `<div class="card ask jxbox"><h3>Огласите джинксы</h3>${body}</div>`;
+}
+
 /* ---------- записи на утро (Хэллоуин; просьба пользователя 2026-10-30) ---------- */
 // MORNING_REC (app_build.py: audio/morning/0…, 1…, 2… — ночь без смертей, с одной, с двумя смертями): {id, c, n, src}.
 // Утром — только записи под число смертей этой ночи (три и больше — обычный текст). Прослушанные — на этом устройстве, во всех играх
@@ -7222,7 +7257,7 @@ function viewNight() {
       ${fields.map(f => fieldHtml(f, inp) + (st.id === 'alhadikhia' && spec.active && f.key === 't' ? alhStepHtml(inp) : '')).join('')}
       ${goon ? `<div class="warn">${esc(goon)}</div>` : ''}
       ${info && (info.show || (info.evil || []).length || (info.ann || []).length || (info.lines || []).filter(Boolean).length) ? revealHtml(info, spec.dist) : ''}
-      ${st.id === 'dawn' ? morningHtml(true) : ''}
+      ${st.id === 'dawn' ? morningHtml(true) + jinxHtml('dawn') : ''}
       ${missing.length ? `<div class="small muted">Осталось выбрать: ${missing.map(esc).join('; ')}</div>` : ''}
       ${spec.active && (st.id === 'demoninfo' || st.id === 'fortuneteller') ? `<button class="btn" data-act="prepOpen">${st.id === 'demoninfo' ? 'Изменить блефы' : 'Изменить ложную цель'}</button>` : ''}
       <div class="actions"><button class="btn primary" data-act="stepDone" ${missing.length ? 'disabled' : ''}>${spec.active ? 'Готово' : 'Дальше'}</button>
@@ -7376,6 +7411,7 @@ function viewDay() {
     ${S.night && (S.night.revived || []).some(id => E.P(S, id) && E.P(S, id).alive) ? `<div class="small">Снова жив: ${S.night.revived.filter(id => E.P(S, id) && E.P(S, id).alive).map(id => esc(E.nm(S, id))).join(', ')}</div>` : ''}
     ${S.night ? `<details><summary class="small">Слова для утра</summary>${morningHtml(false)}</details>` : ''}
     ${d.timer ? '' : '<button class="btn tmrbtn" data-act="timerAsk">⏱ Таймер дня</button>'}${dayStatusBtn()}</div>`);
+  parts.push(jinxHtml('day'));
   // Дитя Луны / Растяпа умерли ночью — выбор вверху экрана дня (утром); умерли днём (казнь) — над кнопкой «Начать ночь» (там же, где
   // рассказчик только что завершал день; заметка пользователя 2026-10-29: карточка была посреди экрана — «ушло в ночь без выбора»)
   if (!d.holdForChoice) parts.push(deathChoiceHtml(picks));
@@ -9669,6 +9705,7 @@ const A = {
   gunShoot: gid => { const t = S.day.picks.gun[0]; act(S => { E.gunslingerShot(S, gid, t); S.day.picks.gun = []; }); },
   gunSkip: () => act(S => { S.day.gunUsed = true; E.log(S, 'Стрелок сегодня не стреляет', 'day'); }),
   travDone: id => act(S => E.travDone(S, id), 'Страннику показана сторона'),
+  jinxSaid: () => act(S => E.jinxSaid(S), 'Джинксы оглашены'),
   gnomeKill: arg => { const [g, by] = arg.split('|'); act(S => E.gnomeKill(S, g, by), 'Гном убивает номинировавшего'); },
   gangKill: arg => { const [g, v] = arg.split('|'); act(S => E.gangsterKill(S, g, v), 'Гангстер'); },
   cacklePick: cid => { const t = S.day.picks.cackle[0]; act(S => { E.cacklejackPick(S, cid, t); S.day.picks.cackle = []; }, 'Хохотун: «НЕ Я»'); },
