@@ -494,21 +494,27 @@ function showOverlay() {
   };
   const card = sc.caption ? cardHtml(sc.caption, sc.thumb) : yn ? cardHtml(yn) : '';
   const roles = sc.items.length && !yn ? `<div class="shroles ${sc.stack ? 'stack' : 'n' + Math.min(sc.items.length, 3)}">${sc.items.map(roleBox).join('')}</div>` : '';
-  const hint = `<div class="shhint">${sh.i + 1 < sh.screens.length ? `Нажмите — дальше (${sh.i + 1} из ${sh.screens.length})` : 'Нажмите, чтобы закрыть'}</div>`;
+  // экран с auto (жетон Безумца перед ролью Демона) сменяется сам — без подсказки «нажмите»
+  const hint = sc.auto ? '' : `<div class="shhint">${sh.i + 1 < sh.screens.length ? `Нажмите — дальше (${sh.i + 1} из ${sh.screens.length})` : 'Нажмите, чтобы закрыть'}</div>`;
   // кнопка поворота — отдельно от слоя показа (нажатие на слой листает дальше)
   const rot = `<button class="shrot" data-act="showLand" aria-label="${UI.showLand ? 'Показывать вертикально' : 'Показать горизонтально'}">${UI.showLand ? '↕' : '↔'}</button>`;
   // горизонтально: карточка — на весь экран, роли и имена — следующим экраном, крупно (просьба пользователя).
   // Телефон держат боком: если экран сам не повернулся (портрет), содержимое повёрнуто на 90° и растянуто на весь экран;
   // если повернулся (альбом) — без поворота (CSS @media orientation)
   if (UI.showLand) {
-    const part = card && roles ? (sh.sub || 0) : null; // 0 — карточка, 1 — роли
+    const part = card && roles && !sc.auto ? (sh.sub || 0) : null; // 0 — карточка, 1 — роли (экран с auto — целиком)
     const more = sh.i + 1 < sh.screens.length || part === 0;
-    const lhint = `<div class="shhint">${more ? 'Нажмите — дальше' : 'Нажмите, чтобы закрыть'}</div>`;
+    const lhint = sc.auto ? '' : `<div class="shhint">${more ? 'Нажмите — дальше' : 'Нажмите, чтобы закрыть'}</div>`;
     return `<div class="ov showov land ${UI.showFlip ? 'flip' : ''}" data-act="showNext" role="dialog" aria-label="Показ игроку">
     <div class="shwrap">${card && part !== 1 ? `<div class="shmain">${card}</div>` : ''}${roles && part !== 0 ? `<div class="shside">${roles}</div>` : ''}${lhint}</div></div>${rot}
     <button class="shrot flipb" data-act="showFlip" aria-label="Перевернуть на 180°">⟲</button>`;
   }
   return `<div class="ov showov" data-act="showNext" role="dialog" aria-label="Показ игроку">${card}${roles}${hint}</div>${rot}`;
+}
+// экран показа с auto (мс) сменяется следующим сам, нажатие его не листает: жетон Безумца → роль Демона (заметка пользователя 2026-11-06)
+function showAuto() {
+  const sh = UI.show, sc = sh && sh.screens[sh.i]; if (!sc || !sc.auto) return;
+  setTimeout(() => { if (UI.show === sh && sh.screens[sh.i] === sc) { sh.i += 1; sh.sub = 0; if (sh.i >= sh.screens.length) UI.show = null; render(); showAuto(); } }, sc.auto);
 }
 // роль игрока, которую он видит (Пьяница — кем себя считает, Безумец — своего «Демона»)
 const seenRole = p => (p.role === 'drunk' || p.role === 'lunatic' || p.role === 'marionette') && p.believes ? p.believes : p.role;
@@ -839,8 +845,57 @@ function prepFields(mid) {
       <div class="bluffrow">${[0, 1, 2].map(i => tile(S.bluffs[i])).join('')}<button class="btn" data-act="prepPick" data-arg="bluff">Выбрать</button></div></div>
     ${prepDefs(mid).map(d => `<div class="field ${d.ask ? 'ask' : ''}"><label>${esc(d.label)}</label>
       <div class="prepcur">${who(d)}<button class="btn" data-act="prepPick" data-arg="${d.k}">Выбрать</button></div>${d.hint ? `<div class="small muted">${esc(d.hint)}</div>` : ''}</div>`).join('')}
+    ${mid ? '' : lunFieldHtml(false)}
     ${S.players.filter(p => p.role === 'amnesiac').map(p => `<div class="field"><label for="amn-${p.id}">Способность Амнезиака (${esc(p.name)}) — придумайте сами, игрок её не узнает</label>
       <textarea id="amn-${p.id}" data-act="amnText" data-arg="${p.id}" placeholder="Например: каждую ночь узнаёт, сколько живых Горожан среди его соседей">${esc(S.flags['amnesiac_' + p.id] || '')}</textarea>${amnIdeas(p.id)}</div>`).join('')}`;
+}
+// Безумец (заметка пользователя 2026-11-06): каким Демоном он себя считает и что видит настоящий Демон, когда получает роль. В «Подготовке»
+// и в окне «Блефы и ложные цели» (на подготовке, Безумец в игре), а при жребии — в карточке «Выдача ролей» до начала (draw): Безумец видит
+// своего «Демона», а Демон — жетон Безумца уже при выдаче, позже менять поздно. Демон в игре известен, если роли выданы или отмечены
+// в «Ролях на игру»; иначе — «тот же, что в игре» без названия. Похожие — ходят ночью так же (E.LUN_KIN): Безумец не догадается
+const LUN_CAP = 'В данной игре есть Безумец';
+function lunFieldHtml(draw) {
+  if (S.phase !== 'setup') return '';
+  const lun = S.players.find(p => p.role === 'lunatic');
+  if (!draw && !lun) return '';
+  const real = draw ? (E.validPool(S) ? S.pool.find(r => team(r) === 'demon') : null) || E.realDemonRole(S) : E.realDemonRole(S);
+  const cur = S.flags.lunAs && S.flags.lunAs !== real ? S.flags.lunAs : '';
+  const lab = r => `${E.rname(r)} — ${E.LUN_KIN_RU[E.lunKin(r)] || 'ходит ночью по-своему'}`;
+  const opt = r => `<option value="${r}" ${cur === r ? 'selected' : ''}>${esc(lab(r))}</option>`;
+  const others = S.script.roles.filter(r => team(r) === 'demon' && r !== real);
+  const like = real ? others.filter(r => E.lunKin(r) === E.lunKin(real)) : [], unlike = others.filter(r => !like.includes(r));
+  const seen = lun && E.lunSeen(S, lun);
+  const pick = seen ? `<div class="prepcur">${ico(lun.believes, 'evil', 'pci')}<span class="pcn"><b>${esc(E.rname(lun.believes))}</b><span class="small muted">Безумец уже видел эту роль при выдаче — поменять можно в карточке «Роли»</span></span></div>`
+    : `<select data-act="lunAs" aria-label="Каким Демоном считает себя Безумец"><option value="" ${cur ? '' : 'selected'}>${real ? `Тот же, что в игре: ${esc(E.rname(real))}` : 'Тот же Демон, что в игре'} (рекомендуется)</option>
+      ${like.length ? `<optgroup label="Похожие — ночью ходят так же">${like.map(opt).join('')}</optgroup>` : ''}
+      ${unlike.length ? `<optgroup label="${real ? 'Отличаются — Безумец может догадаться' : 'Другой Демон'}">${unlike.map(opt).join('')}</optgroup>` : ''}</select>`;
+  const mode = E.lunShowMode(S);
+  const seg = `<div class="seg">${[['lunatic', 'Жетон Безумца'], ['demon', 'Жетон Демона']].map(([v, t]) => `<button class="${mode === v ? 'on' : ''}" aria-pressed="${mode === v}" data-act="lunShow" data-arg="${v}">${t}</button>`).join('')}</div>`;
+  // свёрнуто, пока не раскроют (просьба пользователя 2026-11-06); в заголовке — что выбрано сейчас; раскрытое помнится до перезагрузки
+  const now = `${seen ? `${E.rname(lun.believes)} (уже видел)` : cur ? E.rname(cur) : 'тот же Демон'} · Демону — ${mode === 'lunatic' ? 'жетон Безумца' : 'свой жетон'}`;
+  const head = `<button class="savgh lungh${UI.lunOpen ? ' open' : ''}" data-act="lunOpen" aria-expanded="${!!UI.lunOpen}"><span class="chev" aria-hidden="true">▸</span><span>${draw ? 'Если выпадет Безумец' : 'Безумец'}</span><span class="savgn">${esc(now)}</span></button>`;
+  if (!UI.lunOpen) return `<div class="field lunfield">${head}</div>`;
+  return `<div class="field lunfield">${head}<label>Каким Демоном он себя считает</label>${pick}
+    <div class="small muted">Тот же Демон — Безумец не заметит подмены: ночью он выбирает столько же игроков, сколько настоящий Демон (вики).</div>
+    <label>Настоящему Демону при выдаче роли показать</label>${seg}
+    <div class="small muted">${mode === 'lunatic' ? `Демон увидит жетон Безумца и надпись «${LUN_CAP}», а через 2 секунды — «Ваша роль» и свою роль.` : 'Демон сразу увидит свою роль, а о Безумце узнает в первую ночь.'}${S.flags.lunShow ? ''
+      : ' По умолчанию — как в вики: если Безумец считает себя тем же Демоном, Демону достаётся жетон Безумца, если другим (в мешочке два жетона Демона) — свой жетон.'}</div></div>`;
+}
+// Безумец в сцене выдачи: настоящему Демону сначала жетон Безумца и LUN_CAP, через 2 с — «Ваша роль» и его роль (c.pre — engine drawOpen).
+// revealAt — когда в сцене появляется роль (мс от нажатия): стена — сразу, склеп и витраж — карточка поднимается в 1,3 с, котёл и печати — свои.
+// Без анимации (котёл и печати при «меньше движения», перезагрузка посреди раскрытия) — сразу роль Демона
+const LUN_PRE = 2000;
+const revealAt = () => kettleOn() ? KT.card : scOn() ? SCT.card : (cryptOn() || vitrOn()) ? 1300 : 300;
+const lunPreOn = c => !!(c && c.pre === 'lunatic' && UI.openAt && (kettleOn() || scOn() ? !kReduced() : true));
+const lunVars = () => `--lpd:${((revealAt() + LUN_PRE) / 1000).toFixed(2)}s`;
+// pre — что видно сначала, post — потом: в одной клетке сетки, сменяют друг друга (style.css: .lsw, .lpre, .lpost)
+const lunSw = (pre, post) => `<span class="lsw"><span class="lpre">${pre}</span><span class="lpost">${post}</span></span>`;
+const lunName = () => `<span class="lgood">${esc(E.rname('lunatic'))}</span>`;
+// перерисовка посреди показа — смена жетона на роль идёт с того же места (время анимаций — от нажатия)
+function lunPreAfter() {
+  if (!UI.wall || !UI.openAt || !S || !S.draw || S.draw.open === null) return;
+  const el = Date.now() - UI.openAt;
+  document.querySelectorAll('.lunpre .lpre, .lunpre .lpost, .lunpre .wrlater, .lunpre .sc-later').forEach(n => n.getAnimations && n.getAnimations().forEach(a => { try { a.currentTime = el; } catch (e) { /* без времени */ } }));
 }
 // окно выбора: блефы — плитки Горожан и Изгоев сценария (в игре — серые), игрок — круг Гримуара (кого нельзя — серые)
 function prepPickHtml() {
@@ -1838,6 +1893,8 @@ function drawCard() {
     + (held && !d ? ` Роли, уже выданные игрокам (${held}), останутся за ними.` : '');
   // кто ещё не открыл ячейку: нажатие — карточка игрока, там можно назначить роль или тип роли
   const waiting = d && !d.finished ? core.filter(p => !p.role) : [], hid = rolesHidden();
+  // Безумец может выпасть: отмечен в «Ролях на игру» (или роли наберутся случайно из сценария с Безумцем), или уже выдан до стены
+  const lunMay = !d && (core.some(p => p.role === 'lunatic') || (E.validPool(S) ? S.pool.includes('lunatic') : S.script.roles.includes('lunatic')));
   // роли открыты — можно снова закрыть «шторкой» (например, перед тем как снова выкатить стену)
   const hideBtn = d && !hid ? '<button class="btn" data-act="rolesHide">Скрыть роли</button>' : '';
   const cr = cryptOn(), vt = !cr && vitrOn(), kt = kettleOn(), sc = scOn(); // вместо стены — склеп с сундуками, витраж, котёл или свитки с печатями
@@ -1860,7 +1917,7 @@ function drawCard() {
         ${waiting.length ? `<div class="flabel"><span>Ещё не открыли — нажмите, чтобы назначить роль или тип</span></div><div class="seg">${waiting.map(p => `<button data-act="openP" data-arg="${p.id}">${esc(p.name)}${!hid && (S.assign || {})[p.id] ? ' → ' + esc(assignLabel(S.assign[p.id])) : ''}</button>`).join('')}</div>` : ''}
         <div class="row"><button class="btn primary" data-act="wallShow">Продолжить жребий</button><button class="btn danger" data-act="drawCancel">Отменить жребий</button>${hideBtn}</div>`
       : prob ? `<div class="warn">${esc(prob)}</div>`
-      : `${overMaxHtml()}<button class="btn primary wide" data-act="drawStart">${cr ? 'Открыть склеп' : vt ? 'Зажечь витраж' : kt ? 'Разжечь котёл' : sc ? 'Разложить свитки' : 'Выкатить стену'}</button>`}</div>`;
+      : `${overMaxHtml()}${lunMay ? lunFieldHtml(true) : ''}<button class="btn primary wide" data-act="drawStart">${cr ? 'Открыть склеп' : vt ? 'Зажечь витраж' : kt ? 'Разжечь котёл' : sc ? 'Разложить свитки' : 'Выкатить стену'}</button>`}</div>`;
 }
 // Teensyville на 7+ игроков: ролей может и хватить, но сценарий задуман для 5–6 (заметка пользователя 2026-10-28)
 const overMaxHtml = () => { const t = !E.scriptShort(S) && E.scriptOverMax(S); return t ? `<div class="warn">${esc(t)}. Ролей хватает, но сценарий задуман для маленькой игры.</div>` : ''; };
@@ -2658,9 +2715,11 @@ function kettleOverlay(d) {
   // роль из пара; сверху выглядывает ведьма с фразой (лицо и фраза — по типу роли, которую видит игрок)
   const reveal = open ? (() => { const op = E.P(S, open.pid), r = (op && seenRole(op)) || E.drawShown(open), al = isGoodRole(r) ? 'good' : 'evil', t = team(r), face = K_FACE[t] || 1;
     const ph = K_PHR[open.phr] || K_PHR.find(p => p[0] === t) || K_PHR[0];
-    return `<div class="wreveal kreveal side-${al} ${anim ? '' : 'know'}" data-act="drawClose" role="dialog" aria-label="Ваша роль" style="padding-top:${Math.round(L.st + Math.min(L.H * .27, 230))}px;--kc:${KT.card / 1000}s">
-      <div class="wrfor">Ваша роль</div><div class="wrart">${ico(r, al, 'wric')}</div><div class="wrname">${esc(E.rname(r))}</div>
-      <div class="wrteam">${esc(E.TEAM_RU[t] || '')} · ${al === 'good' ? 'добро' : 'зло'}</div><div class="wrab">${esc(DATA.roles[r].ability)}</div>
+    const lp = lunPreOn(open), post = s => lp ? `<span class="lpost">${s}</span>` : s; // настоящему Демону при Безумце — сначала жетон Безумца
+    return `<div class="wreveal kreveal side-${al} ${anim ? '' : 'know'} ${lp ? 'lunpre' : ''}" data-act="drawClose" role="dialog" aria-label="Ваша роль" style="padding-top:${Math.round(L.st + Math.min(L.H * .27, 230))}px;--kc:${KT.card / 1000}s;${lp ? lunVars() : ''}">
+      <div class="wrfor">${lp ? lunSw(esc(LUN_CAP), 'Ваша роль') : 'Ваша роль'}</div><div class="wrart">${lp ? ico('lunatic', 'good', 'wric lpre') : ''}${ico(r, al, lp ? 'wric lpost' : 'wric')}</div>
+      <div class="wrname">${lp ? lunSw(lunName(), esc(E.rname(r))) : esc(E.rname(r))}</div>
+      <div class="wrteam">${post(`${esc(E.TEAM_RU[t] || '')} · ${al === 'good' ? 'добро' : 'зло'}`)}</div><div class="wrab">${post(esc(DATA.roles[r].ability))}</div>
       <div class="shhint wrlater">Запомните роль и нажмите — котёл закипит для следующего</div>
       ${HAS_ART('k_witch' + face) ? `<div class="kwitch" style="top:${L.st}px"><img src="${ART['k_witch' + face]}" alt=""><div class="kbubble">${esc(ph[1])}</div></div>` : ''}</div>`; })() : '';
   return `<div class="ov wallov kettle ${brew ? 'busy' : ''}" role="dialog" aria-label="Ведьмин котёл: выдача ролей">
@@ -2854,17 +2913,19 @@ function scReveal(open, L, anim) {
   const mm = SC_MM[t] || 'angel', mf = m['s_m_' + mm + '_strip'] || { w: 210, h: 240, a: [.43, 1] }, mh = Math.round(Math.min(G.cz + G.rh * .4, G.SW * .36)), mw = Math.round(mh * mf.w / mf.h);
   const crit = HAS_ART('s_m_' + mm + '_strip') ? `<i class="sc-mm" style="width:${mw}px;height:${mh}px;right:${Math.round(G.SW * .07)}px;bottom:calc(100% - ${Math.round(G.rh * .12)}px)">${scSpr('s_m_' + mm + '_strip', 8)}</i>` : '';
   const fs = hClamp(G.SW * .056, 15, 20); // способность; название — вдвое крупнее
-  return `<div class="wreveal sc-rev side-${al} ${anim ? '' : 'know'}" data-act="drawClose" role="dialog" aria-label="Ваша роль" style="padding-top:${L.st + G.cz}px;padding-bottom:${L.sb + 8}px">
+  // настоящему Демону при Безумце — сначала жетон Безумца в медальоне и LUN_CAP (перо пишет «Безумец»), через 2 с — его роль
+  const lp = anim && lunPreOn(open), post = s => lp ? `<span class="lpost">${s}</span>` : s;
+  return `<div class="wreveal sc-rev side-${al} ${anim ? '' : 'know'} ${lp ? 'lunpre' : ''}" data-act="drawClose" role="dialog" aria-label="Ваша роль" style="padding-top:${L.st + G.cz}px;padding-bottom:${L.sb + 8}px;${lp ? lunVars() : ''}">
     <i class="sc-dim"></i>${anim ? scFx(open, S.draw.open) : ''}
     <div class="sc-roll" style="width:${G.SW}px;--rh:${G.rh}px;--el:${G.el}px;--er:${G.er}px">
       <div class="sc-paper" style="max-height:${G.hmax}px;min-height:${Math.round(Math.min(G.SW * 1.12, G.hmax))}px;padding:${G.pt}px ${G.bi + G.br + 6}px ${G.bi + G.bb + 4}px ${G.bi + G.bl + 6}px">
         ${bord}${ink}${drips}
         <div class="sc-body" style="--fs:${fs.toFixed(1)}px;--md:${G.md}px">
-          <div class="sc-med"><i class="sc-medr" style="background-image:var(--a-s-medal-${tk})"></i>${ico(r, al, 'sc-ric')}</div>
-          <div class="sc-for">Ваша роль</div>
-          <div class="sc-nw"><span class="sc-name">${esc(E.rname(r))}</span>${quill}</div>
-          <div class="sc-team">${esc(E.TEAM_RU[t] || '')} · ${al === 'good' ? 'добро' : 'зло'}</div>
-          <div class="sc-ab">${esc(DATA.roles[r].ability)}</div></div>
+          <div class="sc-med"><i class="sc-medr" style="background-image:var(--a-s-medal-${tk})"></i>${lp ? ico('lunatic', 'good', 'sc-ric lpre') : ''}${ico(r, al, lp ? 'sc-ric lpost' : 'sc-ric')}</div>
+          <div class="sc-for">${lp ? lunSw(esc(LUN_CAP), 'Ваша роль') : 'Ваша роль'}</div>
+          <div class="sc-nw"><span class="sc-name">${lp ? lunSw(lunName(), esc(E.rname(r))) : esc(E.rname(r))}</span>${quill}</div>
+          <div class="sc-team">${post(`${esc(E.TEAM_RU[t] || '')} · ${al === 'good' ? 'добро' : 'зло'}`)}</div>
+          <div class="sc-ab">${post(esc(DATA.roles[r].ability))}</div></div>
         ${sparks}<i class="sc-sweep"></i></div>
       ${crit}<i class="sc-rt"></i><i class="sc-track"><i class="sc-rb"></i></i></div>
     <div class="shhint wrlater sc-later">Запомните роль и нажмите — свиток свернётся</div></div>`;
@@ -2941,12 +3002,14 @@ function wallOverlay() {
     <button class="grimx" data-act="wallHide" aria-label="${crypt ? 'Свернуть склеп' : vt ? 'Свернуть витраж' : 'Свернуть стену'}"></button>
     ${open ? (() => { const op = E.P(S, open.pid), r = (op && seenRole(op)) || E.drawShown(open), al = isGoodRole(r) ? 'good' : 'evil';
       // ячейка «распахивается»: роль вырастает из её места на стене; за иконкой — вспышка и магический круг цвета её рун.
-      // Имени нет — только «Ваша роль»; закрыть можно через 2 секунды (подсказка появляется тогда же)
-      const col = d.open % 3, row = Math.floor(d.open / 3);
-      return `<div class="wreveal side-${al} c-${open.color}" data-act="drawClose" role="dialog" aria-label="Ваша роль" style="transform-origin:${Math.round((col + 0.5) / 3 * 100)}% ${170 + row * 122}px">
-        ${crypt ? cryptFx() : vt ? vitrFx(d, d.open) : ''}<div class="wrfor">Ваша роль</div>
-        <div class="wrart">${HAS_ART('fx_circle') ? '<i class="fxc"></i>' : ''}${HAS_ART('fx_open') ? '<i class="fxo"></i>' : ''}${ico(r, al, 'wric')}</div><div class="wrname">${esc(E.rname(r))}</div>
-        <div class="wrteam">${esc(E.TEAM_RU[team(r)] || '')} · ${al === 'good' ? 'добро' : 'зло'}</div><div class="wrab">${esc(DATA.roles[r].ability)}</div>
+      // Имени нет — только «Ваша роль»; закрыть можно через 2 секунды (подсказка появляется тогда же).
+      // Настоящему Демону при Безумце — сначала жетон Безумца (lp), через 2 с — его роль
+      const col = d.open % 3, row = Math.floor(d.open / 3), lp = lunPreOn(open), post = s => lp ? `<span class="lpost">${s}</span>` : s;
+      return `<div class="wreveal side-${al} c-${open.color} ${lp ? 'lunpre' : ''}" data-act="drawClose" role="dialog" aria-label="Ваша роль" style="transform-origin:${Math.round((col + 0.5) / 3 * 100)}% ${170 + row * 122}px;${lp ? lunVars() : ''}">
+        ${crypt ? cryptFx() : vt ? vitrFx(d, d.open) : ''}<div class="wrfor">${lp ? lunSw(esc(LUN_CAP), 'Ваша роль') : 'Ваша роль'}</div>
+        <div class="wrart">${HAS_ART('fx_circle') ? '<i class="fxc"></i>' : ''}${HAS_ART('fx_open') ? '<i class="fxo"></i>' : ''}${lp ? ico('lunatic', 'good', 'wric lpre') : ''}${ico(r, al, lp ? 'wric lpost' : 'wric')}</div>
+        <div class="wrname">${lp ? lunSw(lunName(), esc(E.rname(r))) : esc(E.rname(r))}</div>
+        <div class="wrteam">${post(`${esc(E.TEAM_RU[team(r)] || '')} · ${al === 'good' ? 'добро' : 'зло'}`)}</div><div class="wrab">${post(esc(DATA.roles[r].ability))}</div>
         <div class="shhint wrlater">${crypt ? 'Запомните роль и нажмите — сундук закроется' : vt ? 'Запомните роль и нажмите — окно погаснет' : 'Запомните роль и нажмите — ячейка закроется'}</div></div>`; })() : ''}</div>`;
 }
 
@@ -3279,7 +3342,7 @@ function render() {
   if (UI.tab === 'roles') filterRefs();
   paintSave();
   window.scrollTo(0, scrollY);
-  hallowAfter(); vitrAfter(); kettleAfter(); scAfter(); fitTokNames(); tabsPin();
+  hallowAfter(); vitrAfter(); kettleAfter(); scAfter(); lunPreAfter(); fitTokNames(); tabsPin();
 }
 
 /* ------------------------------------------------------------ обработчики */
@@ -3324,7 +3387,11 @@ const A = {
   outMod: arg => { const [id, v] = arg.split('|'); act(S => { S.flags.mods = Object.assign({}, S.flags.mods, { [id]: +v }); }, `${E.rname(id)}: ${(MOD_RU_ROLE[id] || { '-1': '−1 Изгой', 0: 'Изгоев без изменений', 1: '+1 Изгой' })[v]}`); },
   setRole: (id, el) => act(S => E.setupRole(S, E.P(S, id), el.value), 'роль ' + E.P(S, id).name),
   setDrunk: (a, el) => act(S => E.makeDrunk(S, el.value), 'Пьяница'),
-  setBelieves: (id, el) => act(S => { E.P(S, id).believes = el.value || null; }, 'роль-обманка'),
+  // Безумец — через общий выбор (тот же, что в окне «Блефы и ложные цели»): пусто или Демон в игре — «тот же Демон»
+  setBelieves: (id, el) => act(S => { const p = E.P(S, id); if (p.role === 'lunatic') E.setLunAs(S, el.value || null); else p.believes = el.value || null; }, 'роль-обманка'),
+  lunOpen: () => { UI.lunOpen = !UI.lunOpen; render(); },
+  lunAs: (a, el) => act(S => E.setLunAs(S, el.value || null), 'Безумец: каким Демоном себя считает'),
+  lunShow: v => act(S => { S.flags.lunShow = v === 'demon' ? 'demon' : 'lunatic'; }, 'Безумец: что видит Демон при выдаче роли'),
   setMarionette: (a, el) => { if (el.value) act(S => E.makeMarionette(S, el.value), 'Марионетка'); },
   bluff: (i, el) => act(S => { S.bluffs[+i] = el.value || null; }, 'блеф Демона'),
   // выбор подготовки — и посреди игры (отметка в Гримуаре переезжает: setPrepFlag)
@@ -3567,14 +3634,17 @@ const A = {
     else if (onOk(p)) d.on = id;
   }),
   showOpen: i => { const g = (UI.showGroups || [])[+i]; if (g) { UI.show = { screens: g.screens, i: 0 }; render(); } },
-  showNext: () => { if (!UI.show) return;
+  showNext: () => { if (!UI.show || (UI.show.screens[UI.show.i] || {}).auto) return; // экран с auto сменяется сам
     // горизонтально экран с карточкой и ролями — в два нажатия: сначала карточка, потом роли
     if (UI.showLand && !UI.show.sub && showHasBoth(UI.show.screens[UI.show.i])) { UI.show.sub = 1; render(); return; }
     UI.show.sub = 0; UI.show.i += 1; if (UI.show.i >= UI.show.screens.length) UI.show = null; render(); },
   // горизонтальный показ (запоминается на устройстве); ⟲ — повернуть на 180°, если держат телефон другим боком
   showLand: () => { UI.showLand = !UI.showLand; if (UI.show) UI.show.sub = 0; try { localStorage.setItem('botc-grimoire-showland', UI.showLand ? '1' : ''); } catch (e) { /* без хранилища — до перезагрузки */ } render(); },
   showFlip: () => { UI.showFlip = !UI.showFlip; try { localStorage.setItem('botc-grimoire-showflip', UI.showFlip ? '1' : ''); } catch (e) { /* без хранилища */ } render(); },
-  showRole: id => { const p = E.P(S, id), r = seenRole(p); UI.show = { screens: [{ caption: 'Ваша роль', items: [{ role: r, align: r === p.role ? p.align : undefined }] }], i: 0 }; render(); },
+  // на подготовке настоящему Демону при Безумце — как в сцене выдачи: жетон Безумца и LUN_CAP, через 2 с сам сменяется его ролью
+  showRole: id => { const p = E.P(S, id), r = seenRole(p);
+    const pre = S.phase === 'setup' && E.lunPrelude(S, p) ? [{ caption: LUN_CAP, items: [{ role: 'lunatic' }], auto: LUN_PRE }] : [];
+    UI.show = { screens: pre.concat([{ caption: 'Ваша роль', items: [{ role: r, align: r === p.role ? p.align : undefined }] }]), i: 0 }; showAuto(); render(); },
   showRef: rid => { UI.show = { screens: [{ caption: '', items: [{ role: rid, align: DATA.roles[rid].team === 'fabled' || DATA.roles[rid].team === 'loric' ? 'good' : undefined }] }], i: 0 }; render(); },
   // жребий: каменная стена
   drawStart: () => { if (S.draw) return wallIn(); const pr = E.drawProblem(S); if (pr) return alertNote(pr); UI.kpick = []; act(S => E.drawStart(S), 'жребий: стена'); wallIn(); },
@@ -3679,7 +3749,10 @@ const A = {
     const fxs = HFX.filter(k => hfxOk(k) && k !== UI.openFx); UI.openFx = fxs[Math.floor(Math.random() * fxs.length)] || 'ghost';
     act(S => E.drawOpen(S, +i), 'жребий: ячейка открыта'); },
   // закрыть роль можно не раньше чем через 2 секунды — чтобы игрок успел прочитать и не закрыл случайно (было 3 с; просьба пользователя 2026-10-18)
-  drawClose: () => { if (UI.openAt && Date.now() - UI.openAt < 2000 + (kettleOn() ? KT.card : scOn() ? SCT.card : 0)) return; UI.openAt = null;
+  // Демону при Безумце — 2 с после того, как вместо жетона Безумца появилась его роль
+  drawClose: () => { const oc = S.draw && S.draw.open !== null ? S.draw.cells[S.draw.open] : null;
+    const wait = lunPreOn(oc) ? revealAt() + LUN_PRE + 2000 : 2000 + (kettleOn() ? KT.card : scOn() ? SCT.card : 0);
+    if (UI.openAt && Date.now() - UI.openAt < wait) return; UI.openAt = null;
     if (kettleOn()) { UI.kbrew = null; UI.kpick = []; UI.kback = Date.now(); } // котёл: камера возвращается к полкам
     // «Печати»: вскрытый свиток ложится на место (анимация ячейки — один раз, потом класс не нужен)
     if (scOn()) { const i = S.draw.open; UI.scBack = { i }; setTimeout(() => { if (UI.scBack && UI.scBack.i === i) UI.scBack = null; }, 900); }

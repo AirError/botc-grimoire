@@ -1978,6 +1978,54 @@ try {
     ok('Джинксы: в Catfishing и Everyone Can Be Evil джинксов нет', ['catfishing', 'ecbe'].every(k => E.jinxesInPlay(E.newGame(k)).length === 0));
   }
 
+  // Безумец — выдача (заметка пользователя 2026-11-06; вики, Lunatic → How to Run): по умолчанию считает себя тем же Демоном, что в игре;
+  // рассказчик может выбрать другого; настоящему Демону — сначала жетон Безумца (по умолчанию, если Демон тот же) или сразу его роль
+  {
+    const TF = ['grandmother', 'sailor', 'chambermaid', 'exorcist', 'innkeeper'];
+    const blank = (pool, n) => { const G = E.newGame('bmr'); for (let i = 0; i < (n || 8); i++) G.players.push(E.newPlayer('B' + i)); G.pool = pool; return G; };
+    let same = 0, tot = 0;
+    for (const dem of ['po', 'zombuul', 'shabaloth', 'pukka']) for (let k = 0; k < 8; k++) {
+      const G = blank(TF.concat('lunatic', 'assassin', dem)); E.randomDeal(G); tot++; if (byRole(G, 'lunatic').believes === dem) same++; }
+    ok('Безумец: раздача — считает себя тем же Демоном, что в игре', same === tot, same + ' из ' + tot);
+    // жребий: Безумец открывает раньше Демона — Демон ещё в мешочке
+    const drawG = (first, second, setup) => { const G = blank(TF.concat('lunatic', 'assassin', 'po')); if (setup) setup(G);
+      G.assign = { [G.players[0].id]: { role: first }, [G.players[1].id]: { role: second } }; E.drawStart(G);
+      E.drawOpen(G, 0); const c0 = Object.assign({}, G.draw.cells[0]); E.drawClose(G); E.drawOpen(G, 1); const c1 = Object.assign({}, G.draw.cells[1]); E.drawClose(G);
+      return { G, c0, c1 }; };
+    let r = drawG('lunatic', 'po');
+    ok('Безумец: жребий, открыл раньше Демона — тот же Демон (из мешочка)', r.c0.role === 'lunatic' && r.c0.believes === 'po' && !r.c0.pre, JSON.stringify(r.c0));
+    ok('Безумец: жребий — Демону сначала жетон Безумца (по умолчанию)', r.c1.role === 'po' && r.c1.pre === 'lunatic', JSON.stringify(r.c1));
+    r = drawG('po', 'lunatic');
+    ok('Безумец: Демон открыл раньше — жетон Безумца (Безумец ещё в мешочке), Безумец — тот же Демон', r.c0.pre === 'lunatic' && r.c1.believes === 'po', JSON.stringify([r.c0, r.c1]));
+    r = drawG('lunatic', 'po', G => { G.flags.lunShow = 'demon'; });
+    ok('Безумец: «Жетон Демона» — Демону сразу его роль', !r.c1.pre);
+    r = drawG('lunatic', 'po', G => { E.setLunAs(G, 'zombuul'); });
+    ok('Безумец: выбран другой Демон — считает себя им, Демону по умолчанию свой жетон', r.c0.believes === 'zombuul' && !r.c1.pre && E.lunShowMode(r.G) === 'demon', JSON.stringify([r.c0, r.c1]));
+    r = drawG('lunatic', 'po', G => { E.setLunAs(G, 'zombuul'); G.flags.lunShow = 'lunatic'; });
+    ok('Безумец: другой Демон и «Жетон Безумца» — Демону жетон Безумца', r.c1.pre === 'lunatic');
+    { const G = blank(TF.concat('goon', 'assassin', 'po')); G.assign = { [G.players[0].id]: { role: 'po' } }; E.drawStart(G); E.drawOpen(G, 0);
+      ok('Безумца нет в игре — Демону сразу его роль', !G.draw.cells[0].pre); }
+    // подготовка: сменили Демона — Безумец (ещё не видел роль) следом; явный выбор не сбивается
+    let G = game(TF.concat('lunatic', 'assassin', 'po'), 'bmr'); E.autoSetup(G, false);
+    ok('Безумец: подготовка — тот же Демон', byRole(G, 'lunatic').believes === 'po');
+    E.setupRole(G, byRole(G, 'po'), 'zombuul');
+    ok('Безумец: сменили Демона на подготовке — Безумец следом', byRole(G, 'lunatic').believes === 'zombuul', byRole(G, 'lunatic').believes);
+    E.setLunAs(G, 'shabaloth'); E.setupRole(G, byRole(G, 'zombuul'), 'pukka'); E.autoSetup(G, false); E.autoSetup(G, true);
+    ok('Безумец: выбранный рассказчиком Демон держится при смене Демона и «Заполнить случайно»', byRole(G, 'lunatic').believes === 'shabaloth' && G.flags.lunAs === 'shabaloth');
+    E.setLunAs(G, 'pukka');
+    ok('Безумец: выбрали Демона, который в игре, — это «тот же»', G.flags.lunAs === null && byRole(G, 'lunatic').believes === 'pukka' && E.lunShowMode(G) === 'lunatic');
+    ok('Безумец: «Показать игроку его роль» на подготовке — Демону сначала Безумец', E.lunPrelude(G, byRole(G, 'pukka')) && !E.lunPrelude(G, byRole(G, 'assassin')));
+    // жребий закончен — Безумец роль видел: смена Демона его «Демона» не меняет
+    r = drawG('lunatic', 'po'); { let g = 0; while (r.G.draw.turn && g++ < 20) { E.drawOpen(r.G, r.G.draw.cells.findIndex(c => !c.pid)); E.drawClose(r.G); } }
+    E.setupRole(r.G, byRole(r.G, 'po'), 'zombuul');
+    ok('Безумец: после жребия (видел роль) — «Демон» не меняется', byRole(r.G, 'lunatic').believes === 'po', byRole(r.G, 'lunatic').believes);
+    // посреди игры Безумцем стал другой (Яга) — тот же Демон, что в игре
+    G = game(TF.concat('goon', 'assassin', 'po'), 'bmr'); E.autoSetup(G, true); G.flags.lunAs = 'shabaloth'; E.startGame(G);
+    E.changeRole(G, byRole(G, 'goon'), 'lunatic');
+    ok('Безумец посреди игры (смена роли) — тот же Демон, что в игре, даже если на подготовке выбран другой', byRole(G, 'lunatic').believes === 'po', byRole(G, 'lunatic').believes);
+    ok('Безумец: похожие Демоны — Чёрт и Но Даши, По на Чёрта не похож', E.lunKin('imp') === E.lunKin('nodashii') && E.lunKin('po') !== E.lunKin('imp') && E.lunKin('legion') !== E.lunKin('riot'));
+  }
+
   for (const k of Object.keys(DATA.scripts)) ok('сценарий ' + k + ' — все роли в данных', DATA.scripts[k].roles.every(r => DATA.roles[r]));
 } catch (e) { results.push('ERROR ' + e.message + '\n' + e.stack); }
 

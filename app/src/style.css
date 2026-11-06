@@ -1947,3 +1947,20 @@ html .wallov.seals .wcell.sc-cell.opened { animation: scShake .14s ease-in-out 2
 @media (prefers-reduced-motion: reduce) {
   .sc-fl .sc-spr, .sc-flg, .sc-rays, .sc-dust, .sc-cat .sc-spr, .sc-rabbit .sc-spr, .sc-snail, .sc-snail .sc-spr, .sc-glow, .wallov.seals .wall.roll { animation: none !important; }
 }
+
+/* Безумец (заметка пользователя 2026-11-06): настоящему Демону при выдаче роли — сначала жетон Безумца и «В данной игре есть Безумец»,
+   через 2 с — «Ваша роль» и его роль (во всех сценах выдачи). --lpd — от нажатия: когда в сцене появляется роль + 2 с (ui.js lunVars).
+   Пары «что сначала / что потом» лежат в одной клетке сетки и сменяют друг друга */
+.lsw { display: inline-grid; justify-items: center; align-items: center; }
+.lsw > * { grid-area: 1 / 1; }
+.lpre { animation: lunOut .35s var(--lpd, 2.3s) ease-in forwards; }
+.lpost { opacity: 0; animation: lunIn .45s var(--lpd, 2.3s) ease-out forwards; }
+@keyframes lunOut { to { opacity: 0; visibility: hidden; } }
+@keyframes lunIn { from { opacity: 0; } to { opacity: 1; } }
+.wrart .wric.lpre { position: absolute; inset: 0; margin: auto; }
+.wreveal .lgood { color: #A9C4F5; }
+.sc-rev .lgood { color: #2B4C8C; }
+.sc-for .lpre { font-size: calc(var(--fs) * 1.05); color: #4A3F35; } /* «В данной игре есть Безумец» — крупнее «Ваша роль» (13 px мелко на iPad) */
+.sc-ric.lpre { animation: scIco .7s calc(var(--t-medal) + 120ms) ease-out both, lunOut .35s var(--lpd) ease-in forwards; }
+.sc-ric.lpost { animation: lunIn .45s var(--lpd) ease-out both; }
+.wreveal.lunpre .wrlater { animation-delay: calc(var(--lpd) + 2s) !important; }

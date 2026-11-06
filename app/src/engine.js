@@ -281,13 +281,60 @@ function vigorEnd(S) {
   const keep = new Set(S.players.filter(q => hasTok(q, 'hasability', 'vigormortis')).map(q => q.id));
   for (const q of S.players) q.tokens = q.tokens.filter(t => !(t.k === 'poisoned' && t.src === 'vigormortis' && (!alive || (t.by && !keep.has(t.by)))));
 }
-// кем себя считает новый Пьяница (Горожанин сценария не в игре и не из блефов) или Безумец (Демон сценария)
+// кем себя считает новый Пьяница (Горожанин сценария не в игре и не из блефов) или Безумец (Демон в игре — lunBelief)
 function pickBelieved(S, role) {
   const used = new Set(S.players.flatMap(q => [q.role, q.believes]).concat(S.bluffs || []));
   if (role === 'drunk') return pick(S.script.roles.filter(r => R(r) && R(r).team === 'townsfolk' && !used.has(r))) || null;
-  if (role === 'lunatic') return pick(S.script.roles.filter(r => R(r) && R(r).team === 'demon')) || null;
+  // посреди игры (Яга, смена роли) — Демон в игре (вики: «как будто он Демон, который в игре»); выбор подготовки (lunAs) — только на подготовке
+  if (role === 'lunatic') return (S.phase !== 'setup' && realDemonRole(S)) || lunBelief(S);
   return null;
 }
+/* Безумец (вики, Lunatic → How to Run): жетоны Безумца и Демона кладут в мешочек, а потом меняют местами в Гримуаре — Безумец тянет
+   жетон Демона и считает себя ТЕМ ЖЕ Демоном, что в игре («будите его, как будто он этот Демон»), а настоящий Демон тянет жетон Безумца.
+   Можно и другим Демоном: в мешочек — два жетона Демона, тогда настоящий Демон тянет свой. Заметка пользователя 2026-11-06: «По выбирает
+   троих, а настоящий Демон одного — на постоянке он поймёт, что не Демон»; «можно даже выдать такого же демона»; «настоящий Демон может
+   получить жетон Демона или Безумца — это не правило». Раньше Безумцу доставался случайный Демон сценария.
+   S.flags.lunAs — каким Демоном считает себя Безумец (null — тем же, что в игре); S.flags.lunShow — что видит настоящий Демон, когда
+   получает роль: 'lunatic' — жетон Безумца и «В данной игре есть Безумец», через 2 с — свою роль; 'demon' — сразу свою роль;
+   null — как в вики: тот же Демон у Безумца — жетон Безумца, другой — жетон Демона */
+// как Демон ходит ночью: у похожих ключ один — Безумец не заметит подмены по числу выборов и по раскладке (choiceCount не годится:
+// у По в тексте «выберите 3 игроков»). Демонов не из списка считаем непохожими ни на кого
+const LUN_KIN = { imp: 'k1', nodashii: 'k1', vortox: 'k1', vigormortis: 'k1-', fanggu: 'k1+', lleech: 'k1h', pukka: 'pk', po: 'po', shabaloth: 'k2',
+  alhadikhia: 'k3', zombuul: 'zb', ojo: 'ojo', kazali: 'kz', lordoftyphon: 'lot' };
+const LUN_KIN_RU = { k1: '1 игрок за ночь', 'k1-': '1 игрок за ночь; −1 Изгой при раздаче', 'k1+': '1 игрок за ночь; +1 Изгой при раздаче',
+  k1h: '1 игрок за ночь; в 1-ю ночь выбирает «хозяина»', pk: 'выбирает с 1-й ночи; умирает прошлый выбранный', po: 'можно никого — тогда следующей ночью троих',
+  k2: '2 игрока за ночь', k3: '3 игрока за ночь, их объявляют всем', zb: 'убивает, только если днём никто не умер', ojo: 'выбирает роль, а не игрока',
+  kz: 'сам назначает Приспешников (при раздаче их нет)', lot: 'злые сидят в ряд; +1 Приспешник' };
+const lunKin = r => LUN_KIN[r] || 'x:' + r;
+// Демон в игре (не Безумец): у игроков (живой — первым), а пока идёт жребий — ещё не вытянутый, в мешочке
+function realDemonRole(S) {
+  const p = S.players.find(demonAlive) || S.players.find(isDemon); if (p) return p.role;
+  return (S.draw && !S.draw.finished && (S.draw.bag || []).find(r => R(r) && R(r).team === 'demon')) || null;
+}
+// каким Демоном считает себя Безумец: выбор рассказчика (Демон сценария) или тот же, что в игре; Демона в игре нет (Атеист…) — прежний или любой
+function lunBelief(S, cur) {
+  const as = S.flags.lunAs, dem = r => !!r && !!R(r) && R(r).team === 'demon';
+  if (dem(as) && S.script.roles.includes(as)) return as;
+  return realDemonRole(S) || (dem(cur) ? cur : pick(S.script.roles.filter(dem)) || null);
+}
+// Безумец уже видел свою роль: открыл ячейку жребия или игра началась — тогда «кем себя считает» само не меняется
+const lunSeen = (S, p) => S.phase !== 'setup' || !!(S.draw && S.draw.cells.some(c => c.pid === p.id));
+// на подготовке Безумец, ещё не видевший роль, следует выбору: сменили Демона или раздали заново — «тот же» Демон следом
+function lunSync(S) {
+  for (const p of S.players) if (p.role === 'lunatic' && !lunSeen(S, p)) p.believes = lunBelief(S, p.believes);
+}
+// рассказчик выбрал Демона Безумца (пусто или Демон в игре — «тот же, что в игре»): выбор — явный, меняет и уже видевшего
+function setLunAs(S, rid) {
+  const real = realDemonRole(S);
+  S.flags.lunAs = rid && R(rid) && R(rid).team === 'demon' && rid !== real ? rid : null;
+  for (const p of S.players) if (p.role === 'lunatic') p.believes = lunBelief(S, p.believes);
+}
+// что показать настоящему Демону, когда он получает роль
+const lunShowMode = S => S.flags.lunShow || (S.flags.lunAs && S.flags.lunAs !== realDemonRole(S) ? 'demon' : 'lunatic');
+// Безумец в игре: у игрока или (жребий) в мешочке
+const lunInGame = S => S.players.some(p => p.role === 'lunatic') || !!(S.draw && !S.draw.finished && (S.draw.bag || []).includes('lunatic'));
+// настоящему Демону сначала — жетон Безумца с надписью «В данной игре есть Безумец», через 2 с — его роль
+const lunPrelude = (S, p) => !!p && isDemon(p) && lunInGame(S) && lunShowMode(S) === 'lunatic';
 // opts: align — новая сторона (Заклинатель, Фань Гу), gained — полученная способность (едет вместе с ролью Философа/Каннибала),
 // believes — кем себя считает (Пьяница/Безумец; при обмене Цирюльника едет вместе с ролью, как жетон с напоминанием)
 function changeRole(S, p, role, opts) {
@@ -695,8 +742,8 @@ function autoSetup(S, force) {
     if (p.role === 'drunk' && (force || !p.believes || bl.includes(p.believes))) { p.believes = notInPlay('townsfolk')[0] || null; }
     if (p.role === 'marionette' && !p.believes) p.believes = notInPlay('townsfolk')[0] || null;
     if (fakeGood(p) && p.believes) used.add(p.believes);
-    if (p.role === 'lunatic' && (force || !p.believes)) p.believes = shuffle(roles.filter(r => R(r) && R(r).team === 'demon'))[0] || null;
   }
+  lunSync(S); // Безумец — тем же Демоном, что в игре (или выбранным рассказчиком), пока не увидел роль
   if (force || !S.bluffs.filter(Boolean).length || S.bluffs.some(b => b && (used.has(b) || !canBluff(b)))) {
     const keep = force ? [] : S.bluffs.filter(b => b && !used.has(b) && canBluff(b));
     const good = shuffle(roles.filter(r => canBluff(r) && !used.has(r) && !keep.includes(r)));
@@ -834,11 +881,11 @@ function drawPut(d, i, role) {
   if (j >= 0) d.cells[j].hid = was;
   c.hid = role;
 }
-// Пьянице — Горожанин сценария не в игре и не в мешочке; Безумцу — Демон сценария
+// Пьянице — Горожанин сценария не в игре и не в мешочке; Безумцу — Демон в игре (у игрока или ещё в мешочке) или выбранный рассказчиком
 function drawBelieves(S, p) {
   const used = new Set(S.players.map(q => q.role).concat(S.players.map(q => q.believes), S.draw.bag, S.bluffs || []));
   if (p.role === 'drunk') p.believes = pick(S.script.roles.filter(r => R(r) && R(r).team === 'townsfolk' && !used.has(r))) || null;
-  if (p.role === 'lunatic') p.believes = pick(S.script.roles.filter(r => R(r) && R(r).team === 'demon')) || null;
+  if (p.role === 'lunatic') p.believes = lunBelief(S);
 }
 const drawShown = c => c.believes || c.role; // что видит игрок
 function drawOpen(S, i) {
@@ -853,6 +900,8 @@ function drawOpen(S, i) {
     if (p.role === 'drunk' || p.role === 'lunatic') drawBelieves(S, p);
   } else drawPut(d, i, null); // роль выдана до стены: её ячейка «пустая», жетон из неё переезжает в пустую
   c.role = p.role; c.believes = p.believes || null; c.pid = p.id; d.open = i;
+  // настоящему Демону при Безумце — сначала жетон Безумца (решает рассказчик, lunShowMode); в ячейке — чтобы перерисовка не меняла
+  c.pre = lunPrelude(S, p) ? 'lunatic' : null;
   return true;
 }
 function drawClose(S) {
@@ -3486,7 +3535,7 @@ function klutzChoose(S, pid) {
 }
 
 
-const ENGINE = { canBluff, setPrepFlag, ensureHerring, PREP_FLAGS, poolMarExtra, poolDrunkExtra, poolExtra, poolOwnSwaps, SWAP_TOKENS,bansheeVotes, fauxPawOn, droisoned, nightDeaths, revive, psychopathKill, exeQuestions, roleWorks, makeMarionette, makeDrunk, setupRole, storytellerRole, gossipPending, setGossip, pithagAdvice, puzzleHit, puzzleGuess, politicianStats, politiciansPending, politicianSide, voteNeeds, ghostSpent, demonSeatNeighbours, generalGuess, choiceCount, newGame, newPlayer, P, nm, rname, realTeam, actsAs, aliveCount, aliveAll, coreCount, isTraveller, exile, exileThreshold, addTraveller, meetingBlocker, isDemon, distribution, setupDistribution, distCheck, unknownSetup, countTeams, randomDeal,
+const ENGINE = { LUN_KIN, LUN_KIN_RU, lunKin, realDemonRole, lunBelief, lunSeen, setLunAs, lunShowMode, lunInGame, lunPrelude, canBluff, setPrepFlag, ensureHerring, PREP_FLAGS, poolMarExtra, poolDrunkExtra, poolExtra, poolOwnSwaps, SWAP_TOKENS,bansheeVotes, fauxPawOn, droisoned, nightDeaths, revive, psychopathKill, exeQuestions, roleWorks, makeMarionette, makeDrunk, setupRole, storytellerRole, gossipPending, setGossip, pithagAdvice, puzzleHit, puzzleGuess, politicianStats, politiciansPending, politicianSide, voteNeeds, ghostSpent, demonSeatNeighbours, generalGuess, choiceCount, newGame, newPlayer, P, nm, rname, realTeam, actsAs, aliveCount, aliveAll, coreCount, isTraveller, exile, exileThreshold, addTraveller, meetingBlocker, isDemon, distribution, setupDistribution, distCheck, unknownSetup, countTeams, randomDeal,
   amnesiacGuess, AMNESIAC_ANSWERS, storytellerKill, voteCount, voteWeight, voudonActive, bishopActive, travellerWorks, executeNow,
   judgeRuling, gunslingerShot, gnomeAmigo, setGnomeAmigo, gnomeKill, travReveal, travDone, gangsterKill, cacklejackPick, tinkerDies, doomsayerKill, fiddlerEnd, swapSeats, goonWarn, damselGuess, changeRole, madnessExecute, harpyKill,
   finishRoles, autoSetup, setupProblems, drawStart, drawOpen, drawClose, drawCancel, drawShown, drawLocked, drawProblem, poolProblem, scriptShort, scriptOverMax, distortion,
