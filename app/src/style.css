@@ -888,9 +888,10 @@ img.shroud { object-fit: contain; }
   background: var(--card); border: 2px solid var(--line); box-shadow: 0 2px 6px rgba(0, 0, 0, .16); color: var(--ink); cursor: pointer; text-align: center;
   transition: left .18s ease, top .18s ease, background .12s, border-color .12s; }
 .rseat .rno { font-size: max(.62em, 11px); color: var(--muted); line-height: 1.1; font-variant-numeric: tabular-nums; }
-.rseat .rnm { font-weight: 800; line-height: 1.08; overflow-wrap: anywhere; max-width: 86%; }
+/* имя — в одну строку, без переноса; не влезает — шрифт меньше (fitSeatNames в ui.js; заметка пользователя 2026-11-06) */
+.rseat .rnm { font-weight: 800; line-height: 1.08; white-space: nowrap; overflow-wrap: normal; max-width: 92%; }
 .rseat .rtr { font-size: .55em; color: var(--muted); line-height: 1.1; }
-.rseat .rasg { font-size: max(.6em, 11px); color: var(--gold); font-weight: 700; line-height: 1.1; max-width: 92%; overflow-wrap: anywhere; }
+.rseat .rasg { font-size: max(.6em, 11px); color: var(--gold); font-weight: 700; line-height: 1.1; max-width: 92%; white-space: nowrap; }
 .rseat.dead { background: var(--paper); border-style: dashed; }
 .rseat.dead .rnm { color: var(--muted); }
 .rseat .shroud { position: absolute; left: 50%; top: -8%; width: 24%; height: auto; transform: translateX(-50%); pointer-events: none; filter: drop-shadow(0 2px 3px rgba(0, 0, 0, .4)); }
@@ -1964,3 +1965,9 @@ html .wallov.seals .wcell.sc-cell.opened { animation: scShake .14s ease-in-out 2
 .sc-ric.lpre { animation: scIco .7s calc(var(--t-medal) + 120ms) ease-out both, lunOut .35s var(--lpd) ease-in forwards; }
 .sc-ric.lpost { animation: lunIn .45s var(--lpd) ease-out both; }
 .wreveal.lunpre .wrlater { animation-delay: calc(var(--lpd) + 2s) !important; }
+
+/* ночной шаг и правка выбора из журнала: что выбирают — крупно (заметка пользователя 2026-11-06: «пиши крупно выбор чего это»);
+   «▦ Плиткой 2/2» справа — как было */
+.stepfields .field > label, .stepfields .flabel > span:first-child { font-size: 19px; font-weight: 700; line-height: 1.3; color: var(--ink); }
+.stepfields .flabel { align-items: flex-end; }
+.stepfields .flabel > span:last-child { white-space: nowrap; flex: none; }

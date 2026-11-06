@@ -1095,7 +1095,8 @@ try {
     G = game(['gossip', 'sailor', 'chambermaid', 'lunatic', 'zombuul'], 'bmr'); E.autoSetup(G, true); E.startGame(G);
     const lk = G.night.steps.findIndex(s => s.id === 'lunatic'), dk = G.night.steps.findIndex(s => s.lunatic);
     const lsp = E.stepSpec(G, G.night.steps[lk]), lin = lsp.info(lsp.defaults), din = dk >= 0 ? E.stepSpec(G, G.night.steps[dk]).info({}) : { tokens: [] };
-    ok('Безумец (5 игроков): на его шаге Демону ничего, следом — «Демон узнаёт Безумца»', lk >= 0 && dk === lk + 1 && !(lin.tokens || []).some(t => /Демону/.test(t.label || ''))
+    // с v100 при 5–6 игроках шаг Безумца не будят (нечего показывать), если его «Демон» не выбирает в 1-ю ночь
+    ok('Безумец (5 игроков): на его шаге Демону ничего, следом — «Демон узнаёт Безумца»', lk >= 0 && dk === lk + 1 && !lsp.active && !((lin && lin.tokens) || []).some(t => /Демону/.test(t.label || ''))
       && din.tokens.some(t => t.role === 'lunatic' && t.players[0] === byRole(G, 'lunatic').id), G.night.steps.map(s => s.key).join(','));
     G = game(['gossip', 'sailor', 'chambermaid', 'exorcist', 'innkeeper', 'lunatic', 'assassin', 'zombuul'], 'bmr'); E.autoSetup(G, true); E.startGame(G);
     const dI = E.stepSpec(G, G.night.steps.find(s => s.id === 'demoninfo')).info({});
@@ -2024,6 +2025,43 @@ try {
     E.changeRole(G, byRole(G, 'goon'), 'lunatic');
     ok('Безумец посреди игры (смена роли) — тот же Демон, что в игре, даже если на подготовке выбран другой', byRole(G, 'lunatic').believes === 'po', byRole(G, 'lunatic').believes);
     ok('Безумец: похожие Демоны — Чёрт и Но Даши, По на Чёрта не похож', E.lunKin('imp') === E.lunKin('nodashii') && E.lunKin('po') !== E.lunKin('imp') && E.lunKin('legion') !== E.lunKin('riot'));
+  }
+
+  // Безумец — шаг ночи (заметки пользователя 2026-11-06: «почему Безумец-Шабалот может выбрать 3 игроков?», «выбор безумца должен
+  // ограничиваться тем количеством жертв, которое может убить Демон, которым он себя считает», «этот текст у Безумца лишний»)
+  {
+    const R8 = ['grandmother', 'sailor', 'chambermaid', 'exorcist', 'innkeeper', 'lunatic', 'assassin', 'po'];
+    const toNight2 = () => { const G = game(R8, 'bmr'); E.autoSetup(G, true); E.startGame(G); runNight(G, {}); E.endDay(G); return G; };
+    const lunSpec = G => E.stepSpec(G, G.night.steps.find(s => s.id === 'lunatic'));
+    const nOf = sp => (sp.inputs.find(f => f.key === 't') || { n: 0 }).n;
+    let G = toNight2(), lu = byRole(G, 'lunatic');
+    ok('Безумец-«По» (тот же Демон): 1 игрок', lu.believes === 'po' && nOf(lunSpec(G)) === 1 && /как будто он По/.test(lunSpec(G).inputs[0].label), lu.believes + ' ' + nOf(lunSpec(G)));
+    const counts = ['shabaloth', 'alhadikhia', 'imp', 'pukka', 'vigormortis'].map(b => { lu.believes = b; return b + ':' + nOf(lunSpec(G)); }).join(' ');
+    ok('Безумец: выборов — как у его Демона (Шабалот 2, Аль-Адихия 3, остальные 1)', counts === 'shabaloth:2 alhadikhia:3 imp:1 pukka:1 vigormortis:1', counts);
+    lu.believes = 'po';
+    ok('Безумец: текст шага — без «Разбудите Демона», выбор показывают Демону на его шаге', !/Разбудите Демона|ЭТОТ ИГРОК/.test(lunSpec(G).text) && /как будто он По/.test(lunSpec(G).text), lunSpec(G).text);
+    // По: никого — следующей ночью троих; выбрал — снова один
+    runNight(G, { lunatic: { t: [] } }); E.endDay(G);
+    ok('Безумец-«По»: в прошлый раз никого — теперь 3', nOf(lunSpec(G)) === 3, String(nOf(lunSpec(G))));
+    runNight(G, { lunatic: { t: [byRole(G, 'sailor').id] } }); E.endDay(G);
+    ok('Безумец-«По»: выбрал игрока — снова 1', nOf(lunSpec(G)) === 1, String(nOf(lunSpec(G))));
+    { let g = 0; while (E.currentStep(G).id !== 'lunatic' && g++ < 60) { const st = E.currentStep(G), sp = E.stepSpec(G, st); if (!sp.active) E.skipStep(G); else if (!E.applyStep(G, st, Object.assign({}, sp.defaults)).ok) E.skipStep(G); } }
+    E.skipStep(G, 'manual'); runNight(G, {}); E.endDay(G);
+    ok('Безумец-«По»: шаг пропущен — как никого, следующей ночью 3', nOf(lunSpec(G)) === 3, String(nOf(lunSpec(G))));
+    // Зомбуул: днём кто-то умер — Безумца не будят
+    G = toNight2(); lu = byRole(G, 'lunatic'); lu.believes = 'zombuul';
+    ok('Безумец-«Зомбуул»: днём никто не умер — просыпается, 1 игрок', lunSpec(G).active && nOf(lunSpec(G)) === 1);
+    G.day.deaths = [byRole(G, 'sailor').id];
+    ok('Безумец-«Зомбуул»: днём кто-то умер — не просыпается', !lunSpec(G).active && /Зомбул/.test(lunSpec(G).reason), lunSpec(G).reason);
+    // 1-я ночь: текст по игре
+    G = game(R8, 'bmr'); E.autoSetup(G, true); E.startGame(G);
+    const f1 = lunSpec(G);
+    ok('Безумец, 1-я ночь (8 игроков): без «Если в игре 7» и «Разбудите Демона», с «приспешниками» и блефами', f1.active && !/Если в игре 7|Разбудите Демона/.test(f1.text)
+      && /ЭТО ВАШИ ПРИСПЕШНИКИ/.test(f1.text) && /одного любого игрока/.test(f1.text) && /Информация Демону/.test(f1.text), f1.text);
+    G = game(['gossip', 'sailor', 'chambermaid', 'lunatic', 'zombuul'], 'bmr'); E.autoSetup(G, true); E.startGame(G);
+    ok('Безумец, 1-я ночь (5 игроков): не будят; Демон узнаёт Безумца на своём шаге', !lunSpec(G).active && G.night.steps.some(s => s.lunatic), lunSpec(G).reason);
+    G = game(['gossip', 'sailor', 'chambermaid', 'lunatic', 'zombuul'], 'bmr'); E.autoSetup(G, true); E.setLunAs(G, 'pukka'); E.startGame(G);
+    ok('Безумец-«Пукка», 1-я ночь (5 игроков): будят — выбирает, как будто он Пукка', lunSpec(G).active && nOf(lunSpec(G)) === 1 && /для «отравления»/.test(lunSpec(G).text), lunSpec(G).text);
   }
 
   for (const k of Object.keys(DATA.scripts)) ok('сценарий ' + k + ' — все роли в данных', DATA.scripts[k].roles.every(r => DATA.roles[r]));

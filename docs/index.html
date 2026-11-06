@@ -891,9 +891,10 @@ img.shroud { object-fit: contain; }
   background: var(--card); border: 2px solid var(--line); box-shadow: 0 2px 6px rgba(0, 0, 0, .16); color: var(--ink); cursor: pointer; text-align: center;
   transition: left .18s ease, top .18s ease, background .12s, border-color .12s; }
 .rseat .rno { font-size: max(.62em, 11px); color: var(--muted); line-height: 1.1; font-variant-numeric: tabular-nums; }
-.rseat .rnm { font-weight: 800; line-height: 1.08; overflow-wrap: anywhere; max-width: 86%; }
+/* имя — в одну строку, без переноса; не влезает — шрифт меньше (fitSeatNames в ui.js; заметка пользователя 2026-11-06) */
+.rseat .rnm { font-weight: 800; line-height: 1.08; white-space: nowrap; overflow-wrap: normal; max-width: 92%; }
 .rseat .rtr { font-size: .55em; color: var(--muted); line-height: 1.1; }
-.rseat .rasg { font-size: max(.6em, 11px); color: var(--gold); font-weight: 700; line-height: 1.1; max-width: 92%; overflow-wrap: anywhere; }
+.rseat .rasg { font-size: max(.6em, 11px); color: var(--gold); font-weight: 700; line-height: 1.1; max-width: 92%; white-space: nowrap; }
 .rseat.dead { background: var(--paper); border-style: dashed; }
 .rseat.dead .rnm { color: var(--muted); }
 .rseat .shroud { position: absolute; left: 50%; top: -8%; width: 24%; height: auto; transform: translateX(-50%); pointer-events: none; filter: drop-shadow(0 2px 3px rgba(0, 0, 0, .4)); }
@@ -1968,6 +1969,12 @@ html .wallov.seals .wcell.sc-cell.opened { animation: scShake .14s ease-in-out 2
 .sc-ric.lpost { animation: lunIn .45s var(--lpd) ease-out both; }
 .wreveal.lunpre .wrlater { animation-delay: calc(var(--lpd) + 2s) !important; }
 
+/* ночной шаг и правка выбора из журнала: что выбирают — крупно (заметка пользователя 2026-11-06: «пиши крупно выбор чего это»);
+   «▦ Плиткой 2/2» справа — как было */
+.stepfields .field > label, .stepfields .flabel > span:first-child { font-size: 19px; font-weight: 700; line-height: 1.3; color: var(--ink); }
+.stepfields .flabel { align-items: flex-end; }
+.stepfields .flabel > span:last-child { white-space: nowrap; flex: none; }
+
 </style>
 <div id="app"></div>
 <script>
@@ -2319,6 +2326,14 @@ const lunShowMode = S => S.flags.lunShow || (S.flags.lunAs && S.flags.lunAs !== 
 const lunInGame = S => S.players.some(p => p.role === 'lunatic') || !!(S.draw && !S.draw.finished && (S.draw.bag || []).includes('lunatic'));
 // настоящему Демону сначала — жетон Безумца с надписью «В данной игре есть Безумец», через 2 с — его роль
 const lunPrelude = (S, p) => !!p && isDemon(p) && lunInGame(S) && lunShowMode(S) === 'lunatic';
+// сколько игроков «атакует» Безумец в последующие ночи — сколько убивает Демон, которым он себя считает: Шабалот 2, Аль-Адихия 3,
+// По — 1, а после ночи, когда он никого не выбрал, — 3 (S.flags.lunPo_<id>); остальные — по тексту способности (Легион, Мятежник — 0)
+const LUN_PICKS = { shabaloth: 2, alhadikhia: 3 };
+function lunPicks(S, p) {
+  const b = p.believes; if (!b) return 1;
+  if (b === 'po') return S.flags['lunPo_' + p.id] ? 3 : 1;
+  return LUN_PICKS[b] != null ? LUN_PICKS[b] : choiceCount(b);
+}
 // opts: align — новая сторона (Заклинатель, Фань Гу), gained — полученная способность (едет вместе с ролью Философа/Каннибала),
 // believes — кем себя считает (Пьяница/Безумец; при обмене Цирюльника едет вместе с ролью, как жетон с напоминанием)
 function changeRole(S, p, role, opts) {
@@ -3754,7 +3769,7 @@ function stepSpec(S, step) {
     }
     return r;
   };
-  spec.bounds = boundsFor(step.id, first).slice();
+  spec.bounds = (spec.bounds || boundsFor(step.id, first)).slice(); // логика роли может задать свои рамки (Безумец — по своему «Демону»)
   if (!spec.bounds.length) spec.bounds.push({ w: 'Способность', t: role.ability });
   if (off) spec.bounds.push(Y('Способность не работает: можно показать любую информацию, эффекты не применяются'));
   if (p.role === 'cannibal') spec.bounds.push(Y('Каннибалу не говорят, чья это способность: будите его как обычную роль'));
@@ -4638,7 +4653,17 @@ const LOGIC = {
       // заметка пользователя 2026-10-20: «у Безумца, получившего Пиявицу, нет шага выбора хозяина»). Казали — раздача, не выбор
       const fp = p.believes && p.believes !== 'kazali' && DATA.order.first.includes(p.believes) && choiceCount(p.believes) ? choiceCount(p.believes) : 0;
       const pickLabel = p.believes === 'lleech' ? 'хозяином' : p.believes === 'pukka' ? 'для «отравления»' : '';
-      return {
+      // текст шага — по игре, а не официальный («Если в игре 7 и более игроков… Разбудите Демона…»): число игроков приложение знает,
+      // а Демону Безумца показывают на его шаге (заметка пользователя 2026-11-06: «этот текст у Безумца лишний»).
+      // Меньше 7 игроков и выбирать в 1-ю ночь нечего — Безумца не будят (официальный текст: «если 7 и более игроков, разбудите»)
+      if (!big && !fp) return { active: false, reason: 'меньше 7 игроков — Безумцу, как и Демону, не показывают «приспешников» и блефы; кто Безумец, Демон узнает на своём шаге' };
+      const dn = rname(p.believes), what = p.believes === 'lleech' ? '«хозяина»' : p.believes === 'pukka' ? 'игрока для «отравления»' : fp > 1 ? `${fp} игроков` : 'игрока';
+      const toDemon = !demon ? '' : (S.night.steps || []).some(s => s.lunatic) ? ' Кто Безумец, Демон узнает на следующем шаге.' : ' Кто Безумец, Демон узнает на шаге «Информация Демону».';
+      const text = `Разбудите Безумца, как будто он Демон (${dn}).`
+        + (big && k ? ` Покажите жетон *ЭТО ВАШИ ПРИСПЕШНИКИ* и укажите на ${k === 1 ? 'одного любого игрока' : `${k} любых игроков`}.` : '')
+        + (big ? ' Покажите жетон *ЭТИХ РОЛЕЙ В ИГРЕ НЕТ* и 3 жетона любых добрых ролей.' : '')
+        + (fp ? ` Пусть выберет ${what}, как будто он ${dn}.` : '') + ` Усыпите Безумца.${toDemon}`;
+      return { text,
         inputs: (big ? [PL('m', k, `Кого показать Безумцу как «Приспешников» (${k})`, notSelf(p)), ROLE('b0', '«Блеф» 1', canBluff), ROLE('b1', '«Блеф» 2', canBluff), ROLE('b2', '«Блеф» 3', canBluff)] : [])
           .concat(fp ? [PL('t', fp, `Кого Безумец выбирает${pickLabel ? ' ' + pickLabel : ''}, как будто он ${rname(p.believes)} (ничего не происходит)`)] : []),
         defaults: big ? { m: def.m, b0: def.b[0], b1: def.b[1], b2: def.b[2] } : {},
@@ -4651,8 +4676,21 @@ const LOGIC = {
           log(S, `Безумец (${p.name}) узнаёт, что он «Демон»${fp && (inp.t || []).length ? `; «выбирает»: ${inp.t.map(id => nm(S, id)).join(', ')}` : ''}`, 'info'); },
       };
     }
-    return { inputs: [PL('t', 3, 'Кого «атакует» Безумец', () => true, { min: 0 })],
-      apply: inp => { S.night.data.lunatic = inp.t || []; log(S, `Безумец (${p.name}) «атакует»: ${(inp.t || []).map(id => nm(S, id)).join(', ') || 'никого'}`, 'action'); } };
+    // последующие ночи (вики: «будите Безумца, как будто он тот Демон»; пример — Безумец-Шабалот выбирает двоих, Безумец-Зомбуул
+    // просыпается редко): выбор — не больше, чем убивает Демон, которым он себя считает (заметки пользователя 2026-11-06: «почему
+    // Безумец-Шабалот может выбрать 3 игроков?», «выбор безумца должен ограничиваться тем количеством жертв, которое может убить Демон»)
+    const b = p.believes, dn = b ? rname(b) : 'Демон';
+    if (b === 'zombuul' && S.day && (S.day.deaths || []).length) return { active: false, reason: `Безумец считает себя Демоном «${dn}», а сегодня днём кто-то умер — в такую ночь ${dn} не убивает, Безумца не будите (вики)` };
+    const n = lunPicks(S, p), po = b === 'po';
+    const who = n === 1 ? 'игрока' : `${n} игроков`;
+    return { text: n ? `Разбудите Безумца, как будто он ${dn}: пусть выберет ${who}${po && n === 1 ? ' или никого (тогда следующей ночью — троих)' : ''}. Усыпите Безумца. Кого он выбрал, покажете настоящему Демону на его шаге.`
+        : `Разбудите Безумца, как будто он ${dn}, и усыпите: выбирать игроков ${dn} не должен.`,
+      bounds: [I(n ? `${n === 1 ? '1 игрока' : `до ${n} игроков`}${po && n === 1 ? ' или никого' : ''}, как будто он ${dn} — ничего не происходит` : `как будто он ${dn} — ничего не происходит`), Y('Кого он выбрал, настоящий Демон узнаёт на своём шаге')],
+      inputs: n ? [PL('t', n, `Кого «атакует» Безумец, как будто он ${dn}${n > 1 ? ` (до ${n})` : ''}`, () => true, { min: 0 })] : [],
+      info: inp => po && n === 1 && !(inp.t || []).length ? { secret: true, show: 'Никого', lines: ['Следующей ночью Безумец, как будто он По, выбирает троих'] } : null,
+      apply: inp => { S.night.data.lunatic = inp.t || [];
+        if (po) S.flags['lunPo_' + p.id] = !(inp.t || []).length; // По: в прошлый раз никого — теперь троих
+        log(S, `Безумец (${p.name}) «атакует»: ${(inp.t || []).map(id => nm(S, id)).join(', ') || 'никого'}`, 'action'); } };
   },
 
   /* --- не из базовой коробки: роли сценария Catfishing (Carousel) */
@@ -5276,6 +5314,9 @@ function skipStep(S, how) {
     log(S, `Пропущен шаг: ${spec.title}${spec.who ? ` (${spec.who})` : ''}`, 'skip');
     // По (вики): «покачал головой» — следующей ночью атакует троих; пропуск шага По = никого не выбрал (заметка пользователя 2026-10-14)
     if (st.id === 'po' && !S.flags.poCharged && !abilityOff(S, P(S, st.pid))) { S.flags.poCharged = true; log(S, 'По никого не выбрал — следующей ночью атакует троих', 'action'); }
+    // Безумец-«По»: пропустили шаг — как у настоящего По, «никого» (следующей ночью он выбирает троих)
+    { const lp = st.id === 'lunatic' && S.n > 1 && !st.fresh && P(S, st.pid);
+      if (lp && lp.role === 'lunatic' && lp.believes === 'po' && !S.flags['lunPo_' + lp.id]) S.flags['lunPo_' + lp.id] = true; }
     // Девица: пропустил — показал иначе или решил не показывать, больше не напоминаем (заметка пользователя 2026-10-31)
     if (st.id === 'damsel') S.flags.damselShown = true;
     // Странник: пропустили — сторону показали иначе (шепнули днём), больше не напоминаем
@@ -5537,6 +5578,19 @@ const ENGINE = { LUN_KIN, LUN_KIN_RU, lunKin, realDemonRole, lunBelief, lunSeen,
    {back} — кто этой ночью снова жив (Профессор, Шабалот, Аль-Адихия; вики: объявить, не говоря почему).
    back — никто не умер, но кто-то ожил; mixed — и смерти, и воскрешение (заметка пользователя 2026-10-16). Тексты не
    согласуют глагол с {back} и {names} ни по роду, ни по числу: ожить может и один, и несколько. */
+// 2026-11-07: тексты пользователя «погибли несколько» — и на две смерти, и на три и больше (его решение)
+const MORNING_SOME = [
+  'На рассвете колокол на башне начал бить, и город замер. После первого удара многие выдохнули слишком рано, потому что колокол не остановился. Этой ночью город потерял не одного жителя: {names}.',
+  'Кладбище с утра в растерянности. Старожилы привыкли встречать новеньких по одному, а сегодня к воротам подходит целая компания. Знакомьтесь: {names}.',
+  'Утром на дверях нашли меловые знаки, которых вечером не было. Город долго не решался открыть эти двери, а когда всё-таки открыл, оказалось, что за ними больше никто не проснётся: {names}.',
+  'Город начинает перекличку, имена звучат одно за другим, пока на одном из них никто не отвечает. Потом тишина повторяется ещё раз, и становится по-настоящему страшно. {names} больше не отзовутся.',
+  'Ночью туман стоял такой, что фонарей не было видно с двух шагов. К утру он рассеялся, но ушёл не один: вместе с ним ушли {names}.',
+  'Если вчера вам казалось, что за столом тесно, сегодня станет просторнее. Только радоваться не спешите, освободилось не одно место. Свои стулья этой ночью оставили {names}.',
+  'Утром ставни по всей улице открываются одни за другими, соседи здороваются через подоконники. В некоторых окнах так никто и не появился. Там жили {names}.',
+  'Вечером на подоконнике горел целый ряд свечей. К утру некоторые погасли сами собой, и ровно столько же жителей не проснулись: {names}.',
+  'У мёртвых в нашем городе, как известно, остаётся по одному голосу, и до сих пор это мало кого пугало. После этой ночи призраков хватит на собственную партию, потому что к ним присоединились {names}.',
+  'Город молча собирается на площади. Никто не торопится с обвинениями, все ждут, что скажет рассказчик. А рассказчик скажет, что ночь забрала больше обычного: {names}.',
+];
 const MORNING = {
   first: [
     'Над городом встаёт первое солнце. Колокол на башне бьёт к заутрене, и вы открываете глаза — все до единого. Пока все живы. Пока.',
@@ -5562,6 +5616,17 @@ const MORNING = {
     'Верёвка у городского колодца раскачивается на холодном ветру, но вокруг нет следов борьбы. Ночь прошла без жертв, и круг ваш полон. Кто-то сумел обмануть смерть в потёмках — или зло просто затаилось перед новым прыжком.',
     'На площади метёт колючий снег, заметая ночные следы, ведущие от дома к дому. Никто не погиб во тьме. Задумайтесь: было ли это спасением или частью чьего-то тонкого расчёта?',
     'За высокими стенами монастыря пропели утреннюю службу, встречая серый день. Сегодня все вы открыли глаза, и ни одно место не пустует. Ночной ужас отступил ни с чем, но его дыхание всё ещё чувствуется за спиной.',
+    // 2026-11-07: тексты пользователя (добавить к прежним — его решение)
+    'Колокол на башне по традиции бьёт на рассвете по разу за каждого, кого забрала ночь. Город замер и ждёт первого удара. Колокол молчит: этой ночью никто не погиб.',
+    'Город собирается на площади, и все украдкой разглядывают соседей: кто зевает, а кто подозрительно бодр. Пора узнать, как прошла ночь. Прошла спокойно, никто не погиб, так что разглядывать можно и дальше.',
+    'Призраки на старом кладбище с утра сидят на оградке и ждут новостей. Ночью они слышали шаги и видели свет в чужих окнах, так что место для новенького уже приготовили. Зря старались: этой ночью никто не погиб.',
+    'Ночью у городских ворот видели фигуру в капюшоне. Она простояла там до первых петухов, потом медленно пошла по главной улице, и собаки во дворах замолчали. Утром открылись все двери, и за каждой стоял живой человек.',
+    'Кто-то из вас лёг спать с большими планами на эту ночь. Сейчас узнаем, сбылись ли они. Не сбылись: все живы, и этот кто-то изо всех сил делает вид, что рад за соседей.',
+    'Перекличка идёт медленно: имя, пауза, ответ. Каждый раз город замирает и ждёт тишины. Тишины так и не случилось, откликнулись все, хотя кое-кто слишком бодро для человека, который якобы проспал всю ночь.',
+    'Ночью в нескольких окнах до утра горел свет, а на окраине долго выла собака. Город собирается на площади и ждёт новостей. Новости хорошие: этой ночью никто не погиб.',
+    'Утром у многих порогов нашлись чужие следы. Все они обрываются прямо у двери, будто кто-то долго стоял и раздумывал, войти или нет. Так и не вошёл: этой ночью никто не погиб.',
+    'Часы на башне остановились ровно в три, и до рассвета их никто не мог завести. Когда петух наконец прокричал, город начал просыпаться, медленно, дом за домом. Проснулись все до единого: этой ночью никто не погиб.',
+    'Пекарь клянётся, что ночью кто-то стучал к нему в окно, а молочница видела у колодца чёрную кошку размером с собаку. Хлеб уже испечён, осталось понять, на сколько человек его резать. На всех: этой ночью никто не погиб.',
   ],
   one: [
     'Колокол на башне бьёт не к заутрене — по покойнику. Туман расходится, и на площади находят тело. Это {names}.',
@@ -5576,6 +5641,17 @@ const MORNING = {
     'На рассвете стрелки башенных часов дрогнули и замерли, словно само время ужаснулось ночным событиям. Тьма нанесла удар и отняла одну жизнь. Это {names}.',
     'Опустели шумные ряды вчерашней ярмарки, ветер гонит по земле обрывки цветных лент. Утро принесло горькую весть, и скорбь опустилась на улицы. {names} уже не увидит солнечного света.',
     'У городской заставы нашли брошенный в грязи погасший фонарь, а рядом — следы, обрывающиеся в пустоте. Ночь потребовала свою дань и забрала одного из вас: {names}.',
+    // 2026-11-07: тексты пользователя
+    'На рассвете колокол на башне начал бить, и город замер. Все считают удары и ждут, когда он остановится. Колокол ударил один раз и замолчал. Этой ночью город потерял одного жителя, и это {names}.',
+    'Утром соседи долго стучат в дверь, за которой обычно раньше всех ставят чайник. Никто не открывает. В окне видно, что чай на столе остыл, а свеча догорела до конца. {names} больше не придёт на площадь.',
+    'Мёртвые в нашем городе, как известно, не молчат и сохраняют один голос. Призраки с утра собрались у ворот кладбища и ждут, будет ли им сегодня с кем поговорить. Будет: к ним присоединяется {names}.',
+    'Петух надрывается уже десять минут. Город ворчит и открывает ставни, но в одном доме они так и остаются закрытыми. Там спит {names}, и разбудить уже не получится ни петуху, ни сегодняшним спорам на площади.',
+    'Ночью над городом кружили зелёные огоньки и садились то на одну крышу, то на другую. К рассвету они исчезли, и только над одним домом остался тёмный след копоти. Там спит {names}, и этот сон уже не закончится.',
+    'Город просыпается и пересчитывает своих. Счёт идёт медленно, все косятся друг на друга, и где-то на середине он сбивается. Не хватает одного: {names}.',
+    'Говорят, в мире ином тихо и никто никого не обвиняет. Не верьте: призраки из нашего города спорят громче живых. Сегодня у них новый собеседник, и это {names}.',
+    'Часы на башне остановились ровно в три и простояли до утра. Когда их снова завели и стрелки пошли, город недосчитался одного имени: {names}.',
+    'Ночь снова пришла за платой. Она долго ходила по улицам, приценивалась и торговалась сама с собой, а к утру всё-таки выбрала. Сегодня за весь город расплачивается {names}.',
+    'На кладбище с утра оживление: старожилы протирают надгробия и спорят, кому достанется место поближе к ограде. Новенький уже в пути, и это {names}.',
   ],
   two: [
     'Колокол звонит дважды, и не к добру. Ночь забрала двоих: {names}.',
@@ -5588,6 +5664,7 @@ const MORNING = {
     'В старой кузнице давно остыл горн, и тяжёлый молот лежит без дела на наковальне. Две тени скользнули за грань бытия, пока город спал тревожным сном. {names} не дождались утренней зари.',
     'Два чёрных флага вывешены сегодня на балконе городской ратуши в знак глубокого траура. Ночной кошмар постучался сразу в два окна, не оставив надежды. {names} теперь среди безмолвных.',
     'Холодный иней покрыл траву у придорожной часовни, где утром зажгли две поминальные лампады. Город понёс тяжёлую утрату, лишившись сразу двоих жителей. Это {names}.',
+    ...MORNING_SOME,
   ],
   many: [
     'Город проснулся в страхе. Этой ночью умерли {count}: {names}. Такого здесь не помнят даже старики.',
@@ -5598,6 +5675,7 @@ const MORNING = {
     'Вороны слетелись со всей округи — им сегодня есть чем поживиться. Город оплакивает {countAcc}: {names}.',
     'Костёр на перекрёстке у старой виселицы догорел дотла, оставив лишь серый пепел на ветру. Этой ночью {count} пали жертвой ночного кошмара. Город потерял их: {names}.',
     'В церковной книге записей не хватает чернил, чтобы вписать всех, кого настигла горькая участь этой страшной ночью. Смерть собрала богатую дань и унесла {countAcc}. Навсегда ушли в небытие: {names}.',
+    ...MORNING_SOME,
   ],
   // никто не умер, но кто-то снова жив (одобрены пользователем 2026-10-16)
   back: [
@@ -7209,20 +7287,19 @@ function prepFields(mid) {
       <div class="bluffrow">${[0, 1, 2].map(i => tile(S.bluffs[i])).join('')}<button class="btn" data-act="prepPick" data-arg="bluff">Выбрать</button></div></div>
     ${prepDefs(mid).map(d => `<div class="field ${d.ask ? 'ask' : ''}"><label>${esc(d.label)}</label>
       <div class="prepcur">${who(d)}<button class="btn" data-act="prepPick" data-arg="${d.k}">Выбрать</button></div>${d.hint ? `<div class="small muted">${esc(d.hint)}</div>` : ''}</div>`).join('')}
-    ${mid ? '' : lunFieldHtml(false)}
     ${S.players.filter(p => p.role === 'amnesiac').map(p => `<div class="field"><label for="amn-${p.id}">Способность Амнезиака (${esc(p.name)}) — придумайте сами, игрок её не узнает</label>
       <textarea id="amn-${p.id}" data-act="amnText" data-arg="${p.id}" placeholder="Например: каждую ночь узнаёт, сколько живых Горожан среди его соседей">${esc(S.flags['amnesiac_' + p.id] || '')}</textarea>${amnIdeas(p.id)}</div>`).join('')}`;
 }
-// Безумец (заметка пользователя 2026-11-06): каким Демоном он себя считает и что видит настоящий Демон, когда получает роль. В «Подготовке»
-// и в окне «Блефы и ложные цели» (на подготовке, Безумец в игре), а при жребии — в карточке «Выдача ролей» до начала (draw): Безумец видит
-// своего «Демона», а Демон — жетон Безумца уже при выдаче, позже менять поздно. Демон в игре известен, если роли выданы или отмечены
-// в «Ролях на игру»; иначе — «тот же, что в игре» без названия. Похожие — ходят ночью так же (E.LUN_KIN): Безумец не догадается
+// Безумец (заметка пользователя 2026-11-06): каким Демоном он себя считает и что видит настоящий Демон, когда получает роль. Только
+// в карточке «Выдача ролей», пока жребий не начат (и после раздачи кнопкой): Безумец видит своего «Демона», а Демон — жетон Безумца уже
+// при выдаче. В окне «Блефы и ложные цели» и в «Подготовке» этих настроек нет (просьба пользователя: «логично убрать эти опции в окне
+// с блефами»). Демон в игре известен, если роли выданы или отмечены в «Ролях на игру»; иначе — «тот же, что в игре» без названия.
+// Похожие — ходят ночью так же (E.LUN_KIN): Безумец не догадается
 const LUN_CAP = 'В данной игре есть Безумец';
-function lunFieldHtml(draw) {
+function lunFieldHtml() {
   if (S.phase !== 'setup') return '';
   const lun = S.players.find(p => p.role === 'lunatic');
-  if (!draw && !lun) return '';
-  const real = draw ? (E.validPool(S) ? S.pool.find(r => team(r) === 'demon') : null) || E.realDemonRole(S) : E.realDemonRole(S);
+  const real = (E.validPool(S) ? S.pool.find(r => team(r) === 'demon') : null) || E.realDemonRole(S);
   const cur = S.flags.lunAs && S.flags.lunAs !== real ? S.flags.lunAs : '';
   const lab = r => `${E.rname(r)} — ${E.LUN_KIN_RU[E.lunKin(r)] || 'ходит ночью по-своему'}`;
   const opt = r => `<option value="${r}" ${cur === r ? 'selected' : ''}>${esc(lab(r))}</option>`;
@@ -7237,7 +7314,7 @@ function lunFieldHtml(draw) {
   const seg = `<div class="seg">${[['lunatic', 'Жетон Безумца'], ['demon', 'Жетон Демона']].map(([v, t]) => `<button class="${mode === v ? 'on' : ''}" aria-pressed="${mode === v}" data-act="lunShow" data-arg="${v}">${t}</button>`).join('')}</div>`;
   // свёрнуто, пока не раскроют (просьба пользователя 2026-11-06); в заголовке — что выбрано сейчас; раскрытое помнится до перезагрузки
   const now = `${seen ? `${E.rname(lun.believes)} (уже видел)` : cur ? E.rname(cur) : 'тот же Демон'} · Демону — ${mode === 'lunatic' ? 'жетон Безумца' : 'свой жетон'}`;
-  const head = `<button class="savgh lungh${UI.lunOpen ? ' open' : ''}" data-act="lunOpen" aria-expanded="${!!UI.lunOpen}"><span class="chev" aria-hidden="true">▸</span><span>${draw ? 'Если выпадет Безумец' : 'Безумец'}</span><span class="savgn">${esc(now)}</span></button>`;
+  const head = `<button class="savgh lungh${UI.lunOpen ? ' open' : ''}" data-act="lunOpen" aria-expanded="${!!UI.lunOpen}"><span class="chev" aria-hidden="true">▸</span><span>${lun ? 'Безумец' : 'Если выпадет Безумец'}</span><span class="savgn">${esc(now)}</span></button>`;
   if (!UI.lunOpen) return `<div class="field lunfield">${head}</div>`;
   return `<div class="field lunfield">${head}<label>Каким Демоном он себя считает</label>${pick}
     <div class="small muted">Тот же Демон — Безумец не заметит подмены: ночью он выбирает столько же игроков, сколько настоящий Демон (вики).</div>
@@ -7375,7 +7452,7 @@ function viewNight() {
       ${spec.active && spec.bounds && spec.bounds.length ? boundsHtml(spec.bounds) : ''}
       ${(spec.warn || []).map(w => `<div class="warn">${esc(w)}</div>`).join('')}
       ${st.id === 'alhadikhia' && spec.active ? alhStepHtml(inp, 'top') : ''}
-      ${fields.map(f => fieldHtml(f, inp) + (st.id === 'alhadikhia' && spec.active && f.key === 't' ? alhStepHtml(inp) : '')).join('')}
+      ${fields.length ? `<div class="stepfields">${fields.map(f => fieldHtml(f, inp) + (st.id === 'alhadikhia' && spec.active && f.key === 't' ? alhStepHtml(inp) : '')).join('')}</div>` : ''}
       ${goon ? `<div class="warn">${esc(goon)}</div>` : ''}
       ${info && (info.show || (info.evil || []).length || (info.ann || []).length || (info.lines || []).filter(Boolean).length) ? revealHtml(info, spec.dist) : ''}
       ${st.id === 'dawn' ? morningHtml(true) + jinxHtml('dawn') : ''}
@@ -7935,8 +8012,21 @@ function fitTokNames() {
   const cs = getComputedStyle(ts[0]); tokCtx.font = `${cs.fontWeight} 14.5px ${cs.fontFamily}`;
   ts.forEach(t => { const w = tokCtx.measureText(t.textContent).width; t.style.fontSize = w > 104 ? (14.5 * 104 / w).toFixed(2) + 'px' : ''; });
 }
+// имена в кругах — в одну строку, без переноса внутри слова; не влезает — шрифт меньше (заметка пользователя 2026-11-06: «Андре|й»,
+// «Никит|а» рвались). Места (.rnm — размер от места) и таблички Гримуара (.gcl — свой размер в cqw, раньше обрезались многоточием)
+function fitSeatNames() {
+  document.querySelectorAll('.rseat .rnm, .rseat .rasg, .gcl').forEach(n => {
+    // свой размер в разметке (у .gcl — в cqw) или пусто — размер из CSS; сначала возвращаем его, потом меряем
+    const own = n.dataset.fs != null ? n.dataset.fs : (n.dataset.fs = n.style.fontSize || '');
+    n.style.fontSize = own;
+    const sw = n.scrollWidth, cw = n.clientWidth; if (!(cw > 0 && sw > cw + 0.5)) return;
+    const k = Math.max(0.4, cw / sw * 0.97);
+    n.style.fontSize = own ? `calc(${own} * ${k.toFixed(3)})` : (parseFloat(getComputedStyle(n).fontSize) * k).toFixed(2) + 'px';
+  });
+}
 // шрифт догрузился позже первой отрисовки — пересчитать
-if (document.fonts) { document.fonts.ready.then(fitTokNames); if (document.fonts.addEventListener) document.fonts.addEventListener('loadingdone', fitTokNames); }
+if (document.fonts) { const refit = () => { fitTokNames(); fitSeatNames(); };
+  document.fonts.ready.then(refit); if (document.fonts.addEventListener) document.fonts.addEventListener('loadingdone', refit); }
 // места по кругу: первое — внизу экрана (у рассказчика), дальше по часовой или против — как номера за столом (seatDir).
 // Все размеры — в cqw (доли ширины поля), поэтому круг сам масштабируется под экран.
 // На высоком экране круг немного вытянут по высоте (не больше чем в 1,3 раза) — жетоны крупнее. label — табличка с именем под жетоном.
@@ -8035,8 +8125,8 @@ function nomRules() {
 const ringBtn = () => '<button class="btn ringbtn" data-act="ringNom">◯ Кругом</button>';
 // место за столом: кружок с номером и именем (без ролей — экран может видеть стол); мёртвый — саван (белый контур — голос есть)
 function seatHtml(p, i, g, cls, attrs, extra) {
-  const { x, y } = g.pos(i), longest = Math.max(3, ...p.name.split(/\s+/).map(w => w.length));
-  const fs = Math.min(g.t * 0.22, g.t * 0.84 / (longest * 0.6)); // самое длинное слово — в одну строку
+  // размер — один у всех мест; длинное имя уменьшает только себя, по замеру (fitSeatNames), а не всё место по оценке числа букв
+  const { x, y } = g.pos(i), fs = g.t * 0.22;
   return `<button class="rseat ${p.alive ? '' : 'dead'} ${cls || ''}" ${attrs || ''} style="left:${(x - g.t / 2).toFixed(2)}cqw;top:${(y - g.t / 2).toFixed(2)}cqw;width:${g.t}cqw;height:${g.t}cqw;font-size:${fs.toFixed(2)}cqw" aria-label="${i + 1}. ${esc(p.name)}${p.alive ? '' : ', мёртв'}">
     <span class="rno">${i + 1}</span><span class="rnm">${esc(p.name)}</span>${E.isTraveller(p) ? '<span class="rtr">Странник</span>' : ''}${extra || ''}${shroudHtml(p)}</button>`;
 }
@@ -8281,7 +8371,7 @@ function drawCard() {
         ${waiting.length ? `<div class="flabel"><span>Ещё не открыли — нажмите, чтобы назначить роль или тип</span></div><div class="seg">${waiting.map(p => `<button data-act="openP" data-arg="${p.id}">${esc(p.name)}${!hid && (S.assign || {})[p.id] ? ' → ' + esc(assignLabel(S.assign[p.id])) : ''}</button>`).join('')}</div>` : ''}
         <div class="row"><button class="btn primary" data-act="wallShow">Продолжить жребий</button><button class="btn danger" data-act="drawCancel">Отменить жребий</button>${hideBtn}</div>`
       : prob ? `<div class="warn">${esc(prob)}</div>`
-      : `${overMaxHtml()}${lunMay ? lunFieldHtml(true) : ''}<button class="btn primary wide" data-act="drawStart">${cr ? 'Открыть склеп' : vt ? 'Зажечь витраж' : kt ? 'Разжечь котёл' : sc ? 'Разложить свитки' : 'Выкатить стену'}</button>`}</div>`;
+      : `${overMaxHtml()}${lunMay ? lunFieldHtml() : ''}<button class="btn primary wide" data-act="drawStart">${cr ? 'Открыть склеп' : vt ? 'Зажечь витраж' : kt ? 'Разжечь котёл' : sc ? 'Разложить свитки' : 'Выкатить стену'}</button>`}</div>`;
 }
 // Teensyville на 7+ игроков: ролей может и хватить, но сценарий задуман для 5–6 (заметка пользователя 2026-10-28)
 const overMaxHtml = () => { const t = !E.scriptShort(S) && E.scriptOverMax(S); return t ? `<div class="warn">${esc(t)}. Ролей хватает, но сценарий задуман для маленькой игры.</div>` : ''; };
@@ -9480,7 +9570,7 @@ function editOverlay() {
       <div class="edwas"><div class="lab">Сейчас в журнале</div>${now || '<div class="ln muted">Шаг был пропущен</div>'}</div>
       ${spec.active ? '' : `<div class="warn">Не просыпается: ${esc(spec.reason)}</div>`}
       ${(spec.warn || []).map(w => `<div class="warn">${esc(w)}</div>`).join('')}
-      ${fields.map(f => fieldHtml(f, inp)).join('')}
+      ${fields.length ? `<div class="stepfields">${fields.map(f => fieldHtml(f, inp)).join('')}</div>` : ''}
       ${info && (info.show || (info.evil || []).length || (info.ann || []).length || (info.lines || []).filter(Boolean).length) ? revealHtml(Object.assign({}, info, { grim: false }), spec.dist) : ''}
       ${missing.length ? `<div class="small muted">Осталось выбрать: ${missing.map(esc).join('; ')}</div>` : ''}
       <div class="actions"><button class="btn primary" data-act="editCheck" ${missing.length || !spec.active ? 'disabled' : ''}>Что изменится →</button>
@@ -9706,7 +9796,7 @@ function render() {
   if (UI.tab === 'roles') filterRefs();
   paintSave();
   window.scrollTo(0, scrollY);
-  hallowAfter(); vitrAfter(); kettleAfter(); scAfter(); lunPreAfter(); fitTokNames(); tabsPin();
+  hallowAfter(); vitrAfter(); kettleAfter(); scAfter(); lunPreAfter(); fitTokNames(); fitSeatNames(); tabsPin();
 }
 
 /* ------------------------------------------------------------ обработчики */

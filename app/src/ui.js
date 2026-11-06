@@ -845,20 +845,19 @@ function prepFields(mid) {
       <div class="bluffrow">${[0, 1, 2].map(i => tile(S.bluffs[i])).join('')}<button class="btn" data-act="prepPick" data-arg="bluff">Выбрать</button></div></div>
     ${prepDefs(mid).map(d => `<div class="field ${d.ask ? 'ask' : ''}"><label>${esc(d.label)}</label>
       <div class="prepcur">${who(d)}<button class="btn" data-act="prepPick" data-arg="${d.k}">Выбрать</button></div>${d.hint ? `<div class="small muted">${esc(d.hint)}</div>` : ''}</div>`).join('')}
-    ${mid ? '' : lunFieldHtml(false)}
     ${S.players.filter(p => p.role === 'amnesiac').map(p => `<div class="field"><label for="amn-${p.id}">Способность Амнезиака (${esc(p.name)}) — придумайте сами, игрок её не узнает</label>
       <textarea id="amn-${p.id}" data-act="amnText" data-arg="${p.id}" placeholder="Например: каждую ночь узнаёт, сколько живых Горожан среди его соседей">${esc(S.flags['amnesiac_' + p.id] || '')}</textarea>${amnIdeas(p.id)}</div>`).join('')}`;
 }
-// Безумец (заметка пользователя 2026-11-06): каким Демоном он себя считает и что видит настоящий Демон, когда получает роль. В «Подготовке»
-// и в окне «Блефы и ложные цели» (на подготовке, Безумец в игре), а при жребии — в карточке «Выдача ролей» до начала (draw): Безумец видит
-// своего «Демона», а Демон — жетон Безумца уже при выдаче, позже менять поздно. Демон в игре известен, если роли выданы или отмечены
-// в «Ролях на игру»; иначе — «тот же, что в игре» без названия. Похожие — ходят ночью так же (E.LUN_KIN): Безумец не догадается
+// Безумец (заметка пользователя 2026-11-06): каким Демоном он себя считает и что видит настоящий Демон, когда получает роль. Только
+// в карточке «Выдача ролей», пока жребий не начат (и после раздачи кнопкой): Безумец видит своего «Демона», а Демон — жетон Безумца уже
+// при выдаче. В окне «Блефы и ложные цели» и в «Подготовке» этих настроек нет (просьба пользователя: «логично убрать эти опции в окне
+// с блефами»). Демон в игре известен, если роли выданы или отмечены в «Ролях на игру»; иначе — «тот же, что в игре» без названия.
+// Похожие — ходят ночью так же (E.LUN_KIN): Безумец не догадается
 const LUN_CAP = 'В данной игре есть Безумец';
-function lunFieldHtml(draw) {
+function lunFieldHtml() {
   if (S.phase !== 'setup') return '';
   const lun = S.players.find(p => p.role === 'lunatic');
-  if (!draw && !lun) return '';
-  const real = draw ? (E.validPool(S) ? S.pool.find(r => team(r) === 'demon') : null) || E.realDemonRole(S) : E.realDemonRole(S);
+  const real = (E.validPool(S) ? S.pool.find(r => team(r) === 'demon') : null) || E.realDemonRole(S);
   const cur = S.flags.lunAs && S.flags.lunAs !== real ? S.flags.lunAs : '';
   const lab = r => `${E.rname(r)} — ${E.LUN_KIN_RU[E.lunKin(r)] || 'ходит ночью по-своему'}`;
   const opt = r => `<option value="${r}" ${cur === r ? 'selected' : ''}>${esc(lab(r))}</option>`;
@@ -873,7 +872,7 @@ function lunFieldHtml(draw) {
   const seg = `<div class="seg">${[['lunatic', 'Жетон Безумца'], ['demon', 'Жетон Демона']].map(([v, t]) => `<button class="${mode === v ? 'on' : ''}" aria-pressed="${mode === v}" data-act="lunShow" data-arg="${v}">${t}</button>`).join('')}</div>`;
   // свёрнуто, пока не раскроют (просьба пользователя 2026-11-06); в заголовке — что выбрано сейчас; раскрытое помнится до перезагрузки
   const now = `${seen ? `${E.rname(lun.believes)} (уже видел)` : cur ? E.rname(cur) : 'тот же Демон'} · Демону — ${mode === 'lunatic' ? 'жетон Безумца' : 'свой жетон'}`;
-  const head = `<button class="savgh lungh${UI.lunOpen ? ' open' : ''}" data-act="lunOpen" aria-expanded="${!!UI.lunOpen}"><span class="chev" aria-hidden="true">▸</span><span>${draw ? 'Если выпадет Безумец' : 'Безумец'}</span><span class="savgn">${esc(now)}</span></button>`;
+  const head = `<button class="savgh lungh${UI.lunOpen ? ' open' : ''}" data-act="lunOpen" aria-expanded="${!!UI.lunOpen}"><span class="chev" aria-hidden="true">▸</span><span>${lun ? 'Безумец' : 'Если выпадет Безумец'}</span><span class="savgn">${esc(now)}</span></button>`;
   if (!UI.lunOpen) return `<div class="field lunfield">${head}</div>`;
   return `<div class="field lunfield">${head}<label>Каким Демоном он себя считает</label>${pick}
     <div class="small muted">Тот же Демон — Безумец не заметит подмены: ночью он выбирает столько же игроков, сколько настоящий Демон (вики).</div>
@@ -1011,7 +1010,7 @@ function viewNight() {
       ${spec.active && spec.bounds && spec.bounds.length ? boundsHtml(spec.bounds) : ''}
       ${(spec.warn || []).map(w => `<div class="warn">${esc(w)}</div>`).join('')}
       ${st.id === 'alhadikhia' && spec.active ? alhStepHtml(inp, 'top') : ''}
-      ${fields.map(f => fieldHtml(f, inp) + (st.id === 'alhadikhia' && spec.active && f.key === 't' ? alhStepHtml(inp) : '')).join('')}
+      ${fields.length ? `<div class="stepfields">${fields.map(f => fieldHtml(f, inp) + (st.id === 'alhadikhia' && spec.active && f.key === 't' ? alhStepHtml(inp) : '')).join('')}</div>` : ''}
       ${goon ? `<div class="warn">${esc(goon)}</div>` : ''}
       ${info && (info.show || (info.evil || []).length || (info.ann || []).length || (info.lines || []).filter(Boolean).length) ? revealHtml(info, spec.dist) : ''}
       ${st.id === 'dawn' ? morningHtml(true) + jinxHtml('dawn') : ''}
@@ -1571,8 +1570,21 @@ function fitTokNames() {
   const cs = getComputedStyle(ts[0]); tokCtx.font = `${cs.fontWeight} 14.5px ${cs.fontFamily}`;
   ts.forEach(t => { const w = tokCtx.measureText(t.textContent).width; t.style.fontSize = w > 104 ? (14.5 * 104 / w).toFixed(2) + 'px' : ''; });
 }
+// имена в кругах — в одну строку, без переноса внутри слова; не влезает — шрифт меньше (заметка пользователя 2026-11-06: «Андре|й»,
+// «Никит|а» рвались). Места (.rnm — размер от места) и таблички Гримуара (.gcl — свой размер в cqw, раньше обрезались многоточием)
+function fitSeatNames() {
+  document.querySelectorAll('.rseat .rnm, .rseat .rasg, .gcl').forEach(n => {
+    // свой размер в разметке (у .gcl — в cqw) или пусто — размер из CSS; сначала возвращаем его, потом меряем
+    const own = n.dataset.fs != null ? n.dataset.fs : (n.dataset.fs = n.style.fontSize || '');
+    n.style.fontSize = own;
+    const sw = n.scrollWidth, cw = n.clientWidth; if (!(cw > 0 && sw > cw + 0.5)) return;
+    const k = Math.max(0.4, cw / sw * 0.97);
+    n.style.fontSize = own ? `calc(${own} * ${k.toFixed(3)})` : (parseFloat(getComputedStyle(n).fontSize) * k).toFixed(2) + 'px';
+  });
+}
 // шрифт догрузился позже первой отрисовки — пересчитать
-if (document.fonts) { document.fonts.ready.then(fitTokNames); if (document.fonts.addEventListener) document.fonts.addEventListener('loadingdone', fitTokNames); }
+if (document.fonts) { const refit = () => { fitTokNames(); fitSeatNames(); };
+  document.fonts.ready.then(refit); if (document.fonts.addEventListener) document.fonts.addEventListener('loadingdone', refit); }
 // места по кругу: первое — внизу экрана (у рассказчика), дальше по часовой или против — как номера за столом (seatDir).
 // Все размеры — в cqw (доли ширины поля), поэтому круг сам масштабируется под экран.
 // На высоком экране круг немного вытянут по высоте (не больше чем в 1,3 раза) — жетоны крупнее. label — табличка с именем под жетоном.
@@ -1671,8 +1683,8 @@ function nomRules() {
 const ringBtn = () => '<button class="btn ringbtn" data-act="ringNom">◯ Кругом</button>';
 // место за столом: кружок с номером и именем (без ролей — экран может видеть стол); мёртвый — саван (белый контур — голос есть)
 function seatHtml(p, i, g, cls, attrs, extra) {
-  const { x, y } = g.pos(i), longest = Math.max(3, ...p.name.split(/\s+/).map(w => w.length));
-  const fs = Math.min(g.t * 0.22, g.t * 0.84 / (longest * 0.6)); // самое длинное слово — в одну строку
+  // размер — один у всех мест; длинное имя уменьшает только себя, по замеру (fitSeatNames), а не всё место по оценке числа букв
+  const { x, y } = g.pos(i), fs = g.t * 0.22;
   return `<button class="rseat ${p.alive ? '' : 'dead'} ${cls || ''}" ${attrs || ''} style="left:${(x - g.t / 2).toFixed(2)}cqw;top:${(y - g.t / 2).toFixed(2)}cqw;width:${g.t}cqw;height:${g.t}cqw;font-size:${fs.toFixed(2)}cqw" aria-label="${i + 1}. ${esc(p.name)}${p.alive ? '' : ', мёртв'}">
     <span class="rno">${i + 1}</span><span class="rnm">${esc(p.name)}</span>${E.isTraveller(p) ? '<span class="rtr">Странник</span>' : ''}${extra || ''}${shroudHtml(p)}</button>`;
 }
@@ -1917,7 +1929,7 @@ function drawCard() {
         ${waiting.length ? `<div class="flabel"><span>Ещё не открыли — нажмите, чтобы назначить роль или тип</span></div><div class="seg">${waiting.map(p => `<button data-act="openP" data-arg="${p.id}">${esc(p.name)}${!hid && (S.assign || {})[p.id] ? ' → ' + esc(assignLabel(S.assign[p.id])) : ''}</button>`).join('')}</div>` : ''}
         <div class="row"><button class="btn primary" data-act="wallShow">Продолжить жребий</button><button class="btn danger" data-act="drawCancel">Отменить жребий</button>${hideBtn}</div>`
       : prob ? `<div class="warn">${esc(prob)}</div>`
-      : `${overMaxHtml()}${lunMay ? lunFieldHtml(true) : ''}<button class="btn primary wide" data-act="drawStart">${cr ? 'Открыть склеп' : vt ? 'Зажечь витраж' : kt ? 'Разжечь котёл' : sc ? 'Разложить свитки' : 'Выкатить стену'}</button>`}</div>`;
+      : `${overMaxHtml()}${lunMay ? lunFieldHtml() : ''}<button class="btn primary wide" data-act="drawStart">${cr ? 'Открыть склеп' : vt ? 'Зажечь витраж' : kt ? 'Разжечь котёл' : sc ? 'Разложить свитки' : 'Выкатить стену'}</button>`}</div>`;
 }
 // Teensyville на 7+ игроков: ролей может и хватить, но сценарий задуман для 5–6 (заметка пользователя 2026-10-28)
 const overMaxHtml = () => { const t = !E.scriptShort(S) && E.scriptOverMax(S); return t ? `<div class="warn">${esc(t)}. Ролей хватает, но сценарий задуман для маленькой игры.</div>` : ''; };
@@ -3116,7 +3128,7 @@ function editOverlay() {
       <div class="edwas"><div class="lab">Сейчас в журнале</div>${now || '<div class="ln muted">Шаг был пропущен</div>'}</div>
       ${spec.active ? '' : `<div class="warn">Не просыпается: ${esc(spec.reason)}</div>`}
       ${(spec.warn || []).map(w => `<div class="warn">${esc(w)}</div>`).join('')}
-      ${fields.map(f => fieldHtml(f, inp)).join('')}
+      ${fields.length ? `<div class="stepfields">${fields.map(f => fieldHtml(f, inp)).join('')}</div>` : ''}
       ${info && (info.show || (info.evil || []).length || (info.ann || []).length || (info.lines || []).filter(Boolean).length) ? revealHtml(Object.assign({}, info, { grim: false }), spec.dist) : ''}
       ${missing.length ? `<div class="small muted">Осталось выбрать: ${missing.map(esc).join('; ')}</div>` : ''}
       <div class="actions"><button class="btn primary" data-act="editCheck" ${missing.length || !spec.active ? 'disabled' : ''}>Что изменится →</button>
@@ -3342,7 +3354,7 @@ function render() {
   if (UI.tab === 'roles') filterRefs();
   paintSave();
   window.scrollTo(0, scrollY);
-  hallowAfter(); vitrAfter(); kettleAfter(); scAfter(); lunPreAfter(); fitTokNames(); tabsPin();
+  hallowAfter(); vitrAfter(); kettleAfter(); scAfter(); lunPreAfter(); fitTokNames(); fitSeatNames(); tabsPin();
 }
 
 /* ------------------------------------------------------------ обработчики */
