@@ -977,6 +977,7 @@ function revealHtml(info, dist) {
     <div class="lab">${info.secret ? 'Только для вас — не показывайте' : 'Покажите / объявите'}</div>
     ${(info.evil || []).map(r => `<div class="evrow"><span class="evl">${esc(r.l)}:</span><span class="evname">${esc(r.names.join(', ') || '—')}</span></div>`).join('')}
     ${info.show ? `<div class="big">${esc(info.show)}</div>` : ''}${info.show2 ? `<div class="big alive">${esc(info.show2)}</div>` : ''}
+    ${(info.conf || []).map(c => `<div class="tconf ${c.lvl === 'warn' ? 'tcw' : 'tcn'}"><b>${c.lvl === 'warn' ? 'Противоречие' : 'Обратите внимание'}:</b> ${esc(c.t)}</div>`).join('')}
     ${(info.ann || []).map(t => `<div class="annbig">${esc(t)}</div>`).join('')}
     ${(info.lines || []).filter(Boolean).map(l => `<div class="ln">${esc(l)}</div>`).join('')}
     ${info.grim ? `<div class="showbtns"><button class="btn showbtn" data-act="grimShow">${art('eye', 'bg')}Показать Гримуар на весь экран</button>

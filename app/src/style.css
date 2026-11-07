@@ -98,6 +98,15 @@ html.oled .reveal .evname { color: #FF5A5A; }
   font-size: 21px; font-weight: 800; line-height: 1.25; color: var(--ink); }
 .tipbox p { margin: 0 0 10px; } /* окно советов вики (Яга создала Демона) */
 .reveal .ln { font-size: 14.5px; }
+/* противоречия в выданной информации (v102): ответ спорит с тем, что игрок уже знает, или трезвому — неверный (tcw — красная плашка);
+   объяснимо или раскрывает прошлую ложь (tcn — янтарная). Под крупным ответом — чтобы не пропустить */
+.reveal .tconf { margin: 4px 0 2px; padding: 8px 11px; border-radius: 9px; font-size: 15px; line-height: 1.35; color: var(--ink); }
+.reveal .tconf b { font-weight: 800; }
+.reveal .tconf.tcw { background: var(--evilbg); border: 2px solid var(--evil); }
+.reveal .tconf.tcw b { color: var(--evil); }
+.reveal .tconf.tcn { background: var(--warnbg); border: 1px solid var(--warn); }
+.reveal .tconf.tcn b { color: var(--warn); }
+html.oled .reveal .tconf.tcw b { color: #FF5A5A; }
 /* только для рассказчика — не показывать игроку */
 .reveal.secret { border-style: dashed; border-color: var(--muted); background: transparent; }
 .reveal.secret .lab { color: var(--muted); }

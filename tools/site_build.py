@@ -28,7 +28,7 @@ SITE = ROOT / "out" / "site"
 SITE.mkdir(parents=True, exist_ok=True)
 for f in SITE.iterdir():  # папку (rec) Windows иногда ненадолго держит — пустая остаётся, не страшно
     shutil.rmtree(f, ignore_errors=True) if f.is_dir() else f.unlink()
-VERSION = "101"
+VERSION = "102"
 
 body = (ROOT / "app" / "dist" / "grimoire.html").read_text(encoding="utf-8")
 

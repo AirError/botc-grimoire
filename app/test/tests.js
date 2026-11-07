@@ -2064,6 +2064,171 @@ try {
     ok('Безумец-«Пукка», 1-я ночь (5 игроков): будят — выбирает, как будто он Пукка', lunSpec(G).active && nOf(lunSpec(G)) === 1 && /для «отравления»/.test(lunSpec(G).text), lunSpec(G).text);
   }
 
+  // Противоречия в выданной информации (задача №12 пользователя, 2026-11-07; v102): №1 — ответ спорит с тем, что игрок уже узнал;
+  // №2 — с открытыми фактами дня; №3 — трезвому неверный ответ; №4 — рекомендация пьяному сходится с прошлым
+  {
+    const upTo = (G, id, inputs) => { let g = 0; while (G.phase === 'night' && g++ < 200) { const st = E.currentStep(G); if (st.id === id) return st;
+      const sp = E.stepSpec(G, st); if (!sp.active) { E.skipStep(G); continue; } if (!E.applyStep(G, st, Object.assign({}, sp.defaults, (inputs || {})[st.id] || {})).ok) E.skipStep(G); } return null; };
+    const start = (roles, sc, prep) => { const G = game(roles, sc || 'tb'); E.autoSetup(G, true); if (prep) prep(G); E.startGame(G); return G; };
+    const told = (G, p) => ((G.flags.told || {})[p.id] || []);
+    const confs = info => (info && info.conf || []);
+    const hasW = (info, re) => confs(info).some(c => c.lvl === 'warn' && (!re || re.test(c.t)));
+    const hasN = (info, re) => confs(info).some(c => c.lvl === 'note' && (!re || re.test(c.t)));
+    const pois = (G, p) => E.addTok(G, p, 'poisoned', 'poisoner', ['dusk', G.n + 1]);
+
+    // Эмпат между Отравителем и Чёртом: 2
+    let G = start(['poisoner', 'empath', 'imp', 'chef', 'monk', 'soldier', 'saint']), em = byRole(G, 'empath');
+    let st = upTo(G, 'empath', { poisoner: { t: [byRole(G, 'monk').id] } }), sp = E.stepSpec(G, st);
+    ok('Противоречия №3: трезвый Эмпат, верное число — без предупреждений', sp.defaults.n === 2 && confs(sp.info(sp.defaults)).length === 0);
+    ok('Противоречия №3: трезвому Эмпату неверное число — предупреждение', hasW(sp.info({ n: 1 }), /трезв/));
+    E.applyStep(G, st, sp.defaults);
+    const r1 = told(G, em)[0];
+    ok('Противоречия: история — записан ответ Эмпата (вопрос — живые соседи)', r1 && r1.n === 1 && r1.ab === 'empath' && r1.a === 2 && r1.t === 2 && !r1.d && r1.q.length === 2, JSON.stringify(r1));
+    runNight(G, {}); E.endDay(G);
+    st = upTo(G, 'empath', { poisoner: { t: [em.id] }, imp: { t: [byRole(G, 'soldier').id] } }); sp = E.stepSpec(G, st);
+    ok('Противоречия №4: отравленному Эмпату с теми же соседями по умолчанию — прежнее число', sp.dist && sp.defaults.n === 2 && confs(sp.info(sp.defaults)).length === 0
+      && /любая ложь здесь спорит/.test(sp.info(sp.defaults).lines.join('|')), JSON.stringify(sp.defaults));
+    ok('Противоречия №1: те же соседи, другое число — предупреждение', hasW(sp.info({ n: 1 }), /те же, что в ночь 1/), JSON.stringify(confs(sp.info({ n: 1 }))));
+    E.applyStep(G, st, sp.defaults);
+    ok('Противоречия №4: верное число отравленному — Математику не сбой', !(G.flags.abn || []).some(a => /Эмпат|P1/.test(a.text)), JSON.stringify(G.flags.abn));
+    ok('Противоречия: записано то, что показали (по умолчанию)', told(G, em).length === 2 && told(G, em)[1].a === 2 && told(G, em)[1].d === 'ОТРАВЛЕН', JSON.stringify(told(G, em)));
+
+    // соседи сменились: ночь 1 — 0 (Монах, Солдат); Солдат казнён; ночь 2 — Монах и Чёрт: «2» значит, что Монах злой — а он был в «0»
+    G = start(['monk', 'empath', 'soldier', 'imp', 'chef', 'poisoner', 'saint']); em = byRole(G, 'empath');
+    runNight(G, { poisoner: { t: [byRole(G, 'chef').id] } });
+    ok('Противоречия: ночь 1 — Эмпату 0', told(G, em)[0] && told(G, em)[0].a === 0, JSON.stringify(told(G, em)));
+    E.execute(G, byRole(G, 'soldier').id); E.endDay(G);
+    st = upTo(G, 'empath', { poisoner: { t: [em.id] }, imp: { t: [byRole(G, 'saint').id] } }); sp = E.stepSpec(G, st);
+    ok('Противоречия №1: новые соседи — «2» спорит с прошлым «0»', hasW(sp.info({ n: 2 }), /ночь 1 — 0/), JSON.stringify(confs(sp.info({ n: 2 }))));
+    ok('Противоречия №4: ложь по умолчанию — 0 (сходится: Монах добрый, Чёрт «добрый»)', sp.defaults.n === 0 && !hasW(sp.info({ n: 0 })), String(sp.defaults.n));
+
+    // раньше ложь, теперь верно: ночь 1 Эмпат отравлен (показано 1 вместо 2), ночь 2 трезв — верное 2 раскрывает прошлую ложь
+    G = start(['poisoner', 'empath', 'imp', 'chef', 'monk', 'soldier', 'saint']); em = byRole(G, 'empath');
+    runNight(G, { poisoner: { t: [em.id] } });
+    ok('Противоречия: ночь 1 отравленному — ложь', told(G, em)[0] && told(G, em)[0].a !== 2 && told(G, em)[0].d === 'ОТРАВЛЕН', JSON.stringify(told(G, em)));
+    E.endDay(G);
+    st = upTo(G, 'empath', { poisoner: { t: [byRole(G, 'monk').id] }, imp: { t: [byRole(G, 'soldier').id] } }); sp = E.stepSpec(G, st);
+    const n1 = sp.info(sp.defaults);
+    ok('Противоречия: трезвому верное число раскрывает прошлую ложь — пометка, не предупреждение', !sp.dist && sp.defaults.n === 2 && hasN(n1, /ложным.*ночь 1 — отравлен/) && !hasW(n1), JSON.stringify(confs(n1)));
+
+    // в Гримуаре поменялось (сторона соседа) — объяснимо
+    G = start(['monk', 'empath', 'soldier', 'imp', 'chef', 'poisoner', 'saint']); em = byRole(G, 'empath');
+    runNight(G, { poisoner: { t: [byRole(G, 'chef').id] } }); E.endDay(G);
+    byRole(G, 'monk').align = 'evil';
+    st = upTo(G, 'empath', { poisoner: { t: [byRole(G, 'chef').id] }, imp: { t: [byRole(G, 'saint').id] } }); sp = E.stepSpec(G, st);
+    ok('Противоречия: сторона соседа сменилась — «объяснимо», без предупреждения', sp.defaults.n === 1 && hasN(sp.info(sp.defaults), /поменялось/) && !hasW(sp.info(sp.defaults)), JSON.stringify(confs(sp.info(sp.defaults))));
+
+    // Затворник среди соседей: трезвому «на 1 больше» можно, в истории — своя переменная
+    G = start(['recluse', 'empath', 'monk', 'imp', 'chef', 'poisoner', 'saint']); em = byRole(G, 'empath');
+    st = upTo(G, 'empath', { poisoner: { t: [byRole(G, 'chef').id] } }); sp = E.stepSpec(G, st);
+    ok('Противоречия №3: Затворник рядом — трезвому 1 вместо 0 без предупреждения', sp.defaults.n === 0 && confs(sp.info({ n: 1 })).length === 0, JSON.stringify(confs(sp.info({ n: 1 }))));
+    E.applyStep(G, st, { n: 1 }); runNight(G, {}); E.endDay(G);
+    st = upTo(G, 'empath', { poisoner: { t: [byRole(G, 'chef').id] }, imp: { t: [byRole(G, 'saint').id] } }); sp = E.stepSpec(G, st);
+    ok('Противоречия: Затворник определился иначе — те же соседи, 0 после 1 без противоречия', told(G, em)[0].rg.length === 1 && confs(sp.info({ n: 0 })).length === 0, JSON.stringify(confs(sp.info({ n: 0 }))));
+
+    // Гадалка: «нет» на Монаха и Повара, «нет» на Повара и Солдата — «да» на Монаха и Солдата невозможно
+    const ftStart = () => start(['fortuneteller', 'monk', 'chef', 'soldier', 'saint', 'poisoner', 'imp'], 'tb', G => { G.flags.ftHerring = byRole(G, 'saint').id; });
+    G = ftStart(); let ft = byRole(G, 'fortuneteller');
+    const [mo, ch, so] = ['monk', 'chef', 'soldier'].map(r => byRole(G, r).id);
+    runNight(G, { fortuneteller: { t: [mo, ch] }, poisoner: { t: [byRole(G, 'saint').id] } }); E.endDay(G);
+    runNight(G, { fortuneteller: { t: [ch, so] }, poisoner: { t: [byRole(G, 'saint').id] }, imp: { t: [byRole(G, 'saint').id] } }); E.endDay(G);
+    ok('Противоречия: Гадалке дважды «нет» — в истории', told(G, ft).map(r => r.a).join() === 'false,false', JSON.stringify(told(G, ft)));
+    st = upTo(G, 'fortuneteller', { poisoner: { t: [ft.id] } }); sp = E.stepSpec(G, st);
+    let fi = sp.info({ t: [mo, so] }), fdef = E.stepInputs(sp, { t: [mo, so] }).find(f => f.key === 'ans');
+    ok('Противоречия №4: отравленной Гадалке по умолчанию «нет» — «да» спорит с прошлым', sp.dist && fdef && fdef.def === 'no' && /^НЕТ/.test(fi.show) && !hasW(fi), JSON.stringify([fdef && fdef.def, fi.show]));
+    ok('Противоречия №1: Гадалке «да» на двоих, уже бывших в «нет», — предупреждение', hasW(sp.info({ t: [mo, so], ans: 'yes' }), /Монах|monk/), JSON.stringify(confs(sp.info({ t: [mo, so], ans: 'yes' }))));
+    ok('Противоречия №1: та же пара, другой ответ — «Та же пара»', hasW(sp.info({ t: [mo, ch], ans: 'yes' }), /Та же пара, что в ночь 1/), JSON.stringify(confs(sp.info({ t: [mo, ch], ans: 'yes' }))));
+    E.applyStep(G, st, { t: [mo, so] });
+    ok('Противоречия: записан показанный ответ по умолчанию («нет»)', told(G, ft).length === 3 && told(G, ft)[2].a === false && told(G, ft)[2].d === 'ОТРАВЛЕН', JSON.stringify(told(G, ft)[2]));
+    // трезвой Гадалке «да» без Демона и ложной цели — №3; с Затворником в паре — можно
+    G = ftStart(); st = upTo(G, 'fortuneteller', { poisoner: { t: [byRole(G, 'saint').id] } }); sp = E.stepSpec(G, st);
+    ok('Противоречия №3: трезвой Гадалке ложное «да» — предупреждение', hasW(sp.info({ t: [byRole(G, 'monk').id, byRole(G, 'chef').id], ans: 'yes' }), /трезв/));
+    G = start(['fortuneteller', 'monk', 'chef', 'recluse', 'saint', 'poisoner', 'imp'], 'tb', G => { G.flags.ftHerring = byRole(G, 'saint').id; });
+    st = upTo(G, 'fortuneteller', { poisoner: { t: [byRole(G, 'saint').id] } }); sp = E.stepSpec(G, st);
+    ok('Противоречия №3: Затворник в паре — «да» трезвой Гадалке можно', confs(sp.info({ t: [byRole(G, 'monk').id, byRole(G, 'recluse').id], ans: 'yes' })).length === 0);
+    // Вортокс: ложь каждый раз — та же пара, та же ложь, без противоречия
+    G = start(['fortuneteller', 'monk', 'chef', 'soldier', 'saint', 'poisoner', 'vortox'], 'tb', G => { G.flags.ftHerring = byRole(G, 'saint').id; });
+    ft = byRole(G, 'fortuneteller'); const mc = [byRole(G, 'monk').id, byRole(G, 'chef').id];
+    runNight(G, { fortuneteller: { t: mc }, poisoner: { t: [byRole(G, 'saint').id] } }); E.execute(G, byRole(G, 'soldier').id); E.endDay(G); // Вортокс: день без казни — победа зла
+    st = upTo(G, 'fortuneteller', { poisoner: { t: [byRole(G, 'saint').id] }, vortox: { t: [byRole(G, 'saint').id] } }); sp = E.stepSpec(G, st);
+    ok('Противоречия: Вортокс — та же пара, снова ложное «да», противоречия нет', told(G, ft)[0].a === true && sp.dist && sp.dist.must && /^ДА/.test(sp.info({ t: mc }).show) && confs(sp.info({ t: mc })).length === 0,
+      JSON.stringify([told(G, ft)[0], confs(sp.info({ t: mc }))]));
+    // Наёмник: Гадалка выбрала его — пьяна, в истории так и записано
+    G = start(['fortuneteller', 'goon', 'chef', 'monk', 'saint', 'poisoner', 'imp'], 'tb', G => { G.flags.ftHerring = byRole(G, 'saint').id; }); ft = byRole(G, 'fortuneteller');
+    st = upTo(G, 'fortuneteller', { poisoner: { t: [byRole(G, 'saint').id] } });
+    E.applyStep(G, st, { t: [byRole(G, 'goon').id, byRole(G, 'chef').id] });
+    ok('Противоречия: Гадалка выбрала Наёмника — запись «пьян»', told(G, ft)[0] && told(G, ft)[0].d === 'ПЬЯН', JSON.stringify(told(G, ft)));
+
+    // Сновидец: тот же игрок — новая пара должна иметь общую роль с прошлой
+    const dStart = () => start(['dreamer', 'clockmaker', 'oracle', 'flowergirl', 'towncrier', 'cerenovus', 'vigormortis'], 'snv');
+    G = dStart(); let dr = byRole(G, 'dreamer'); const fl = byRole(G, 'flowergirl');
+    runNight(G, { dreamer: { t: [fl.id] } });
+    const d1 = told(G, dr)[0];
+    ok('Противоречия: Сновидец — записана пара ролей', d1 && d1.k === 'dream' && d1.a.includes('flowergirl') && d1.q[0] === fl.id, JSON.stringify(d1));
+    E.endDay(G); E.addTok(G, dr, 'poisoned', 'nodashii', ['dusk', G.n + 1]);
+    st = upTo(G, 'dreamer', {}); sp = E.stepSpec(G, st);
+    const dmore = E.stepInputs(sp, { t: [fl.id] }), dg = dmore.find(f => f.key === 'g').def, de = dmore.find(f => f.key === 'e').def;
+    ok('Противоречия №4: отравленному Сновидцу — ложная пара, общая с прошлой', sp.dist && dg !== 'flowergirl' && de !== 'flowergirl' && (d1.a.includes(dg) || d1.a.includes(de))
+      && !hasW(sp.info({ t: [fl.id] })), JSON.stringify([d1.a, dg, de, confs(sp.info({ t: [fl.id] }))]));
+    const goodX = E.stepInputs(sp, { t: [fl.id] }).find(f => f.key === 'g').groups.flatMap(g => g.roles).find(r => !d1.a.includes(r) && r !== 'flowergirl');
+    const evilX = E.stepInputs(sp, { t: [fl.id] }).find(f => f.key === 'e').groups.flatMap(g => g.roles).find(r => !d1.a.includes(r));
+    ok('Противоречия №1: Сновидцу пара без общей роли — предупреждение', hasW(sp.info({ t: [fl.id], g: goodX, e: evilX }), /уже видел/), JSON.stringify([goodX, evilX, confs(sp.info({ t: [fl.id], g: goodX, e: evilX }))]));
+
+    // Оракул: мёртв Цереновус (злой); трезвый Оракул — 1; те же мёртвые — отравленному по умолчанию снова 1, «0» — противоречие
+    G = dStart(); const orc = byRole(G, 'oracle');
+    runNight(G, {}); E.execute(G, byRole(G, 'cerenovus').id); E.endDay(G);
+    runNight(G, {});
+    ok('Противоречия: Оракул — записано 1 (мёртвые: Цереновус)', told(G, orc)[0] && told(G, orc)[0].a === 1 && told(G, orc)[0].q.length === 1, JSON.stringify(told(G, orc)));
+    E.endDay(G); E.addTok(G, orc, 'poisoned', 'nodashii', ['dusk', G.n + 1]);
+    st = upTo(G, 'oracle', {}); sp = E.stepSpec(G, st);
+    ok('Противоречия №4: Оракул отравлен, мёртвые те же — по умолчанию 1', sp.dist && sp.defaults.n === 1, String(sp.defaults.n));
+    ok('Противоречия №1: Оракулу «0» — меньше, хотя никто не ожил', hasW(sp.info({ n: 0 }), /Мёртвые те же/), JSON.stringify(confs(sp.info({ n: 0 }))));
+    // умер ещё добрый: «0» невозможно (Цереновус был злым), ложь по умолчанию — 2
+    E.applyStep(G, st, sp.defaults); runNight(G, {}); E.execute(G, byRole(G, 'towncrier').id); E.endDay(G);
+    E.addTok(G, orc, 'poisoned', 'nodashii', ['dusk', G.n + 1]);
+    st = upTo(G, 'oracle', {}); sp = E.stepSpec(G, st);
+    ok('Противоречия: Оракул — умер ещё один: «0» спорит, по умолчанию 2', sp.defaults.n === 2 && hasW(sp.info({ n: 0 })) && !hasW(sp.info({ n: 2 })), JSON.stringify([sp.defaults, confs(sp.info({ n: 0 }))]));
+
+    // №2: Цветочница и Глашатай — днём никто не голосовал и не номинировал
+    G = dStart(); runNight(G, {}); E.endDay(G);
+    E.addTok(G, byRole(G, 'flowergirl'), 'poisoned', 'nodashii', ['dusk', G.n + 1]); E.addTok(G, byRole(G, 'towncrier'), 'poisoned', 'nodashii', ['dusk', G.n + 1]);
+    st = upTo(G, 'flowergirl', {}); sp = E.stepSpec(G, st);
+    ok('Противоречия №2/№4: никто не голосовал — пьяной Цветочнице по умолчанию «нет»', sp.dist && /^НЕТ/.test(sp.info({}).show) && sp.inputs[0].def === 'no' && !hasW(sp.info({})), sp.info({}).show);
+    ok('Противоречия №2: Цветочнице «да», когда никто не голосовал, — предупреждение', hasW(sp.info({ ans: 'yes' }), /никто, кроме самой Цветочницы/));
+    E.applyStep(G, st, {});
+    st = upTo(G, 'towncrier', {}); sp = E.stepSpec(G, st);
+    ok('Противоречия №2: Глашатаю «да», когда никто не номинировал, — предупреждение; по умолчанию «нет»', hasW(sp.info({ ans: 'yes' }), /никто, кроме самого Глашатая/) && /^НЕТ/.test(sp.info({}).show));
+    G = dStart(); runNight(G, {});
+    E.nominate(G, byRole(G, 'clockmaker').id, byRole(G, 'oracle').id); E.recordVote(G, byRole(G, 'oracle').id, [byRole(G, 'clockmaker').id, byRole(G, 'dreamer').id]);
+    E.endDay(G); E.addTok(G, byRole(G, 'flowergirl'), 'poisoned', 'nodashii', ['dusk', G.n + 1]);
+    st = upTo(G, 'flowergirl', {}); sp = E.stepSpec(G, st);
+    ok('Противоречия №2: голосовали — пьяной Цветочнице «да» можно (по умолчанию — ложь)', /^ДА/.test(sp.info({}).show) && !hasW(sp.info({})), JSON.stringify([sp.info({}).show, confs(sp.info({}))]));
+
+    // №3: Прачка и Гробовщик — трезвым неверное
+    G = start(['washerwoman', 'undertaker', 'chef', 'monk', 'saint', 'poisoner', 'imp']);
+    st = upTo(G, 'washerwoman', { poisoner: { t: [byRole(G, 'saint').id] } }); sp = E.stepSpec(G, st);
+    ok('Противоречия №3: трезвой Прачке неверная пара — предупреждение', hasW(sp.info({ t: [byRole(G, 'saint').id, byRole(G, 'imp').id], r: 'chef' }), /трезв/)
+      && confs(sp.info(sp.defaults)).length === 0);
+    runNight(G, { poisoner: { t: [byRole(G, 'saint').id] } }); E.execute(G, byRole(G, 'chef').id); E.endDay(G);
+    st = upTo(G, 'undertaker', { poisoner: { t: [byRole(G, 'saint').id] }, imp: { t: [byRole(G, 'saint').id] } }); sp = E.stepSpec(G, st);
+    ok('Противоречия №3: трезвому Гробовщику чужая роль — предупреждение', hasW(sp.info({ r: 'monk' }), /трезв/) && confs(sp.info({ r: 'chef' })).length === 0);
+
+    // правка ночи из журнала: история не задваивается, правка заменяет ответ
+    G = start(['poisoner', 'empath', 'imp', 'chef', 'monk', 'soldier', 'saint']); em = byRole(G, 'empath');
+    runNight(G, { poisoner: { t: [byRole(G, 'monk').id] } }); E.endDay(G);
+    runNight(G, { poisoner: { t: [em.id] }, imp: { t: [byRole(G, 'soldier').id] } });
+    const ke = G.rp.recs.findIndex(r => r.t === 'step' && r.key.startsWith('empath'));
+    const ed = E.editNight(G, ke, { inp: { n: 1 } });
+    ok('Противоречия: правка ночи — записей столько же, ответ заменён', told(G, em).length === 2 && told(ed.T, em).length === 2 && told(ed.T, em)[1].a === 1 && told(ed.T, em)[0].a === 2,
+      JSON.stringify([told(G, em), told(ed.T, em)]));
+    const back = E.replayNight(G, {}, ke);
+    ok('Противоречия: форма правки — шаг в прежнем состоянии, без своей записи', told(back.T, em).length === 1);
+    // старая игра (до v102) — истории нет: без падений и без противоречий
+    G = start(['poisoner', 'empath', 'imp', 'chef', 'monk', 'soldier', 'saint']); runNight(G, {}); E.endDay(G); delete G.flags.told;
+    st = upTo(G, 'empath', { poisoner: { t: [byRole(G, 'empath').id] }, imp: { t: [byRole(G, 'soldier').id] } }); sp = E.stepSpec(G, st);
+    ok('Противоречия: старая игра без истории — шаг работает, противоречий нет', confs(sp.info(sp.defaults)).length === 0 && E.applyStep(G, st, sp.defaults).ok && told(G, byRole(G, 'empath')).length === 1);
+  }
+
   for (const k of Object.keys(DATA.scripts)) ok('сценарий ' + k + ' — все роли в данных', DATA.scripts[k].roles.every(r => DATA.roles[r]));
 } catch (e) { results.push('ERROR ' + e.message + '\n' + e.stack); }
 

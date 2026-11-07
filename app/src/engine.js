@@ -1674,6 +1674,8 @@ function cannibalFakeSpec(S, step) {
       const r = asGained(p, inp.fk, () => sp.info(full(sp, inp))) || { show: null, lines: [] };
       return Object.assign({}, r, { lines: [`Каннибал «${rname(inp.fk)}» понарошку: способности нет — показывайте ложное, как пьяной роли`].concat(r.lines || []) });
     },
+    // показанное «понарошку» игрок тоже запомнил — в историю (способностью той роли)
+    told: inp => { const sp = sub(inp.fk); return sp && sp.active && sp.told ? asGained(p, inp.fk, () => sp.told(full(sp, inp))) : null; },
     apply: inp => {
       S.flags['cannibal_' + p.id] = Object.assign({}, f, { fake: inp.fk || null });
       const sp = sub(inp.fk), ts = (inp.t || []).map(id => nm(S, id));
@@ -1901,6 +1903,108 @@ const once = (S, p, key) => S.flags[key + '_' + p.id];
 const markOnce = (S, p, key) => { S.flags[key + '_' + p.id] = true; };
 const scriptRoles = (S, f) => S.script.roles.filter(r => R(r) && (!f || f(r)));
 
+/* --- противоречия в выданной информации (задача №12 пользователя, 2026-11-07; v102)
+   Цель: рассказчик не выдаёт случайно то, по чему игрок поймёт, что пьян или отравлен (вики, Drunk → Tips: игрок ищет «demonstrably
+   false» информацию), а трезвый не получает неверного. Вики (Glossary «Drunk», «Poisoned») разрешает пьяному любую ложь — всё это
+   подсказки рядом с ответом (info.conf: [{lvl: 'warn'|'note', t}]), решает рассказчик. Проверки: №1 — ответ спорит с тем, что игрок уже
+   узнал своей способностью (Эмпат, Оракул, Гадалка, Сновидец); №2 — с открытыми фактами дня (Глашатай, Цветочница); №3 — трезвому
+   выбран неверный ответ; №4 — рекомендация пьяному и отравленному: ложь, которая сходится с прошлым (toldPick).
+   История — S.flags.told[pid]: { n, ab, k, q, a, t, d, h, rg } — ночь; ab — чьей способностью узнал (actsAs: после смены роли прежняя
+   история не в счёт); k — вид: 'sum' — злых среди q ровно a (Эмпат: живые соседи; Оракул: мёртвые), 'ft' — Гадалка: «да» (a) — хоть
+   один из пары q «срабатывает» (Демон или ложная цель), «нет» — никто, 'dream' — Сновидец: q — [игрок], a — [добрая, злая роль];
+   t — верный ответ тогда; d — пьян / отравлен / Вортокс (метка); h — скрытое тогда по каждому из q (определяется злым / «срабатывает» /
+   роль): изменилось с тех пор — расхождение объяснимо; rg — Затворник и Шпион среди q: определяются на усмотрение рассказчика,
+   у них в каждой записи свой ответ. Запись — spec.told(inp) в applyStep (после Наёмника): переигрывание ночи пересобирает её со снимка */
+const TOLD_REG = { sum: ['recluse', 'spy'], ft: ['recluse'], dream: ['recluse', 'spy'] }; // Шпион Демоном не определяется
+function toldHid(S, k, id) {
+  const q = P(S, id); if (!q) return null;
+  return k === 'ft' ? (isDemon(q) || S.flags.ftHerring === q.id ? 1 : 0) : k === 'dream' ? q.role : regEvil(S, q) ? 1 : 0;
+}
+// запись ответа a на вопрос q (верный — t) способностью, которой сейчас пользуется p
+function toldRec(S, p, k, q, a, t) {
+  const ids = q.slice().sort();
+  return { ab: actsAs(p), k, q: ids, a, t, h: ids.map(id => toldHid(S, k, id)), rg: ids.filter(id => P(S, id) && TOLD_REG[k].includes(P(S, id).role)) };
+}
+function toldPush(S, pid, rec, dist) {
+  if (!rec || !pid) return;
+  const all = S.flags.told || (S.flags.told = {});
+  (all[pid] || (all[pid] = [])).push(Object.assign({ n: S.n, d: dist ? dist.label : null }, rec));
+}
+// прошлые записи, с которыми сравнивать: та же способность и вид; Сновидец — тот же игрок (и не Затворник/Шпион)
+const toldPrev = (S, pid, cur) => (((S.flags.told || {})[pid]) || [])
+  .filter(r => r.ab === cur.ab && r.k === cur.k && (cur.k !== 'dream' || (r.q[0] === cur.q[0] && !(r.rg || []).length)));
+// в Гримуаре с тех пор ничего не поменялось для этой записи
+const toldSame = (S, r) => r.q.every((id, i) => (r.rg || []).includes(id) || toldHid(S, r.k, id) === r.h[i]);
+// условие записи для перебора: Затворник и Шпион — своя переменная в каждой записи
+function toldCon(r, tag) {
+  const v = r.q.map(id => (r.rg || []).includes(id) ? id + '#' + tag : id);
+  return r.k === 'ft' ? (r.a ? { v, any: 1 } : { v, none: 1 }) : { v, eq: r.a };
+}
+// есть ли расстановка 0/1, при которой выполнены все условия ({v, eq} — сумма; {v, any} — хоть одна 1; {v, none} — все 0)
+function boolSat(cons) {
+  const vars = [...new Set(cons.flatMap(c => c.v))];
+  if (vars.length > 24) return true; // слишком много — не проверяем (лучше промолчать, чем ругаться зря)
+  const val = {};
+  const fine = c => { let s = 0, u = 0; for (const x of c.v) { if (x in val) s += val[x]; else u++; }
+    return c.none ? s === 0 : c.any ? s + u > 0 : s <= c.eq && s + u >= c.eq; };
+  const go = i => {
+    if (!cons.every(fine)) return false;
+    if (i === vars.length) return true;
+    for (const b of [0, 1]) { val[vars[i]] = b; if (go(i + 1)) return true; }
+    delete val[vars[i]]; return false;
+  };
+  return go(0);
+}
+// сходятся ли записи (и ответ cur): Сновидец — у игрока есть роль из всех показанных пар; остальные — перебор
+function toldSat(rs, cur) {
+  const all = cur ? rs.concat([cur]) : rs;
+  if (!all.length) return true;
+  if (all[0].k === 'dream') { let s = all[0].a.slice(); for (const r of all) s = s.filter(x => r.a.includes(x)); return s.length > 0; }
+  return boolSat(all.map((r, i) => toldCon(r, r === cur ? 'c' : i)));
+}
+// 2 — сходится со всем, что игрок узнал; 1 — только с тем, что в Гримуаре с тех пор не менялось; 0 — не сходится
+function toldFit(S, p, cur) {
+  const rs = toldPrev(S, p.id, cur);
+  if (!rs.length || toldSat(rs, cur)) return 2;
+  return toldSat(rs.filter(r => toldSame(S, r)), cur) ? 1 : 0;
+}
+// №4: ответ по умолчанию пьяному или отравленному — ложь (lies — по порядку предпочтения), которая сходится с прошлым; такой нет —
+// верный ответ (если не Вортокс и он сходится); иначе — прежняя рекомендация fake. Без истории — fake, как раньше
+function toldPick(fit, lies, truth, fake, must) {
+  for (const lvl of [2, 1]) { const c = lies.filter(v => fit(v) >= lvl); if (c.length) return c.some(v => jstr(v) === jstr(fake)) ? fake : c[0]; }
+  if (!must && fit(truth) >= 1) return truth;
+  return fake;
+}
+// записи, связанные с вопросом общими игроками (по цепочке) — о них и говорим
+function toldRelated(rs, cur) {
+  const seen = new Set(cur.q), out = [];
+  for (let grew = true; grew;) { grew = false;
+    for (const r of rs) if (!out.includes(r) && r.q.some(id => seen.has(id))) { out.push(r); r.q.forEach(id => seen.add(id)); grew = true; } }
+  return out.sort((a, b) => a.n - b.n);
+}
+const toldNames = (S, ids) => { ids = seatSort(S, ids); return ids.length > 4 ? `${ids.slice(0, 3).map(id => nm(S, id)).join(', ')} и ещё ${ids.length - 3}` : ids.map(id => nm(S, id)).join(', '); };
+// №1: ответ cur спорит с тем, что игрок p уже узнал. o: { ok — ответ верный (с учётом Затворника и Шпиона), dist, item(r) — прошлый ответ
+// словами, same(r) — начало фразы, если вопрос тот же }
+function toldCheck(S, p, cur, o) {
+  if (!cur) return [];
+  const rs = toldPrev(S, p.id, cur);
+  if (!rs.length || toldSat(rs, cur)) return [];
+  const list = xs => xs.map(r => `ночь ${r.n} — ${o.item(r)}`).join('; ');
+  const same = rs.filter(r => toldSame(S, r));
+  if (!toldSat(same)) return [{ lvl: 'note', t: `Прошлые ответы игрока уже не сходятся между собой (${list(same)}) — этот ответ ничего не меняет` }];
+  if (toldSat(same, cur)) return [{ lvl: 'note', t: `Расходится с прошлым (${list(rs.filter(r => !toldSame(S, r)))}), но в Гримуаре с тех пор поменялось (сторона, Демон или роль) — объяснимо: для игрока это подсказка, а не противоречие` }];
+  const rel = cur.k === 'dream' ? same : toldRelated(same, cur);
+  const exact = rel.filter(r => r.q.join() === cur.q.join()).pop();
+  const head = exact && o.same ? o.same(exact) : `Не сходится с тем, что игрок уже узнал: ${list(rel)}`;
+  if (!o.ok) return [{ lvl: 'warn', t: `${head} — игрок поймёт, что информация ложная` }];
+  // ответ верный — значит, раньше была ложь: по нему игрок может догадаться, что тогда был пьян или отравлен
+  const lies = rel.filter(r => r.k === 'dream' ? !r.a.includes(r.t) : jstr(r.a) !== jstr(r.t)).map(r => `ночь ${r.n}${r.d ? ` — ${r.d.toLowerCase()}` : ''}`);
+  return [{ lvl: o.dist ? 'warn' : 'note', t: `${head}. Тогда ответ был ложным${lies.length ? ` (${lies.join('; ')})` : ''}: по верному ответу игрок может догадаться, что тогда был пьян или отравлен`
+    + (o.dist ? '. Сейчас он тоже пьян или отравлен — можно дать ответ, который сходится с прошлым' : '. Трезвому по правилам — верная информация') }];
+}
+// №3: трезвый и здоровый получает неверный ответ (вики: способность работает — информация верная). Затворник, Шпион — на ваше усмотрение
+const soberWarn = (dist, lie) => !dist && lie ? [{ lvl: 'warn', t: 'Игрок трезв и здоров — по правилам он получает верную информацию, а выбран неверный ответ' }] : [];
+
 function demonKill(S, p, off, t, inp, cause) {
   if (off) { log(S, `${rname(p.role)} выбирает ${t.name} — способность не работает`, 'action'); if (t.alive) recordAbn(S, p, `нападение на ${t.name} не сработало`, abnSource(S, p)); return; }
   let target = t;
@@ -1958,6 +2062,8 @@ function genericLogic(S, p, first, off) {
 // Шпион может определиться добрым (Горожанином или Изгоем), Затворник — злым (Приспешником или Демоном)
 const REG_AS = { spy: ['townsfolk', 'outsider'], recluse: ['minion', 'demon'] };
 const TEAM_INS = { townsfolk: 'Горожанином', outsider: 'Изгоем', minion: 'Приспешником', demon: 'Демоном' };
+// Шпион или Затворник может определиться ролью r (её типом) — показать её трезвому можно
+const regAsOk = (t, r) => !!(t && r && R(r) && (REG_AS[t.role] || []).includes(R(r).team));
 const seatSort = (S, ids) => ids.slice().sort((a, b) => S.players.findIndex(q => q.id === a) - S.players.findIndex(q => q.id === b));
 // какую роль можно показать вместо роли игрока t (Гробовщик, Смотритель воронов): верно — его роль, Шпиону и Затворнику —
 // и роли, которыми они могут определиться; пьяному, отравленному, при Вортоксе — любая роль сценария (ложь).
@@ -2008,9 +2114,12 @@ function infoPair(team) {
       inputs, more: inp => team === 'outsider' && inp.none !== 'yes' ? pair : [], defaults: def,
       info: inp => {
         const ok = correct(inp), mustLie = dist && dist.must && ok ? 'Вортокс: нужна ЛОЖНАЯ информация' : '';
-        if (inp.none === 'yes') return { show: '0 — Изгоев в игре нет', lines: [ok ? 'Верно' : 'Изгои в игре есть — это ложь', mustLie], tokens: [{ text: '0', sub: 'Изгоев в игре нет' }] };
+        // №3: трезвому — ложь (кроме Шпиона и Затворника среди показанных — они могут определиться этим типом)
+        const regOk = inp.none !== 'yes' && (inp.t || []).some(id => P(S, id) && (REG_AS[P(S, id).role] || []).includes(team));
+        const conf = soberWarn(dist, !ok && !regOk && (inp.none === 'yes' || (!!inp.r && (inp.t || []).length === 2)));
+        if (inp.none === 'yes') return { show: '0 — Изгоев в игре нет', conf, lines: [ok ? 'Верно' : 'Изгои в игре есть — это ложь', mustLie], tokens: [{ text: '0', sub: 'Изгоев в игре нет' }] };
         const ps = (inp.t || []).map(id => P(S, id));
-        return { show: `${rname(inp.r)}: ${ps.map(q => q && q.name).join(' и ')}`, lines: [ok ? 'Информация верная' : 'Информация ложная', mustLie, ...regNote(S, inp.t || [])],
+        return { show: `${rname(inp.r)}: ${ps.map(q => q && q.name).join(' и ')}`, conf, lines: [ok ? 'Информация верная' : 'Информация ложная', mustLie, ...regNote(S, inp.t || [])],
           tokens: inp.r ? [{ role: inp.r, players: seatSort(S, inp.t || []), lead: 'Эта роль — один из этих игроков:' }] : [] }; // по местам — порядок не выдаёт, кто верный
       },
       apply: inp => {
@@ -2039,20 +2148,35 @@ function plausibleFake(truth, lo, hi) {
   const far = []; for (let v = lo; v <= Math.min(hi, truth + 4); v++) if (v !== truth) far.push(v);
   return far.length ? pick(far) : truth;
 }
+// compute даёт { n — верное число, min/max, lines; q — кого считает (Эмпат — живые соседи, Оракул — мёртвые: история ответов, №1),
+// qw — как их назвать }. Затворник и Шпион среди считаемых (у Повара и Часовщика — в игре) могут определиться иначе: число на ±их
 function countInfo(compute, label) {
   return (S, p, first, off) => {
     const dist = distortion(S, p), r0 = compute(S, p), truth = r0.n, num = typeof truth === 'number';
     const lo = r0.min ?? 0, hi = r0.max ?? Infinity;
     const fake = stable(S, `count:${p.id}`, () => num ? plausibleFake(truth, lo, hi) : truth);
+    const shown = inp => num ? (inp.n ?? truth) : truth; // одно и то же — в карточке, журнале и истории
+    const rec = v => num && r0.q ? toldRec(S, p, 'sum', r0.q, v, truth) : null;
+    const pool = (r0.q || S.players.map(q => q.id)).map(id => P(S, id)).filter(Boolean);
+    const nRec = pool.filter(q => q.role === 'recluse').length, nSpy = pool.filter(q => q.role === 'spy').length;
+    // верно — с учётом того, как определились Затворник и Шпион (у Повара и Часовщика они меняют число как угодно — тогда не судим)
+    const okv = v => r0.q ? v >= truth - nSpy && v <= truth + nRec : v === truth || nRec + nSpy > 0;
+    // №4: ложь по умолчанию — возможное число, ближайшее к верному, которое не спорит с тем, что игрок уже узнал
+    const lies = []; if (num) for (let k = 1; k <= 8; k++) for (const v of [truth - k, truth + k]) if (v >= lo && v <= hi) lies.push(v);
+    const def = !num || !dist ? truth : toldPick(v => rec(v) ? toldFit(S, p, rec(v)) : 2, lies, truth, fake, dist.must);
+    const item = r => `${r.a} (${r0.qw || 'считаются'}: ${toldNames(S, r.q) || 'никого'})`;
     return {
-      inputs: num ? [NUM('n', label + ' — что показать')] : [], defaults: num ? { n: dist ? fake : truth } : {},
+      inputs: num ? [NUM('n', label + ' — что показать')] : [], defaults: num ? { n: def } : {},
       info: inp => {
-        const v = num ? (inp.n ?? truth) : truth;
-        return { show: String(v), lines: [label, num && v !== truth ? `Верное число: ${truth}` : '', num && (v < lo || v > hi) ? `Такого числа быть не может (возможно ${lo}–${hi}) — игрок поймёт, что информация ложная` : '',
-          dist && dist.must && v === truth ? 'Вортокс: нужно ЛОЖНОЕ число' : '', ...(r0.lines || [])] };
+        const v = shown(inp);
+        const conf = !num ? [] : soberWarn(dist, !okv(v)).concat(toldCheck(S, p, rec(v), { ok: okv(v), dist, item,
+          same: r => `${r0.qw === 'мёртвые' ? 'Мёртвые' : 'Живые соседи'} те же, что в ночь ${r.n} (${toldNames(S, r.q) || 'никого'}), а тогда показано ${r.a}` }));
+        return { show: String(v), conf, lines: [label, num && v !== truth ? `Верное число: ${truth}` : '', num && (v < lo || v > hi) ? `Такого числа быть не может (возможно ${lo}–${hi}) — игрок поймёт, что информация ложная` : '',
+          dist && dist.must && v === truth ? 'Вортокс: нужно ЛОЖНОЕ число' : '', num && dist && def === truth && fake !== truth ? 'По умолчанию — верное число: любая ложь здесь спорит с тем, что игрок уже узнал' : '', ...(r0.lines || [])] };
       },
+      told: inp => rec(shown(inp)),
       apply: inp => {
-        const v = num ? (inp.n ?? truth) : truth;
+        const v = shown(inp);
         log(S, `${rname(actsAs(p))} (${p.name}): ${v}${v !== truth ? ` (верное ${truth})` : ''}${off ? ' — способность не работает' : ''}`, 'info');
         if (dist && v !== truth) recordAbn(S, p, `ложное число ${v} вместо ${truth}`, dist.src);
       },
@@ -2060,13 +2184,18 @@ function countInfo(compute, label) {
   };
 }
 // «да/нет» с рекомендацией: верный ответ, а при искажении — противоположный; рассказчик может выбрать сам
-function yesNo(S, p, truth, label) {
+// pref — ответ по умолчанию пьяному/отравленному, если не просто «противоположный» (№4: ложь, которая сходится с прошлым)
+function yesNo(S, p, truth, label, pref) {
   const dist = distortion(S, p);
-  const shown = inp => inp.ans ? inp.ans === 'yes' : (dist ? !truth : truth);
+  const d0 = dist && pref != null ? pref : dist ? !truth : truth;
+  const shown = inp => inp.ans ? inp.ans === 'yes' : d0;
   return {
     dist, shown,
-    field: Object.assign(CHOICE('ans', label || 'Что показать (по умолчанию — рекомендация)', [{ v: 'yes', l: 'Да' }, { v: 'no', l: 'Нет' }]), { optional: true, def: (dist ? !truth : truth) ? 'yes' : 'no' }),
-    lines: inp => [shown(inp) !== truth ? `Верный ответ: ${truth ? 'да' : 'нет'}` : '', dist && dist.must && shown(inp) === truth ? 'Вортокс: нужен ЛОЖНЫЙ ответ' : ''],
+    field: Object.assign(CHOICE('ans', label || 'Что показать (по умолчанию — рекомендация)', [{ v: 'yes', l: 'Да' }, { v: 'no', l: 'Нет' }]), { optional: true, def: d0 ? 'yes' : 'no' }),
+    lines: inp => [shown(inp) !== truth ? `Верный ответ: ${truth ? 'да' : 'нет'}` : '', dist && dist.must && shown(inp) === truth ? 'Вортокс: нужен ЛОЖНЫЙ ответ' : '',
+      dist && d0 === truth && !inp.ans ? 'По умолчанию — верный ответ: ложь здесь спорит с тем, что игрок уже знает' : ''],
+    // №3: трезвому — неверный ответ (regOk — неверный может быть верным из-за Затворника или Шпиона)
+    sober: (inp, regOk) => soberWarn(dist, shown(inp) !== truth && !regOk),
     record: inp => { if (dist && shown(inp) !== truth) recordAbn(S, p, 'ложный ответ', dist.src); },
   };
 }
@@ -2083,19 +2212,28 @@ const LOGIC = {
   }, 'Пар соседей-злодеев (покажите пальцами)'),
   empath: countInfo((S, p) => {
     const nb = aliveNeighbours(S, p), c = nb.filter(q => regEvil(S, q)).length, alt = nb.filter(q => q.align === 'evil').length;
-    return { n: c, max: Math.min(nb.length, evilLike(S, p)), lines: [`Соседи: ${nb.map(q => q.name).join(' и ')}`, ...pawAlt(S, nb, c, alt, 'злых'), ...regNote(S, nb.map(q => q.id), true)] };
+    return { n: c, max: Math.min(nb.length, evilLike(S, p)), q: nb.map(q => q.id), qw: 'соседи', lines: [`Соседи: ${nb.map(q => q.name).join(' и ')}`, ...pawAlt(S, nb, c, alt, 'злых'), ...regNote(S, nb.map(q => q.id), true)] };
   }, 'Злых среди живых соседей'),
+  // история (№1): «нет» снимает подозрение с обоих, «да» — хоть один «срабатывает»; ответ, который с этим не сходится, — предупреждение
   fortuneteller: (S, p, first, off) => {
+    const dist = distortion(S, p);
     const truth = inp => (inp.t || []).map(id => P(S, id)).some(q => q && (isDemon(q) || q.id === S.flags.ftHerring));
-    const yn = inp => yesNo(S, p, truth(inp));
+    const rec = (inp, a) => toldRec(S, p, 'ft', inp.t || [], a, truth(inp));
+    const pref = inp => dist ? toldPick(v => toldFit(S, p, rec(inp, v)), [!truth(inp)], truth(inp), !truth(inp), dist.must) : null;
+    const yn = inp => yesNo(S, p, truth(inp), null, pref(inp));
+    const okv = (inp, a) => a === truth(inp) || (a && rec(inp, a).rg.length > 0); // Затворник может определиться Демоном
+    const names = r => seatSort(S, r.q).map(id => nm(S, id)).join(' и ');
     return {
       inputs: [PL('t', 2, 'Гадалка выбирает 2 игроков')],
       more: inp => (inp.t || []).length === 2 ? [yn(inp).field] : [],
       info: inp => {
         if ((inp.t || []).length < 2) return null;
         const y = yn(inp), s = y.shown(inp);
-        return { show: s ? 'ДА — кивните' : 'НЕТ — покачайте головой', lines: [...y.lines(inp), `Ложная цель: ${nm(S, S.flags.ftHerring)}`, ...regNote(S, inp.t || [])] };
+        const conf = y.sober(inp, okv(inp, s)).concat(toldCheck(S, p, rec(inp, s), { ok: okv(inp, s), dist, item: r => `${names(r)}: ${r.a ? 'ДА' : 'НЕТ'}`,
+          same: r => `Та же пара, что в ночь ${r.n} (${names(r)}), а тогда — ${r.a ? 'ДА' : 'НЕТ'}` }));
+        return { show: s ? 'ДА — кивните' : 'НЕТ — покачайте головой', conf, lines: [...y.lines(inp), `Ложная цель: ${nm(S, S.flags.ftHerring)}`, ...regNote(S, inp.t || [])] };
       },
+      told: inp => (inp.t || []).length === 2 ? rec(inp, yn(inp).shown(inp)) : null,
       apply: inp => { const y = yn(inp); log(S, `Гадалка (${p.name}) проверяет ${(inp.t || []).map(id => nm(S, id)).join(' и ')}: ${y.shown(inp) ? 'да' : 'нет'}`, 'info'); y.record(inp); },
     };
   },
@@ -2106,7 +2244,8 @@ const LOGIC = {
     const own = r => r === actsAs(p) || r === p.role; // свою роль Гробовщику не предлагаем
     const fake = stable(S, 'under:' + p.id, () => pick(scriptRoles(S, r => r !== ex.role && !own(r) && R(r).team === realTeam(ex))) || pick(scriptRoles(S, r => r !== ex.role && !own(r))) || ex.role);
     return { inputs: [ROLE('r', 'Какую роль показать (по умолчанию — рекомендация)', () => true, { groups: shownRoleGroups(S, p, ex, dist) })], defaults: { r: dist ? fake : ex.role },
-      info: inp => ({ show: `Покажите жетон: ${rname(inp.r)}`, lines: [`Казнён ${ex.name} — ${rname(ex.role)}`, inp.r !== ex.role ? 'Показываете ложную роль' : '',
+      info: inp => ({ show: `Покажите жетон: ${rname(inp.r)}`, conf: soberWarn(dist, !!inp.r && inp.r !== ex.role && !regAsOk(ex, inp.r)),
+        lines: [`Казнён ${ex.name} — ${rname(ex.role)}`, inp.r !== ex.role ? 'Показываете ложную роль' : '',
         dist && dist.must && inp.r === ex.role ? 'Вортокс: нужна ЛОЖНАЯ роль' : ''], tokens: inp.r ? [{ role: inp.r }] : [] }),
       apply: inp => { log(S, `Гробовщик (${p.name}) узнаёт: ${ex.name} — ${rname(inp.r)}${inp.r !== ex.role ? ` (на самом деле ${rname(ex.role)})` : ''}`, 'info'); if (dist && inp.r !== ex.role) recordAbn(S, p, 'ложная роль казнённого', dist.src); } };
   },
@@ -2126,7 +2265,7 @@ const LOGIC = {
     return { deadOk: true, inputs: [PL('t', 1, 'Чью роль узнать', null, { bind: inp => { inp.r = null; } })], // другой игрок — роль снова по рекомендации
       more: inp => { const t = inp.t && P(S, inp.t[0]); return t ? [ROLE('r', 'Какую роль показать (не выбрано — рекомендация)', () => true, { optional: true, groups: shownRoleGroups(S, p, t, dist) })] : []; },
       info: inp => { const t = inp.t && P(S, inp.t[0]); if (!t) return null; const r = shown(inp);
-        return { show: rname(r), lines: [r !== t.role ? `На самом деле: ${rname(t.role)}` : '', dist && dist.must && r === t.role ? 'Вортокс: нужна ЛОЖНАЯ роль' : '', ...regNote(S, [t.id])], tokens: [{ role: r }] }; },
+        return { show: rname(r), conf: soberWarn(dist, r !== t.role && !regAsOk(t, r)), lines: [r !== t.role ? `На самом деле: ${rname(t.role)}` : '', dist && dist.must && r === t.role ? 'Вортокс: нужна ЛОЖНАЯ роль' : '', ...regNote(S, [t.id])], tokens: [{ role: r }] }; },
       apply: inp => { const t = P(S, inp.t[0]), r = shown(inp); log(S, `Смотритель воронов (${p.name}) узнаёт роль ${t.name}: ${rname(r)}${r !== t.role ? ` (на самом деле ${rname(t.role)})` : ''}`, 'info');
         if (dist && r !== t.role) recordAbn(S, p, 'ложная роль', dist.src); S.flags.ravenWake = null; } };
   },
@@ -2211,7 +2350,7 @@ const LOGIC = {
       inputs: [PL('t', 2, 'Горничная выбирает 2 живых игроков', both(aliveOnly, notSelf(p)))],
       more: inp => (inp.t || []).length === 2 ? [Object.assign(NUM('n', 'Что показать (по умолчанию — рекомендация)'), { def: def(inp) })] : [],
       info: inp => { if ((inp.t || []).length < 2) return null; const c = truth(inp), n = inp.n ?? def(inp);
-        return { show: String(n), lines: ['Сколько из них просыпались этой ночью из-за своей способности (на этот момент)', n !== c ? `Верное число: ${c}` : '',
+        return { show: String(n), conf: soberWarn(dist, n !== c), lines: ['Сколько из них просыпались этой ночью из-за своей способности (на этот момент)', n !== c ? `Верное число: ${c}` : '',
           dist && dist.must && n === c ? 'Вортокс: нужно ЛОЖНОЕ число' : ''] }; },
       apply: inp => { const c = truth(inp), n = inp.n ?? def(inp);
         log(S, `Горничная (${p.name}) проверяет ${(inp.t || []).map(id => nm(S, id)).join(' и ')}: ${n}`, 'info'); if (dist && n !== c) recordAbn(S, p, 'ложное число', dist.src); },
@@ -2403,21 +2542,42 @@ const LOGIC = {
       return { g: fg ? fg.r : t.role, e: fe ? fe.r : t.role, gw: fg ? fg.why : '', ew: fe ? fe.why : '' };
     });
     const pickT = inp => inp.t && P(S, inp.t[0]);
-    const shown = inp => { const t = pickT(inp); if (!t) return null; const d = rec(t); return { g: inp.g || d.g, e: inp.e || d.e }; };
+    // история (№1): этого игрока Сновидец уже видел — новая пара должна иметь общую роль со всеми прежними (если его роль не менялась)
+    const recD = (t, s) => ({ ab: actsAs(p), k: 'dream', q: [t.id], a: [s.g, s.e], t: t.role, h: [t.role], rg: REG_AS[t.role] ? [t.id] : [] });
+    // №4: рекомендация, которая сходится с прошлым: на место ложной роли — общая роль прошлых пар (пьяному обе — не его; трезвому его роль
+    // остаётся); пьяному без такой лжи — верная пара (кроме Вортокса). Не нашлось — прежняя рекомендация
+    const recAdj = t => {
+      const d = rec(t), fit = c => toldFit(S, p, recD(t, c));
+      if (REG_AS[t.role] || !toldPrev(S, p.id, recD(t, d)).length || fit(d) === 2) return d;
+      const prev = toldPrev(S, p.id, recD(t, d)), base = prev.filter(r => toldSame(S, r)).length ? prev.filter(r => toldSame(S, r)) : prev;
+      let inter = base[0].a.slice(); for (const r of base) inter = inter.filter(x => r.a.includes(x));
+      const tg = isGoodTeam(realTeam(t)), cands = [];
+      for (const r of inter) { if (!R(r) || r === t.role || mine.has(r)) continue;
+        const c = isGoodTeam(R(r).team) ? { g: r, e: d.e, gw: 'общая с прошлым разом' } : { g: d.g, e: r, ew: 'общая с прошлым разом' };
+        if (dist ? c.g !== t.role && c.e !== t.role : c.g === t.role || c.e === t.role) cands.push(c); }
+      if (dist && !dist.must) cands.push(tg ? { g: t.role, e: d.e, gw: '' } : { g: d.g, e: t.role, ew: '' });
+      for (const lvl of [2, 1]) { const c = cands.find(x => fit(x) >= lvl); if (c) return Object.assign({}, d, c); }
+      return d;
+    };
+    const shown = inp => { const t = pickT(inp); if (!t) return null; const d = recAdj(t); return { g: inp.g || d.g, e: inp.e || d.e }; };
     return {
       inputs: [PL('t', 1, 'Сновидец выбирает игрока (не себя и не Странника)', q => q.id !== p.id && !isTraveller(q))],
-      more: inp => { const t = pickT(inp); if (!t) return []; const d = rec(t), real = good => !dist && isGoodTeam(realTeam(t)) === good;
+      more: inp => { const t = pickT(inp); if (!t) return []; const d = recAdj(t), real = good => (good ? d.g : d.e) === t.role;
         const lab = good => { const w = good ? d.gw : d.ew; return `${good ? 'Добрая' : 'Злая'} роль (по умолчанию — ${real(good) ? 'настоящая' : 'ложная' + (w ? ': ' + w : '')})`; };
         return [ROLE('g', lab(true), side(true), { optional: true, groups: groups(true), def: d.g }),
           ROLE('e', lab(false), side(false), { optional: true, groups: groups(false), def: d.e })]; },
       info: inp => {
         const t = pickT(inp), s = shown(inp); if (!t || !s) return null;
-        const ok = s.g === t.role || s.e === t.role;
+        const ok = s.g === t.role || s.e === t.role, reg = !!REG_AS[t.role];
         const order = stable(S, `dreamOrd:${p.id}:${t.id}`, () => Math.random() < 0.5);
-        return { show: `${rname(s.g)} или ${rname(s.e)}`, lines: [ok ? 'Одна из ролей — его: информация верная' : `Обе роли ложные (на самом деле ${rname(t.role)})`,
+        const two = r => `${rname(r.a[0])} или ${rname(r.a[1])}`;
+        const conf = soberWarn(dist, !ok && !reg).concat(reg ? [] : toldCheck(S, p, recD(t, s), { ok, dist, item: two,
+          same: () => `Этого игрока Сновидец уже видел (${toldPrev(S, p.id, recD(t, s)).filter(r => toldSame(S, r)).map(r => `ночь ${r.n} — ${two(r)}`).join('; ')}), а с нынешней парой нет ни одной общей роли` }));
+        return { show: `${rname(s.g)} или ${rname(s.e)}`, conf, lines: [ok ? 'Одна из ролей — его: информация верная' : `Обе роли ложные (на самом деле ${rname(t.role)})`,
             dist && dist.must && ok ? 'Вортокс: нужна ЛОЖНАЯ информация — обе роли не его' : '', ...regNote(S, [t.id])],
           tokens: (order ? [s.g, s.e] : [s.e, s.g]).filter(Boolean).map(role => ({ role })) };
       },
+      told: inp => { const t = pickT(inp), s = shown(inp); return t && s && s.g && s.e ? recD(t, s) : null; },
       apply: inp => { const t = pickT(inp), s = shown(inp); const ok = s.g === t.role || s.e === t.role;
         log(S, `Сновидец (${p.name}) смотрит на ${t.name}: ${rname(s.g)} или ${rname(s.e)}${ok ? '' : ' (обе ложные)'}`, 'info');
         if (dist && !ok) recordAbn(S, p, 'ложная информация', dist.src); },
@@ -2470,24 +2630,37 @@ const LOGIC = {
       apply: inp => { log(S, `Математик (${p.name}): ${inp.c}`, 'info'); if (dist && inp.c !== truth) recordAbn(S, p, 'ложное число', dist.src); },
     };
   },
+  // №2 (открытые факты дня): голосование и номинации открытые — если по записям приложения сегодня никто, кроме самого игрока, не голосовал
+  // (не номинировал), «ДА» игрок опровергнет сам; пьяному по умолчанию тогда — «НЕТ» (№4). Затворник может определиться Демоном или
+  // Приспешником, Шпион — не Приспешником
   flowergirl: (S, p) => {
-    const truth = !!(S.day && S.day.demonVoted), y = yesNo(S, p, truth);
-    return { inputs: [y.field], info: inp => ({ show: y.shown(inp) ? 'ДА — кивните' : 'НЕТ — покачайте головой', lines: [`Демон сегодня ${truth ? 'голосовал' : 'не голосовал'}`, ...y.lines(inp)] }),
+    const truth = !!(S.day && S.day.demonVoted), d = S.day || {};
+    const voters = [...new Set((d.noms || []).flatMap(x => x.voters || []))].filter(id => id !== p.id);
+    const noYes = !voters.length && !(d.exiled || []).length, dist = distortion(S, p);
+    const y = yesNo(S, p, truth, null, dist && noYes && !dist.must ? false : null);
+    const conf = inp => y.shown(inp) && noYes ? [{ lvl: 'warn', t: `По записям приложения сегодня никто, кроме самой Цветочницы, не голосовал — «ДА» игрок опровергнет сам${dist && dist.must ? ' (Вортокс требует ложь — решение рассказчика)' : ''}` }]
+      : y.sober(inp, voters.some(id => P(S, id) && P(S, id).role === 'recluse'));
+    return { inputs: [y.field], info: inp => ({ show: y.shown(inp) ? 'ДА — кивните' : 'НЕТ — покачайте головой', conf: conf(inp), lines: [`Демон сегодня ${truth ? 'голосовал' : 'не голосовал'}`, ...y.lines(inp)] }),
       apply: inp => { log(S, `Цветочница (${p.name}): ${y.shown(inp) ? 'да' : 'нет'}`, 'info'); y.record(inp); } };
   },
   towncrier: (S, p) => {
-    const truth = !!(S.day && S.day.minionNominated), y = yesNo(S, p, truth);
-    return { inputs: [y.field], info: inp => ({ show: y.shown(inp) ? 'ДА — кивните' : 'НЕТ — покачайте головой', lines: [`Приспешник сегодня ${truth ? 'номинировал' : 'не номинировал'}`, ...y.lines(inp)] }),
+    const truth = !!(S.day && S.day.minionNominated), d = S.day || {};
+    const noms = [...new Set(d.nominators || [])].filter(id => id !== p.id), noYes = !noms.length, dist = distortion(S, p);
+    const y = yesNo(S, p, truth, null, dist && noYes && !dist.must ? false : null);
+    const conf = inp => y.shown(inp) && noYes ? [{ lvl: 'warn', t: `По записям приложения сегодня никто, кроме самого Глашатая, не номинировал — «ДА» игрок опровергнет сам${dist && dist.must ? ' (Вортокс требует ложь — решение рассказчика)' : ''}` }]
+      : y.sober(inp, noms.some(id => P(S, id) && REG_AS[P(S, id).role]));
+    return { inputs: [y.field], info: inp => ({ show: y.shown(inp) ? 'ДА — кивните' : 'НЕТ — покачайте головой', conf: conf(inp), lines: [`Приспешник сегодня ${truth ? 'номинировал' : 'не номинировал'}`, ...y.lines(inp)] }),
       apply: inp => { log(S, `Глашатай (${p.name}): ${y.shown(inp) ? 'да' : 'нет'}`, 'info'); y.record(inp); } };
   },
-  oracle: countInfo(S => ({ n: S.players.filter(q => !q.alive && regEvil(S, q)).length, max: Math.min(S.players.filter(q => !q.alive).length, evilLike(S)) }), 'Мёртвых злых игроков'),
+  oracle: countInfo(S => { const dead = S.players.filter(q => !q.alive);
+    return { n: dead.filter(q => regEvil(S, q)).length, max: Math.min(dead.length, evilLike(S)), q: dead.map(q => q.id), qw: 'мёртвые' }; }, 'Мёртвых злых игроков'),
   seamstress: (S, p, first, off) => {
     if (once(S, p, 'seamstress')) return { active: false, reason: 'Способность уже использована' };
     const same = inp => { const ps = (inp.t || []).map(id => P(S, id)); return ps.length === 2 && regEvil(S, ps[0]) === regEvil(S, ps[1]); };
     return { inputs: [PL('t', 2, 'Швея выбирает 2 игроков (можно пропустить)', notSelf(p), { min: 0 })],
       more: inp => (inp.t || []).length === 2 ? [yesNo(S, p, same(inp)).field] : [],
       info: inp => { if ((inp.t || []).length < 2) return null; const y = yesNo(S, p, same(inp));
-        return { show: y.shown(inp) ? 'ДА — одна сторона' : 'НЕТ — разные стороны', lines: [...y.lines(inp), ...regNote(S, inp.t)] }; },
+        return { show: y.shown(inp) ? 'ДА — одна сторона' : 'НЕТ — разные стороны', conf: y.sober(inp, inp.t.some(id => P(S, id) && REG_AS[P(S, id).role])), lines: [...y.lines(inp), ...regNote(S, inp.t)] }; },
       apply: inp => { if (!inp.t || inp.t.length < 2) return; markOnce(S, p, 'seamstress'); const y = yesNo(S, p, same(inp));
         log(S, `Швея (${p.name}) проверяет ${inp.t.map(id => nm(S, id)).join(' и ')}: ${y.shown(inp) ? 'да' : 'нет'}`, 'info'); y.record(inp); } };
   },
@@ -2513,7 +2686,9 @@ const LOGIC = {
     });
     const correct = inp => !!d && (inp.t || []).includes(d.id);
     return { deadOk: true, inputs: [PL('t', 2, `Покажите 2 игроков, один — Демон${dist ? ' (рекомендация — ложная)' : ''}`)], defaults: { t: def },
-      info: inp => (inp.t || []).length === 2 ? { show: inp.t.map(id => nm(S, id)).join(' или '), lines: [!correct(inp) ? `Демона среди них нет — информация ложная. Демон: ${d ? d.name : '—'}` : '',
+      info: inp => (inp.t || []).length === 2 ? { show: inp.t.map(id => nm(S, id)).join(' или '),
+        conf: soberWarn(dist, !correct(inp) && !inp.t.some(id => P(S, id) && P(S, id).role === 'recluse')), // Затворник может определиться Демоном
+        lines: [!correct(inp) ? `Демона среди них нет — информация ложная. Демон: ${d ? d.name : '—'}` : '',
         dist && dist.must && correct(inp) ? 'Вортокс: нужна ЛОЖНАЯ информация' : ''], tokens: [{ players: inp.t, sub: 'Один из них — Демон' }] } : null,
       apply: inp => { S.flags.sageWake = null; log(S, `Мудрец (${p.name}) узнаёт: ${inp.t.map(id => nm(S, id)).join(' или ')}`, 'info'); if (dist && !correct(inp)) recordAbn(S, p, 'ложная информация', dist.src); } };
   },
@@ -2964,7 +3139,9 @@ const LOGIC = {
     });
     const evilN = inp => (inp.t || []).filter(id => P(S, id) && regEvil(S, P(S, id))).length;
     return { inputs: [PL('t', 3, `Покажите 3 игроков: ровно 1 злой${dist ? ' (рекомендация — ложная)' : ''}`, notSelf(p))], defaults: { t: def },
-      info: inp => (inp.t || []).length === 3 ? { show: seatSort(S, inp.t).map(id => nm(S, id)).join(', '), lines: [evilN(inp) === 1 ? 'Информация верная' : `Злых среди них: ${evilN(inp)} — информация ложная`,
+      info: inp => (inp.t || []).length === 3 ? { show: seatSort(S, inp.t).map(id => nm(S, id)).join(', '),
+        conf: soberWarn(dist, evilN(inp) !== 1 && !inp.t.some(id => P(S, id) && REG_AS[P(S, id).role])),
+        lines: [evilN(inp) === 1 ? 'Информация верная' : `Злых среди них: ${evilN(inp)} — информация ложная`,
           dist && dist.must && evilN(inp) === 1 ? 'Вортокс: нужна ЛОЖНАЯ информация' : '', ...regNote(S, inp.t)], tokens: [{ players: seatSort(S, inp.t), lead: 'Только один из этих игроков злой:' }] } : null,
       apply: inp => { S.players.forEach(q => rmTok(q, 'know', 'noble')); inp.t.forEach(id => addTok(S, P(S, id), 'know', 'noble'));
         log(S, `Аристократ (${p.name}) узнаёт: ${inp.t.map(id => nm(S, id)).join(', ')}`, 'info'); if (dist && evilN(inp) !== 1) recordAbn(S, p, 'ложная информация', dist.src); } };
@@ -3055,7 +3232,7 @@ const LOGIC = {
     });
     return { inputs: [PL('t', 1, `Укажите на 1 доброго игрока${dist ? ' (рекомендация — ложная)' : ''}`, notSelf(p))], defaults: { t: def },
       info: inp => { const t = inp.t && P(S, inp.t[0]); if (!t) return null; const ok = t.align === 'good';
-        return { show: t.name, lines: [ok ? 'Информация верная' : `${t.name} злой — информация ложная`, dist && dist.must && ok ? 'Вортокс: нужна ЛОЖНАЯ информация' : '', ...regNote(S, [t.id])],
+        return { show: t.name, conf: soberWarn(dist, !ok && !REG_AS[t.role]), lines: [ok ? 'Информация верная' : `${t.name} злой — информация ложная`, dist && dist.must && ok ? 'Вортокс: нужна ЛОЖНАЯ информация' : '', ...regNote(S, [t.id])],
           tokens: [{ players: [t.id], lead: 'Этот игрок — добрый:' }] }; },
       apply: inp => { const t = P(S, inp.t[0]); S.players.forEach(q => rmTok(q, 'know', 'steward')); addTok(S, t, 'know', 'steward');
         log(S, `Управляющий (${p.name}) узнаёт доброго игрока: ${t.name}`, 'info'); if (dist && t.align !== 'good') recordAbn(S, p, 'ложная информация', dist.src); } };
@@ -3308,6 +3485,8 @@ function applyStep(S, step, inp) {
         bad: ts.filter(q => q.align === 'evil').map(q => q.id), dead: ts.filter(q => !q.alive).map(q => q.id) });
     }
     if (goonHit(S, step, spec, inp || {})) spec = stepSpec(S, step); // выбравший Наёмника пьян — пересчитываем шаг
+    // история выданной информации (противоречия, v102) — до эффектов шага, в том же состоянии, в каком был показ
+    if (spec.told && step.pid) try { toldPush(S, step.pid, spec.told(inp || {}), spec.dist); } catch (e) { /* без записи шаг всё равно выполняется */ }
     spec.apply(inp || {});
   }
   rpTag(S, l0, k);
