@@ -359,6 +359,33 @@ function artVars() {
   const cl = document.documentElement.classList;
   cl.toggle('art-wall', HAS_ART('tablet') && HAS_ART('wall_bg')); cl.toggle('art-runes', HAS_ART('rune0')); cl.toggle('art-poison', HAS_ART('poison_frame')); cl.toggle('art-drunk', HAS_ART('drunk_frame'));
 }
+// С v101 картинки — файлами рядом со страницей (ART: 'art/<имя>-<хэш>.webp'; в программе на компьютере — data:-адреса, как раньше):
+// первый запуск не ждёт всю графику, картинка грузится, когда нужна. Чтобы показ не «моргал» пустотой (нечисть склепа, осколки,
+// кадры раскрытия создаются в момент нажатия), картинки оформления и вида выдачи ролей заранее берутся в память — Image + decode,
+// ссылки держим (ART_WARM), браузер отдаёт их из памяти сразу. Не всё подряд: память iPhone не резиновая — только нужное сейчас
+const ART_WARM = new Map(), ART_FILES = typeof ART !== 'undefined' && Object.values(ART).some(u => !u.startsWith('data:'));
+const WARM_SET = {
+  base: k => !/^(c_|d_|h_|k_|s_|rune|wall_|tablet|fx_)/.test(k),  // карточки показа, цифры, значки, шапки, победа
+  wall: k => /^(rune|wall_|tablet|fx_)/.test(k),                   // стена; руны — и на сундуках склепа, и в витраже
+  engr: k => k.startsWith('c_'),
+  glass: k => /^d_(tab_|rose|digit)/.test(k),
+  hallow: k => /^h_(tab_|g_|em_|web_|header|win|splash|ring|frame|batline|wreath|digit|bat_strip)/.test(k),
+  script: k => /^s_(tab_|g_|em_|digit|header|win|splash|paper|orn|init|wreath|ring|frame)/.test(k),
+  crypt: k => k.startsWith('h_'), vitr: k => k.startsWith('d_'), cauldron: k => k.startsWith('k_'), seals: k => k.startsWith('s_'),
+};
+function artWarm(set) {
+  if (!ART_FILES || ART_WARM.has('@' + set) || !WARM_SET[set]) return;
+  ART_WARM.set('@' + set, true);
+  for (const k of Object.keys(ART)) if (WARM_SET[set](k) && !ART_WARM.has(k)) {
+    const im = new Image(); im.decoding = 'async'; im.src = ART[k]; ART_WARM.set(k, im); if (im.decode) im.decode().catch(() => {});
+  }
+}
+// из render(): сразу после запуска не мешаем первой отрисовке (UI.warm ставит boot чуть позже); выдача ролей — на подготовке и пока открыта стена
+function artWarmNow() {
+  if (!UI.warm) return;
+  artWarm('base'); artWarm(UI.skin);
+  if (S.phase === 'setup' || (UI.wall && S.draw)) { const k = drawKind(); if (k !== 'cauldron' && k !== 'seals') artWarm('wall'); artWarm(k); }
+}
 
 // выбор игроков — компактные квадратики: иконка роли (днём — номер места), имя; мёртвых тоже можно выбрать
 function chipsPlayers(key, n, filter, selected, opts) {
@@ -1043,13 +1070,20 @@ function bellWav() {
   for (let i = 0; i < n; i++) v.setInt16(44 + i * 2, Math.round(x[i] / (pk || 1) * .85 * 32767), true);
   return new Blob([buf], { type: 'audio/wav' });
 }
-// звуки таймера: колокол пользователя (BELL_SRC; нет — синтез) и тиканье за минуту до конца (TICK_SRC, заметка пользователя 2026-11-03) —
-// mp3 в base64, встроены сборкой; в плеер — через Blob (Safari надёжнее)
+// звуки таймера: колокол пользователя (BELL_SRC; нет — синтез) и тиканье за минуту до конца (TICK_SRC, заметка пользователя 2026-11-03).
+// С v101 — файлы рядом со страницей (art/bell-<хэш>.mp3): заранее берутся в память (sndPrefetch при запуске) — в плеер через Blob
+// (Safari с service worker надёжнее играет из blob, чем по адресу). В программе на компьютере — data:-адрес, тоже в Blob
 const b64Blob = (s64, type) => { const s = atob(s64), b = new Uint8Array(s.length); for (let i = 0; i < s.length; i++) b[i] = s.charCodeAt(i); return new Blob([b], { type }); };
-const SND = {}, SND_SRC = {
-  bell: () => typeof BELL_SRC !== 'undefined' && BELL_SRC ? b64Blob(BELL_SRC, 'audio/mpeg') : bellWav(),
-  tick: () => typeof TICK_SRC !== 'undefined' && TICK_SRC ? b64Blob(TICK_SRC, 'audio/mpeg') : null };
-function sndAudio(k) { if (SND[k] === undefined) { try { const b = SND_SRC[k](); SND[k] = b ? new Audio(URL.createObjectURL(b)) : null; if (SND[k]) SND[k].preload = 'auto'; } catch (e) { SND[k] = null; } } return SND[k]; }
+const SND_URL = { bell: typeof BELL_SRC !== 'undefined' ? BELL_SRC : '', tick: typeof TICK_SRC !== 'undefined' ? TICK_SRC : '' }, SND_BLOB = {};
+function sndPrefetch() {
+  if (location.protocol === 'file:') return;
+  for (const k of Object.keys(SND_URL)) { const u = SND_URL[k]; if (!u || u.startsWith('data:') || SND_BLOB[k]) continue;
+    SND_BLOB[k] = fetch(u).then(r => r.ok ? r.blob() : Promise.reject(new Error(r.status))).then(b => { SND_BLOB[k] = b; }).catch(() => { delete SND_BLOB[k]; }); }
+}
+// Blob, если уже в памяти; data: — раскодировать; иначе адрес файла (не успел подгрузиться — плеер возьмёт по адресу)
+const sndSrc = k => { const u = SND_URL[k], b = SND_BLOB[k]; return !u ? null : u.startsWith('data:') ? b64Blob(u.slice(u.indexOf(',') + 1), 'audio/mpeg') : b instanceof Blob ? b : u; };
+const SND = {}, SND_SRC = { bell: () => sndSrc('bell') || bellWav(), tick: () => sndSrc('tick') };
+function sndAudio(k) { if (SND[k] === undefined) { try { const b = SND_SRC[k](); SND[k] = b ? new Audio(typeof b === 'string' ? b : URL.createObjectURL(b)) : null; if (SND[k]) SND[k].preload = 'auto'; } catch (e) { SND[k] = null; } } return SND[k]; }
 function bellPrime() { // в нажатии: проиграть беззвучно и остановить — потом колокол и тиканье зазвучат и без нажатия (iPhone)
   for (const k of Object.keys(SND_SRC)) { const a = sndAudio(k); if (!a || a.primed) continue; a.primed = true; a.muted = true;
     try { const p = a.play(); if (p && p.then) p.then(() => { a.pause(); a.currentTime = 0; a.muted = false; }).catch(() => { a.muted = false; a.primed = false; }); else { a.pause(); a.muted = false; } } catch (e) { a.muted = false; } }
@@ -3354,7 +3388,7 @@ function render() {
   if (UI.tab === 'roles') filterRefs();
   paintSave();
   window.scrollTo(0, scrollY);
-  hallowAfter(); vitrAfter(); kettleAfter(); scAfter(); lunPreAfter(); fitTokNames(); fitSeatNames(); tabsPin();
+  hallowAfter(); vitrAfter(); kettleAfter(); scAfter(); lunPreAfter(); fitTokNames(); fitSeatNames(); tabsPin(); artWarmNow();
 }
 
 /* ------------------------------------------------------------ обработчики */
@@ -4087,6 +4121,8 @@ function boot(hotData) {
   if (!document.getElementById('artvars')) artVars();
   render();
   connectCloud();
+  // картинки оформления и выдачи ролей — в память, звуки таймера — в Blob; не сразу, чтобы не мешать первой отрисовке
+  setTimeout(() => { UI.warm = true; artWarmNow(); sndPrefetch(); }, 700);
 }
 function sampleGame() {
   const g = E.newGame('ecbe');

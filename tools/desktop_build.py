@@ -33,7 +33,10 @@ APP_FILES = ["package.json", "main.js", "index.html"]
 # 1. файлы приложения в рабочую папку
 for f in ("package.json", "main.js"):
     shutil.copy2(ROOT / "app" / "desktop" / f, DESK / f)
-shutil.copy2(ROOT / "app" / "dist" / "preview.html", DESK / "index.html")
+# страница со всей графикой внутри (app_build.py → desktop.html): программа открывается по file://, а Chromium для file:// не берёт
+# CSS-маски из соседних файлов (проверено 2026-11-07) — поэтому, в отличие от сайта, графика не файлами. Свой протокол (app://) снял бы
+# запрет, но сменил бы источник страницы — сохранённая игра, заметки, история игр и пароль остались бы под старым (file://)
+shutil.copy2(ROOT / "app" / "dist" / "desktop.html", DESK / "index.html")
 # записи на утро — папкой rec рядом со страницей (app_build.py → app/dist/rec)
 if (DESK / "rec").exists():  # пустую папку Windows иногда ненадолго держит — она остаётся, copytree её заполнит
     shutil.rmtree(DESK / "rec", ignore_errors=True)

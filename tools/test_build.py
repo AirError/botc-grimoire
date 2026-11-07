@@ -88,13 +88,20 @@ out.mkdir(parents=True, exist_ok=True)
 for f in out.iterdir():
     shutil.rmtree(f) if f.is_dir() else f.unlink()
 (out / "index.html").write_text(head + body + "</body></html>", encoding="utf-8")
-for size in (180, 192):  # иконки — из сборки сайта (site_build.py)
-    src = ROOT / "out" / "site" / f"icon-{size}.png"
-    if src.exists():
-        shutil.copy2(src, out / src.name)
+# графика, иконки ролей, звуки таймера — файлами рядом (app_build.py → app/dist/art; с v101). Записей на утро в тестовой сборке нет
+shutil.copytree(ROOT / "app" / "dist" / "art", out / "art")
+for size in (180, 192):  # значки — из сборки сайта (site_build.py: art/icon-180-<хэш>.png); здесь — под постоянным именем, как в head
+    src = next(iter(sorted((ROOT / "out" / "site" / "art").glob(f"icon-{size}-*.png"))), None)
+    if src:
+        shutil.copy2(src, out / f"icon-{size}.png")
 (out / "robots.txt").write_text("User-agent: *\nDisallow: /\n", encoding="utf-8")
-# Cloudflare Pages: страница не кэшируется (новая загрузка и срок действуют сразу), не индексируется
-(out / "_headers").write_text("/*\n  Cache-Control: no-cache\n  X-Robots-Tag: noindex, nofollow\n", encoding="utf-8")
+# Cloudflare Pages: страница не кэшируется (новая загрузка и срок действуют сразу), не индексируется; файлы art/ — с хэшем содержимого
+# в имени, их браузер хранит долго и не перепроверяет (service worker в тестовой сборке нет — иначе каждое открытие сверяло бы сотни картинок)
+(out / "_headers").write_text("/*\n  X-Robots-Tag: noindex, nofollow\n/\n  Cache-Control: no-cache\n/index.html\n  Cache-Control: no-cache\n"
+                              "/art/*\n  Cache-Control: public, max-age=31536000, immutable\n", encoding="utf-8")
+# zip папки (файлы в корне) — загрузить вручную в Cloudflare Pages («Create deployment» → перетащить), если без --deploy
+zp = shutil.make_archive(str(out.parent / f"{folder}"), "zip", out)
+print("zip:", zp, f"{Path(zp).stat().st_size / 1024 / 1024:.1f} МБ")
 
 # копия в «Загрузки»: обновляем файлы внутри папки (саму папку не удаляем — она может быть открыта в Проводнике);
 # не получилось — только предупреждение, сборка и загрузка на Cloudflare идут дальше

@@ -1,4 +1,13 @@
-"""Собирает приложение в один файл: app/dist/grimoire.html (для публикации) и preview.html (для локального просмотра)."""
+"""Собирает приложение в app/dist:
+
+  grimoire.html — страница для сайта и тестовой сборки: код и стили внутри, графика, иконки ролей и звуки таймера — файлами рядом;
+  art/          — эти файлы: <имя>-<хэш содержимого>.<расширение> (поменялась картинка — новое имя; service worker и браузер
+                  берут неизменённые из кэша, обновление качает только новые);
+  rec/          — записи на утро и музыка Аль-Адихии (так же, с хэшем в имени);
+  preview.html  — то же, что grimoire.html, полной страницей — для проверки на локальном сервере (grimoire → app/dist);
+  desktop.html  — всё внутри одной страницы (как до v101), для программы на компьютере: она открывается по file://, а Chromium
+                  для file:// не берёт CSS-маски (и fetch) из соседних файлов — пропали бы руны, гравюра, огонь котла.
+"""
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
@@ -136,14 +145,45 @@ _S.update({f"s_m_{k}_strip.png": 8 * 210 for k in ("angel", "fool", "monk", "dem
 ART.update({f.rsplit(".", 1)[0]: (CUT / f, w) for f, w in _S.items()})
 
 
-def webp_uri(path, width, alpha_quality=100, quality=82):
+def webp_bytes(path, width, alpha_quality=100, quality=82):
     im = Image.open(path)
     im = im.convert("RGBA") if im.mode in ("RGBA", "LA", "P") else im.convert("RGB")
     if im.width > width:
         im = im.resize((width, round(im.height * width / im.width)), Image.LANCZOS)
     buf = io.BytesIO()
     im.save(buf, "WEBP", quality=quality, method=6, alpha_quality=alpha_quality)
-    return "data:image/webp;base64," + base64.b64encode(buf.getvalue()).decode()
+    return buf.getvalue()
+
+
+import hashlib
+import re
+import shutil
+
+
+def fresh_dir(d):
+    """пустая папка; её бывает ненадолго держит OneDrive или сервер просмотра — повторяем"""
+    for _ in range(10):
+        shutil.rmtree(d, ignore_errors=True)
+        if not d.exists() or not any(d.iterdir()):
+            break
+        __import__("time").sleep(0.5)
+    d.mkdir(parents=True, exist_ok=True)
+
+
+# файлы оформления (v101): app/dist/art/<имя>-<хэш>.<расширение>. Хэш — от содержимого: неизменённый файл сохраняет имя
+# (кэш браузера и service worker), изменённый получает новое. Сюда же потом — модели GLB и текстуры 3D (put(имя, байты, "glb"))
+ART_OUT = DIST / "art"
+fresh_dir(ART_OUT)
+
+
+def put(name, data, ext):
+    fn = f"{name}-{hashlib.sha1(data).hexdigest()[:8]}.{ext}"
+    (ART_OUT / fn).write_bytes(data)
+    return "art/" + fn
+
+
+MIME = {"webp": "image/webp", "mp3": "audio/mpeg"}
+data_uri = lambda data, ext: f"data:{MIME[ext]};base64," + base64.b64encode(data).decode()
 
 
 # маски гравюры (белое + прозрачность): прозрачность можно сжать с потерями — вдвое легче, на глаз не видно
@@ -154,24 +194,18 @@ lossy = lambda k: k in LOSSY_ALPHA or k.startswith(("c_em_", "h_em_", "h_ghost",
 # «Скрипторий»: фон стола и полосы кадров — пониже, мелкие значки и цифры — как обычно
 quality = lambda k: (72 if k.startswith("d_pane") else 65 if k in ("d_reveal", "d_reveal_dark") else 70 if k == "k_hut" else 76 if k.startswith("k_")
                      else 68 if k.startswith(("s_desk", "s_splash", "s_win", "s_header", "s_paper")) else 74 if k.startswith("s_") and not k.startswith(("s_tab_", "s_digit", "s_g_")) else 82)
-art = {k: webp_uri(p, w, 70 if lossy(k) else 100, quality(k)) for k, (p, w) in ART.items() if p.exists()}
+art_bin = {k: webp_bytes(p, w, 70 if lossy(k) else 100, quality(k)) for k, (p, w) in ART.items() if p.exists()}
+art_url = {k: put(k, b, "webp") for k, b in art_bin.items()}       # страница сайта: адреса файлов
+art_inl = {k: data_uri(b, "webp") for k, b in art_bin.items()}     # программа на компьютере: всё внутри страницы
 meta = json.loads((CUT / "meta.json").read_text(encoding="utf-8")) if (CUT / "meta.json").exists() else {}
-art_js = ("const ART = " + json.dumps(art, separators=(",", ":")) + ";\n"
-          + "const ART_META = " + json.dumps(meta) + ";\n")
+art_js = "const ART_META = " + json.dumps(meta) + ";\n"
 # записи на утро (Хэллоуин; просьба пользователя 2026-10-30): audio/morning/<папка, начинается с 0, 1 или 2> — ночь без смертей, с одной
 # и с двумя смертями. Звук в страницу не встраиваем (каждое обновление качало бы его заново): файлы — рядом, app/dist/rec/<id>.<расширение>;
 # id — от папки и имени файла, поэтому «прослушано» на устройстве переживает пересборку. Имя записи в приложении — имя файла
 # (без номера в начале и «_монтаж» в конце); порядок — по имени файла
-import hashlib
-import re
-import shutil
 AUDIO = {".mp3", ".m4a", ".aac", ".wav", ".ogg", ".opus"}
 REC_SRC, REC_OUT = ROOT / "audio" / "morning", DIST / "rec"
-for _ in range(10):  # папку бывает ненадолго держит OneDrive или сервер просмотра — повторяем
-    shutil.rmtree(REC_OUT, ignore_errors=True)
-    if not REC_OUT.exists() or not any(REC_OUT.iterdir()):
-        break
-    __import__("time").sleep(0.5)
+fresh_dir(REC_OUT)
 rec = []
 for folder in sorted(REC_SRC.iterdir()) if REC_SRC.is_dir() else []:
     if not folder.is_dir() or folder.name[:1] not in "012":
@@ -206,15 +240,15 @@ for f in sorted((ROOT / "audio" / "alhadikhia").iterdir()) if (ROOT / "audio" / 
     g = round(min(1.0, 10 ** ((MUSIC_DB - levels[f.stem]) / 20)), 3) if isinstance(levels.get(f.stem), (int, float)) else 0.2
     music.append({"id": mid, "n": re.sub(r"^\d+[ _.\-]+", "", f.stem).replace("_", " ").strip() or f.stem, "src": f"rec/{out}", "g": g})
 art_js += "const ALHAD_MUSIC = " + json.dumps(music, ensure_ascii=False) + ";\n"
-# колокол конца дня (таймер дня; файл пользователя 2026-11-02, audio/bell/*.mp3): встроен в страницу — короткий, нужен и без сети;
-# нет файла — приложение синтезирует удар само
-BELL_DIR = ROOT / "audio" / "bell"
+# колокол конца дня (таймер дня; файл пользователя 2026-11-02, audio/bell/*.mp3) и тиканье за минуту до конца (файл пользователя
+# 2026-11-03, обрезан до ~6 с: audio/tick/*.mp3): до v101 — base64 в странице, теперь файлами art/bell-<хэш>.mp3, art/tick-<хэш>.mp3
+# (service worker кладёт их в кэш при установке — нужны и без сети; приложение заранее берёт их в память). В программе на компьютере —
+# data:-адресом. Нет файла — колокол приложение синтезирует само, тиканья нет
+BELL_DIR, TICK_DIR = ROOT / "audio" / "bell", ROOT / "audio" / "tick"
 bell = next(iter(sorted(BELL_DIR.glob("*.mp3"))), None) if BELL_DIR.is_dir() else None
-art_js += "const BELL_SRC = " + json.dumps(base64.b64encode(bell.read_bytes()).decode() if bell else "") + ";\n"
-# тиканье за минуту до конца таймера (файл пользователя 2026-11-03, обрезан до ~6 с: audio/tick/*.mp3) — тоже в странице
-TICK_DIR = ROOT / "audio" / "tick"
 tick = next(iter(sorted(TICK_DIR.glob("*.mp3"))), None) if TICK_DIR.is_dir() else None
-art_js += "const TICK_SRC = " + json.dumps(base64.b64encode(tick.read_bytes()).decode() if tick else "") + ";\n"
+snd_url = {k: put(k, f.read_bytes(), "mp3") if f else "" for k, f in (("bell", bell), ("tick", tick))}
+snd_inl = {k: data_uri(f.read_bytes(), "mp3") if f else "" for k, f in (("bell", bell), ("tick", tick))}
 print("колокол:", bell.name if bell else "нет (синтез)", "| тиканье:", tick.name if tick else "нет", "| музыка Аль-Адихии:", len(music))
 print("записей на утро:", len(rec), *[f"{c}: {sum(r['c'] == c for r in rec)}" for c in (0, 1, 2)])
 missing = [k for k, (p, _) in ART.items() if not p.exists() and not k.startswith(("d_pane", "d_nave", "d_reveal", "d_arch", "d_crack", "d_beams", "d_impact", "d_digit", "h_digit", "k_", "s_"))]  # витраж, котёл, «Скрипторий» — по желанию
@@ -222,15 +256,33 @@ if missing:
     print("нет графики:", ", ".join(missing))
 
 css = (SRC / "style.css").read_text(encoding="utf-8")
-js = "\n".join([(SRC / "data.js").read_text(encoding="utf-8"), (SRC / "icons.js").read_text(encoding="utf-8"), art_js]
-               + [(SRC / f).read_text(encoding="utf-8") for f in ("engine.js", "morning.js", "ideas.js", "executions.js", "notes.js", "archive.js", "ui.js")])
-assert "</script" not in js.lower()
+code = [(SRC / f).read_text(encoding="utf-8") for f in ("engine.js", "morning.js", "ideas.js", "executions.js", "notes.js", "archive.js", "ui.js")]
+data_js = (SRC / "data.js").read_text(encoding="utf-8")
+icons_js = (SRC / "icons.js").read_text(encoding="utf-8")
+# иконки ролей (362 картинки base64, ~3,3 МБ; меняются, только когда fetch_icons докачивает новые) — отдельным файлом art/icons-<хэш>.js:
+# обычный (блокирующий) скрипт перед кодом приложения, порядок загрузки тот же, ICONS готовы к первой отрисовке
+icons_url = put("icons", icons_js.encode("utf-8"), "js")
 
-body = (f'<title>Гримуар рассказчика</title>\n{FONTS}\n<style>\n{css}\n</style>\n'
-        f'<div id="app"></div>\n<script>\n{js}\n</script>\n')
+
+def page(art_map, snd, icons_inline):
+    js = "\n".join([data_js] + ([icons_js] if icons_inline else []) + [
+        "const ART = " + json.dumps(art_map, separators=(",", ":")) + ";\n" + art_js
+        + "const BELL_SRC = " + json.dumps(snd["bell"]) + ";\nconst TICK_SRC = " + json.dumps(snd["tick"]) + ";\n"] + code)
+    assert "</script" not in js.lower()
+    return (f'<title>Гримуар рассказчика</title>\n{FONTS}\n<style>\n{css}\n</style>\n<div id="app"></div>\n'
+            + ("" if icons_inline else f'<script src="{icons_url}"></script>\n') + f'<script>\n{js}\n</script>\n')
+
+
+def full(body):
+    return ('<!doctype html><html lang="ru"><head><meta charset="utf-8">'
+            '<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover"></head><body>'
+            + body + '</body></html>')
+
+
+body = page(art_url, snd_url, False)
 (DIST / "grimoire.html").write_text(body, encoding="utf-8")
-(DIST / "preview.html").write_text(
-    '<!doctype html><html lang="ru"><head><meta charset="utf-8">'
-    '<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover"></head><body>'
-    + body + '</body></html>', encoding="utf-8")
-print("grimoire.html", round((DIST / "grimoire.html").stat().st_size / 1024), "КБ")
+(DIST / "preview.html").write_text(full(body), encoding="utf-8")
+(DIST / "desktop.html").write_text(full(page(art_inl, snd_inl, True)), encoding="utf-8")
+files = list(ART_OUT.iterdir())
+print("grimoire.html", round((DIST / "grimoire.html").stat().st_size / 1024), "КБ | art/:", len(files), "файлов,",
+      round(sum(f.stat().st_size for f in files) / 1024), "КБ | desktop.html", round((DIST / "desktop.html").stat().st_size / 1024), "КБ")
